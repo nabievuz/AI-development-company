@@ -418,6 +418,29 @@ def lint_tickets(
                 except SchemaError as exc:
                     err(f"{contract_key} artifact schema '{name}' is malformed: {exc}")
 
+        # R13 — FINALE program tickets require typed contracts (FAIL-CLOSED).
+        # A ticket that declares `program: finale` MUST carry BOTH `produces:`
+        # and `consumes:` (R11 above still validates that each named schema is
+        # well-formed). This is the one place the typed-contract discipline is
+        # fail-closed rather than optional, and it fires ONLY for the FINALE
+        # program marker — so every non-FINALE ticket lints exactly as before.
+        # Match the FIRST whitespace-delimited token after stripping quotes, so an
+        # inline YAML comment (`program: finale  # note`) or a stray quote cannot
+        # bypass this fail-closed gate — the permissive frontmatter parser keeps the
+        # trailing comment in the raw value, so exact-equality would silently miss it.
+        _program = fm.get("program", "").strip().strip("\"'").split()
+        if _program and _program[0].lower() == "finale":
+            for contract_key in ("produces", "consumes"):
+                names = (
+                    _schema_names_of(fm, contract_key) if contract_key in fm else []
+                )
+                if not names:
+                    err(
+                        f"program: finale requires a non-empty '{contract_key}:' "
+                        "typed contract naming a governance/schemas/<name>.yaml "
+                        "(fail-closed for FINALE tickets); it is absent or empty"
+                    )
+
     # R12 — stage-gated delivery (P22 / DAS-1494). Cross-ticket, additive:
     # a stage-N ticket must not ADVANCE past an open GATE-(N-1), and a
     # production-deploy must not proceed while GATE-5 is open (reusing the
@@ -499,6 +522,40 @@ def warn_interrupted_idempotency(
 
 
 # ---------------------------------------------------------------------------
+# Body-prose warnings (W11 — DAS-1507: a `status:`-like line in the body)
+# ---------------------------------------------------------------------------
+
+
+def warn_body_status_lines(
+    tickets: list[tuple[Path, dict[str, str]]],
+) -> list[str]:
+    """Warn when a ticket BODY (outside frontmatter) carries a line like
+    ``status: <valid-status>`` — DAS-1507-style prose that mimics the frontmatter
+    field and can confuse a line-based reader (e.g. the interrupt round-trip's
+    ``status: interrupted`` scan). WARNING, not an error — exit code unaffected.
+    Scoped to a real status value so ordinary "status:" prose does not false-warn.
+    """
+    status_alt = "|".join(re.escape(s) for s in sorted(VALID_STATUSES))
+    body_status_re = re.compile(rf"(?mi)^status:[^\S\n]*(?:{status_alt})\b")
+    warnings: list[str] = []
+    for path, fm in tickets:
+        ticket_label = fm.get("id") or path.name
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        body = _FM_RE.sub("", text, count=1)
+        if body_status_re.search(body):
+            warnings.append(
+                f"{ticket_label}: a 'status: <status>' line appears in the ticket "
+                "BODY (outside frontmatter) — this prose mimics the frontmatter "
+                "field and can confuse line-based readers; reword or backtick it "
+                "(DAS-1507)"
+            )
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -565,6 +622,16 @@ def main(argv: list[str] | None = None) -> int:
             f"(non-fatal — fix before re-dispatching interrupted tickets):"
         )
         for w in idempotency_warnings:
+            print(f"  WARN  {w}")
+
+    # W11 — a `status: <status>` line in the ticket BODY (DAS-1507); informational.
+    body_status_warnings = warn_body_status_lines(tickets)
+    if body_status_warnings:
+        print(
+            f"board_lint: {len(body_status_warnings)} body-status warning(s) "
+            "(non-fatal — reword prose that mimics the status frontmatter field):"
+        )
+        for w in body_status_warnings:
             print(f"  WARN  {w}")
 
     print(f"board_lint: OK — {len(tickets)} ticket(s) checked, 0 violations.")

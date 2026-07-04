@@ -1,0 +1,16 @@
+{
+  "id": "FINALE-D5",
+  "decision": "E2E DEPLOYMENT SEMANTICS",
+  "question": "What does GATE-5 'deployment' mean for evals/e2e packs?",
+  "resume": "local container/venv artifact + passing tests + health-check evidence, committed as board/runs/<run_id>/run-summary.md + evidence JSON",
+  "conditions": [
+    "no external infrastructure",
+    "no public prod push"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

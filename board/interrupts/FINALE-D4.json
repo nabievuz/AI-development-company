@@ -1,0 +1,15 @@
+{
+  "id": "FINALE-D4",
+  "decision": "UNATTENDED INTERRUPTS",
+  "question": "How are interrupts handled unattended?",
+  "resume": "only FINALE-D cards auto-resolve; any NEW founder-grade question -> park that ticket, continue everything else, surface it",
+  "conditions": [
+    "watchdog: two consecutive no-dispatch ticks with parked work -> log STALLED + replan around it"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

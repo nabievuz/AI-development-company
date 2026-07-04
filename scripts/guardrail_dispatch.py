@@ -263,6 +263,70 @@ def guardrail_dispatch(
 
 
 # ---------------------------------------------------------------------------
+# Wave-level pre-dispatch INPUT screen (R3 — dispatch-time scope screening)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class WaveScreenResult:
+    """Outcome of the wave-level pre-dispatch INPUT scope screen (R3)."""
+
+    accepted: list[str] = field(default_factory=list)   # ticket ids cleared to dispatch
+    rejected: list[dict] = field(default_factory=list)  # {ticket_id, role, dept, feedback, reroute_to}
+
+    @property
+    def all_accepted(self) -> bool:
+        return not self.rejected
+
+    @property
+    def rejected_ids(self) -> list[str]:
+        return [r["ticket_id"] for r in self.rejected]
+
+
+def screen_wave_inputs(
+    ticket_paths: list[Path],
+    *,
+    routing_path: Path = DEFAULT_ROUTING,
+    board_dir: Path = DEFAULT_BOARD,
+    guardrails_dir: Path = _runner.DEFAULT_GUARDRAILS_DIR,
+    gate_open_ids: set[str] | None = None,
+) -> WaveScreenResult:
+    """Run the INPUT scope screen over a WAVE's candidate tickets BEFORE dispatch.
+
+    This is R3's deterministic dispatch-time gate, placed at the ORCHESTRATOR
+    decision point (pre-dispatch) — deliberately NOT inside ``wave_runner``, which
+    stays post-decision with *no decision inside it* (ADR-0031: flag-on ==
+    flag-off dispatch decisions). The orchestrator calls this to refuse / re-route
+    out-of-scope candidates (wrong-department, a missing declared ``consumes``
+    input, or an open predecessor gate) before any is dispatched; only
+    ``result.accepted`` ids proceed to a wave.
+
+    ``gate_open_ids`` names candidates whose AADL predecessor gate is still open
+    (the orchestrator supplies this from the stage-gate state).
+    """
+    open_ids = set(gate_open_ids or ())
+    result = WaveScreenResult()
+    for ticket_path in ticket_paths:
+        ctx = _runner.build_context(
+            Path(ticket_path), routing_path=routing_path, board_dir=board_dir
+        )
+        ctx.gate_open = ctx.ticket_id in open_ids
+        ok, feedback = _runner.run_input(ctx.role, ctx, guardrails_dir)
+        if ok:
+            result.accepted.append(ctx.ticket_id)
+        else:
+            result.rejected.append({
+                "ticket_id": ctx.ticket_id,
+                "role": ctx.role,
+                "dept": ctx.ticket_dept,
+                "feedback": feedback,
+                # a wrong-department ticket re-routes to its declared owning dept.
+                "reroute_to": ctx.ticket_dept or None,
+            })
+    return result
+
+
+# ---------------------------------------------------------------------------
 # CLI — INPUT scope screen only (the OUTPUT loop needs a live agent)
 # ---------------------------------------------------------------------------
 
@@ -271,7 +335,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--ticket", type=Path, required=True, help="Path to a DAS-*.md ticket")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--ticket", type=Path, help="Path to a DAS-*.md ticket (single INPUT screen)")
+    src.add_argument(
+        "--screen-wave", type=Path, metavar="DIR",
+        help="Screen every DAS-*.md in DIR — the wave-level pre-dispatch INPUT gate (R3)",
+    )
     p.add_argument("--routing", type=Path, default=DEFAULT_ROUTING)
     p.add_argument("--board", type=Path, default=DEFAULT_BOARD)
     p.add_argument(
@@ -284,6 +353,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+
+    if args.screen_wave is not None:
+        wave_dir = args.screen_wave
+        if not wave_dir.is_dir():
+            print(f"ERROR: not a directory: {wave_dir}", file=sys.stderr)
+            return 2
+        tickets = sorted(wave_dir.glob("DAS-*.md"))
+        res = screen_wave_inputs(tickets, routing_path=args.routing, board_dir=args.board)
+        print(
+            f"guardrail_dispatch: wave INPUT screen — {len(res.accepted)} accepted, "
+            f"{len(res.rejected)} rejected (of {len(tickets)} candidate ticket(s))."
+        )
+        for r in res.rejected:
+            print(f"  REJECT {r['ticket_id']} ({r['role']}): {r['feedback']}", file=sys.stderr)
+        return 1 if res.rejected else 0
+
     if not args.ticket.is_file():
         print(f"ERROR: ticket not found: {args.ticket}", file=sys.stderr)
         return 2

@@ -212,6 +212,12 @@ def build_dispatch_events(record: DispatchRecord) -> list[dict[str, Any]]:
         t7_pass=record.t7_pass,
         t7_score=record.t7_score,
         created_at=run_end_at,
+        # R6: token_total = span input+output sum, activating the check_spans
+        # reconciliation seam (span sum == run_end.token_total by construction).
+        # Emitted ONLY when the run carried tokens, so a zero-token record leaves
+        # the seam inert and never perturbs a zero-token fixture (e.g. the
+        # committed sample attestation).
+        token_total=(record.input_tokens + record.output_tokens) or None,
     )
     span = build_span(
         ticket_id=record.ticket_id,

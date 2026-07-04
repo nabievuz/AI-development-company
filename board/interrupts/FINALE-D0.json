@@ -1,0 +1,15 @@
+{
+  "id": "FINALE-D0",
+  "decision": "PLAN GATE — TASDIQLANDI",
+  "question": "May /daslab-plan create the FINALE epic + tickets immediately?",
+  "resume": "approved",
+  "conditions": [
+    "Scope cap: only work serving the §3 gap ledger; anything else needs a new card."
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

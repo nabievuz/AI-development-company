@@ -514,6 +514,7 @@ def build_run_end(
     t7_pass: Any,
     t7_score: float,
     created_at: str,
+    token_total: int | None = None,
 ) -> dict[str, Any]:
     """Build a ``run_end`` event dict (Shape D — ADR 0023 §4).
 
@@ -545,7 +546,7 @@ def build_run_end(
     Returns:
         A dict conforming to the ``run_end`` shape ready for ``EventStore.append``.
     """
-    return {
+    event: dict[str, Any] = {
         "event_type": "run_end",
         "ticket_id": ticket_id,
         "run_id": run_id,
@@ -557,6 +558,14 @@ def build_run_end(
         "t7_score": t7_score,
         "created_at": created_at,
     }
+    # Optional token_total = the run's span input+output token sum (R6). When
+    # present it activates the check_spans reconciliation seam (run_end.token_total
+    # == sum of span input+output); when absent the seam stays inert
+    # (backward-compatible — gen_sample / wave_runner run_ends omit it). NOT part
+    # of RUN_END_METRICS_FIELDS (additive, not a metrics-contract field).
+    if token_total is not None:
+        event["token_total"] = token_total
+    return event
 
 
 def validate_run_end(event: dict[str, Any]) -> list[str]:
@@ -594,6 +603,9 @@ def validate_run_end(event: dict[str, Any]) -> list[str]:
             float(score)
         except (TypeError, ValueError):
             errors.append(f"t7_score must be coercible to float; got {score!r}")
+    tt = event.get("token_total")
+    if tt is not None and (isinstance(tt, bool) or not isinstance(tt, int) or tt < 0):
+        errors.append(f"token_total must be a non-negative integer when present; got {tt!r}")
     return errors
 
 

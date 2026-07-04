@@ -222,9 +222,11 @@ def test_load_hyphenated_module_by_path():
 
 def test_unknown_role_falls_back_to_default():
     # A role with no bespoke module still gets a working guardrail (the default).
-    ctx = _eng_ctx(role="sre-eng", output="TODO finish")
-    assert runner.load_guardrail_module("sre-eng", GUARDRAILS_DIR) is None
-    ok, fb = runner.run_output("sre-eng", ctx, GUARDRAILS_DIR)
+    # Every real ROUTING role now ships a bespoke module (R4: 2->32), so this
+    # exercises the fallback path with a deliberately unknown role key.
+    ctx = _eng_ctx(role="nonexistent-role", output="TODO finish")
+    assert runner.load_guardrail_module("nonexistent-role", GUARDRAILS_DIR) is None
+    ok, fb = runner.run_output("nonexistent-role", ctx, GUARDRAILS_DIR)
     assert ok is False and "unresolved" in fb.lower()  # default_output_guardrail ran
 
 

@@ -91,6 +91,26 @@ triggers:
     enabled: true
 
 # -----------------------------------------------------------------------
+# Idle-time consolidation jobs (R10 "sleep-time" pattern) — DOCUMENTED ONLY.
+# Read-only maintenance passes the Founder-owned OS scheduler MAY run during
+# quiet hours. They mutate NOTHING (SI-7) and are OUT-OF-BAND read-only tools,
+# never a 6th flow_router trigger/action (the decision set stays the closed
+# {dispatch, validate, idle}). Like the OS-scheduler entry below, nothing in
+# this repo installs these — this section declares intent only.
+# -----------------------------------------------------------------------
+scheduled_jobs:
+  - name: memory_consolidation
+    description: >
+      Sleep-time memory consolidation: apply the composite recall ranking to
+      board/.arcrift-outbox.jsonl, report prune-hygiene candidates and A/B
+      ranking parity. READ-ONLY — never prunes or stores (pruning is a
+      Founder-gated ArcRift act).
+    command: "python3 scripts/consolidate_memory.py --out board/runs/consolidation/latest.json"
+    cadence: idle          # quiet_hours / low-activity windows only
+    read_only: true        # mutates nothing; emits a run log
+    installed: false       # DOCUMENTED ONLY — no OS entry installed by this repo
+
+# -----------------------------------------------------------------------
 # OS scheduler entry — DOCUMENTED ONLY, NOT INSTALLED
 # -----------------------------------------------------------------------
 # To enable the autonomous heartbeat the Founder:

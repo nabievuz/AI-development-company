@@ -226,18 +226,25 @@ def test_span_cached_inconsistent_exits_1(tmp_path):
 # Token reconciliation seam
 # ---------------------------------------------------------------------------
 
-def test_token_reconciliation_inert_when_absent(tmp_path):
-    """Exit 0 when spans carry tokens but run_end has no token_total (slice-2)."""
+def test_token_reconciliation_active_from_emitter(tmp_path):
+    """Slice-2 (R6): the dispatch emitter now sets run_end.token_total = the span
+    input+output sum, so reconciliation is ACTIVE and passes by construction."""
     events = build_wave_events([_record(input_tokens=200, output_tokens=80)])
-    # Confirm no token_total on any run_end (should not be there by design).
-    for ev in events:
-        if ev["event_type"] == "run_end":
-            assert "token_total" not in ev, (
-                "run_end must not carry token_total until slice-2."
-            )
+    ends = [ev for ev in events if ev["event_type"] == "run_end"]
+    assert ends and all(ev.get("token_total") == 280 for ev in ends)  # 200 + 80
     p = _write(tmp_path, events)
-    rc = check_spans.main(["--events", str(p)])
-    assert rc == 0
+    assert check_spans.main(["--events", str(p)]) == 0
+
+
+def test_token_reconciliation_inert_on_zero_token_run(tmp_path):
+    """A zero-token run emits NO token_total, so the reconciliation seam stays
+    inert (exit 0) — and a zero-token fixture (e.g. the committed sample) is
+    never perturbed."""
+    events = build_wave_events([_record(input_tokens=0, output_tokens=0)])
+    ends = [ev for ev in events if ev["event_type"] == "run_end"]
+    assert ends and all("token_total" not in ev for ev in ends)
+    p = _write(tmp_path, events)
+    assert check_spans.main(["--events", str(p)]) == 0
 
 
 def test_token_reconciliation_passes_when_matching(tmp_path):

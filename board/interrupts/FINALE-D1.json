@@ -1,0 +1,19 @@
+{
+  "id": "FINALE-D1",
+  "decision": "HEARTBEAT FLIP — conditionally approved",
+  "question": "Flip config/features.yaml heartbeat_enabled -> true?",
+  "resume": "flip IFF `python3 scripts/check_heartbeat_readiness.py` exits READY(0)",
+  "conditions": [
+    "readiness must exit 0 (currently NOT READY)",
+    "attach full readiness output to this card at flip",
+    "advance loop.yaml mode shadow->measured->limited_live only when its own evidence gate passes",
+    "auto_apply stays false",
+    "any blocker except the day-window -> fix-forward, never bypass"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

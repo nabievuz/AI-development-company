@@ -1,0 +1,17 @@
+{
+  "id": "FINALE-D3",
+  "decision": "AUTO-MERGE",
+  "question": "May FINALE-scoped PRs auto-merge?",
+  "resume": "auto-merge iff CI green + T7 pass + all validators green + no security-sensitive zone diff",
+  "conditions": [
+    "security-zone diffs (.github/workflows, governance/policies, check_secrets.py, budgets caps, schedule rails) additionally require a logged security-lead review",
+    "red CI never merges",
+    "merge conflict -> rebase once -> else park"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

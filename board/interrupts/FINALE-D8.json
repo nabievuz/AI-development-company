@@ -1,0 +1,16 @@
+{
+  "id": "FINALE-D8",
+  "decision": "RELEASE",
+  "question": "Release action on Σ=115 attestation?",
+  "resume": "CHANGELOG entry + local annotated tag v2.1.0 'ORGANISM LIVE' + finale report",
+  "conditions": [
+    "git push stays OFF by default (Founder pushes manually after reading the report)",
+    "push main + tag only if operator said FINALE_PUSH=1 AND after a clean gitleaks/secret-scan"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

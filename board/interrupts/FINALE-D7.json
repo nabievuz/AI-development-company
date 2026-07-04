@@ -1,0 +1,15 @@
+{
+  "id": "FINALE-D7",
+  "decision": "BUDGETS",
+  "question": "Budget policy?",
+  "resume": "config/budgets.yaml caps are authoritative (SI-5); breach -> pause dispatch until next daily window, log an alert, never bypass",
+  "conditions": [
+    "quiet hours per board/schedule.yaml (SI-4)"
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}

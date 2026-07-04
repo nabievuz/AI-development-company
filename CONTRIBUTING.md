@@ -2,6 +2,13 @@
 
 Thank you for contributing. Please follow these rules to keep the codebase healthy.
 
+## Requirements
+
+DasLab targets **Python 3.11+**. Several modules use stdlib features that are
+3.11-only — `tomllib` (`scripts/check_import_ban.py`), `datetime.UTC`, and PEP 604
+`X | None` unions evaluated at runtime — so on an older interpreter (e.g. a Python
+3.10 audit/CI sandbox) they need shims. Run and test under 3.11+ to avoid them.
+
 ## Development workflow
 
 DasLab enforces **one issue = one branch = one PR = one worktree**:

@@ -585,6 +585,116 @@ def test_produces_ok_even_if_dir_missing_and_field_absent(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
+# R13 — FINALE program tickets require typed contracts (fail-closed for
+# `program: finale`; every other ticket is unaffected). DAS FINALE / R3.
+# ---------------------------------------------------------------------------
+
+
+def test_finale_missing_both_contracts_fires(tmp_path: Path) -> None:
+    d = _make_schemas_dir(tmp_path, "task-ledger", "typed-contracts")
+    fm = make_ticket(program="finale")  # FINALE marker, no produces/consumes
+    errors = _r11_errors(fm, d)
+    assert any("program: finale requires a non-empty 'produces:'" in e for e in errors)
+    assert any("program: finale requires a non-empty 'consumes:'" in e for e in errors)
+
+
+def test_finale_with_both_contracts_ok(tmp_path: Path) -> None:
+    d = _make_schemas_dir(tmp_path, "task-ledger", "typed-contracts")
+    fm = make_ticket(program="finale", produces="task-ledger", consumes="typed-contracts")
+    assert _r11_errors(fm, d) == []
+
+
+def test_finale_missing_consumes_only_fires(tmp_path: Path) -> None:
+    d = _make_schemas_dir(tmp_path, "task-ledger")
+    fm = make_ticket(program="finale", produces="task-ledger")  # consumes absent
+    errors = _r11_errors(fm, d)
+    assert any("program: finale requires a non-empty 'consumes:'" in e for e in errors)
+    assert not any("'produces:'" in e for e in errors)  # produces is satisfied
+
+
+def test_finale_marker_is_case_insensitive(tmp_path: Path) -> None:
+    d = _make_schemas_dir(tmp_path, "task-ledger")
+    fm = make_ticket(program="FINALE")  # upper-case marker still fires the gate
+    errors = _r11_errors(fm, d)
+    assert any("program: finale requires" in e for e in errors)
+
+
+def test_non_finale_missing_contracts_is_noop(tmp_path: Path) -> None:
+    # Regression guard: a non-FINALE ticket (or one with a different program
+    # value) missing produces/consumes lints exactly as before — the current
+    # green board must stay green.
+    d = _make_schemas_dir(tmp_path, "task-ledger")
+    assert _r11_errors(make_ticket(), d) == []
+    assert _r11_errors(make_ticket(program="qaqnuz"), d) == []
+
+
+def test_finale_marker_inline_comment_and_quote_still_fire(tmp_path: Path) -> None:
+    # The confirmed bypass: a trailing inline YAML comment or a stray quote must NOT
+    # let a FINALE ticket lint clean without contracts (the permissive frontmatter
+    # parser keeps the comment in the raw value, so exact-equality silently missed it).
+    d = _make_schemas_dir(tmp_path, "task-ledger")
+    for marker in ("finale  # gated build", '"finale', "finale extra"):
+        errors = _r11_errors(make_ticket(program=marker), d)
+        assert any("program: finale requires" in e for e in errors), f"bypass via {marker!r}"
+
+
+def test_distinct_program_token_is_noop(tmp_path: Path) -> None:
+    # A genuinely different single-token program stays fail-open (only `finale` fires).
+    d = _make_schemas_dir(tmp_path, "task-ledger")
+    assert not any(
+        "program: finale requires" in e for e in _r11_errors(make_ticket(program="finale-v2"), d)
+    )
+
+
+# ---------------------------------------------------------------------------
+# W11 — a `status: <status>` line in the ticket BODY (DAS-1507); non-fatal warning
+# ---------------------------------------------------------------------------
+
+
+def test_body_status_line_warns(tmp_path: Path) -> None:
+    from board_lint import warn_body_status_lines
+
+    fm = make_ticket()
+    p = make_ticket_file(tmp_path, fm)
+    # a line in the BODY that mimics the frontmatter field with a real status value.
+    p.write_text(p.read_text(encoding="utf-8") + "\nstatus: done\n", encoding="utf-8")
+    warns = warn_body_status_lines([(p, fm)])
+    assert len(warns) == 1 and "DAS-1507" in warns[0]
+
+
+def test_body_prose_without_status_value_no_warn(tmp_path: Path) -> None:
+    from board_lint import warn_body_status_lines
+
+    fm = make_ticket()
+    p = make_ticket_file(tmp_path, fm)
+    # not a line-start status field, and not a valid status value -> no warn.
+    p.write_text(
+        p.read_text(encoding="utf-8") + "\nThe rollout status: some free prose here\n",
+        encoding="utf-8",
+    )
+    assert warn_body_status_lines([(p, fm)]) == []
+
+
+def test_body_status_warning_is_non_fatal(tmp_path: Path) -> None:
+    # W11 must never change the exit code — it is informational only.
+    import board_lint
+
+    board = tmp_path / "tickets"
+    board.mkdir()
+    p = make_ticket_file(board, make_ticket())
+    p.write_text(p.read_text(encoding="utf-8") + "\nstatus: done\n", encoding="utf-8")
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text(
+        "# Role routing\n\n| Role key | Display | Dept | Reports to |\n|---|---|---|---|\n"
+        "| `qa-eng` | QA Engineer | engineering | QA Lead |\n"
+        "| `ceo` | CEO | governance | Chairman |\n",
+        encoding="utf-8",
+    )
+    rc = board_lint.main(["--board", str(board), "--routing", str(routing)])
+    assert rc == 0  # the body-status WARNING must not fail the lint
+
+
+# ---------------------------------------------------------------------------
 # Tolerant reader — _schema_names_of
 # ---------------------------------------------------------------------------
 

@@ -1,0 +1,15 @@
+{
+  "id": "FINALE-D2",
+  "decision": "BURN-IN WINDOW",
+  "question": "How long is the unattended burn-in before flip?",
+  "resume": "3 real consecutive clean shadow days (QONUN-5)",
+  "conditions": [
+    "Fast-path only if operator said FINALE_FAST=1 at launch: 24h + >=30 counted waves, documented as an alternative readiness profile, never a silent edit."
+  ],
+  "type": "pre_authorization",
+  "authorized_by": "founder",
+  "source": "MASTER-PROMPT-FINALE",
+  "expires": "2026-08-01",
+  "materialized_at": "2026-07-04T00:00:00Z",
+  "authorization_note": "Founder real-time sign-off 2026-07-04: 'MASTER-PROMPT-FINALE.md — launch = Founder imzoladi'. Recorded per §2 (QONUN-5/SI-7: scoped, conditional, machine-auditable)."
+}
