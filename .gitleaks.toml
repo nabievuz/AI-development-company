@@ -1,0 +1,16 @@
+# gitleaks configuration for the DasLab engine repository.
+#
+# Extends the default ruleset (does not replace it) and allowlists only the
+# paths that never hold production secrets. No real secret is ever allowlisted.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths that never contain production secrets"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.claude/worktrees/''',
+  '''(^|/)dist/''',
+  '''(^|/)evals/[^/]+/[^/]+/fixtures/''',  # golden-eval inputs: synthetic fakes for secret-DETECTION tasks
+]

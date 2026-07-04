@@ -1,0 +1,24 @@
+{
+  "snippets": [
+    {
+      "id": "s1",
+      "code": "useEffect(() => {\n  const id = setInterval(() => setCount(c => c + 1), 1000);\n}, []);"
+    },
+    {
+      "id": "s2",
+      "code": "useEffect(() => {\n  console.log('current count is', count);\n}, []);"
+    },
+    {
+      "id": "s3",
+      "code": "async function fetchData(id) {\n  const res = await fetch(`/api/items/${id}`);\n  const data = await res.json();\n  setItems(data);\n}"
+    },
+    {
+      "id": "s4",
+      "code": "useEffect(() => {\n  const id = setInterval(() => setCount(c => c + 1), 1000);\n  return () => clearInterval(id);\n}, []);"
+    },
+    {
+      "id": "s5",
+      "code": "useEffect(() => {\n  setLabel(computeLabel(props.value));\n}, [props.value]);"
+    }
+  ]
+}

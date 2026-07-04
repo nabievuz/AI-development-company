@@ -1,0 +1,8 @@
+{
+  "channels": [
+    { "name": "paid_search", "spend": 20000, "conversions": 400, "revenue": 60000 },
+    { "name": "paid_social", "spend": 15000, "conversions": 500, "revenue": 42000 },
+    { "name": "content_seo", "spend": 5000, "conversions": 150, "revenue": 30000 },
+    { "name": "affiliate", "spend": 10000, "conversions": 100, "revenue": 8000 }
+  ]
+}

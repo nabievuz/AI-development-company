@@ -1,0 +1,8 @@
+{
+  "requirements": [
+    "Add support for exporting customer data in CSV format for finance tooling.",
+    "Add support for exporting customer data in PDF format for audit compliance packets.",
+    "When a GDPR erasure request is processed, also delete cached export artifacts, not just the live records.",
+    "When an export exceeds 10 MB, notify an admin by email so they can monitor load."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "requirements": [
+    "Support CSV export of customer data.",
+    "Support PDF export of customer data for audit needs.",
+    "Ensure GDPR erasure requests also delete cached export files, not just live records."
+  ]
+}

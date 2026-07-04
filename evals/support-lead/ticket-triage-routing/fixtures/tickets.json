@@ -1,0 +1,29 @@
+{
+  "tickets": [
+    {
+      "id": "T-101",
+      "subject": "Charged twice for July invoice",
+      "body": "I was billed twice this month, please refund the duplicate charge."
+    },
+    {
+      "id": "T-102",
+      "subject": "App crashes on login",
+      "body": "Every time I try to log in the app crashes immediately. This is blocking my whole team from working."
+    },
+    {
+      "id": "T-103",
+      "subject": "How do I export my data",
+      "body": "I'd like to know if there's a way to export my account data to CSV."
+    },
+    {
+      "id": "T-104",
+      "subject": "Feature idea: dark mode",
+      "body": "Would love to see a dark mode option in the settings menu."
+    },
+    {
+      "id": "T-105",
+      "subject": "Locked out of my account",
+      "body": "I can't log in and the password reset email never arrives. I have no way to access the product at all."
+    }
+  ]
+}

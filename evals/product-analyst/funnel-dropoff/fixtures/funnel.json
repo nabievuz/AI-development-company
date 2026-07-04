@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {
+      "name": "visit",
+      "count": 1000
+    },
+    {
+      "name": "signup",
+      "count": 400
+    },
+    {
+      "name": "checkout",
+      "count": 350
+    },
+    {
+      "name": "purchase",
+      "count": 120
+    }
+  ]
+}

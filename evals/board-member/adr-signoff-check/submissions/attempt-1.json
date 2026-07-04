@@ -1,0 +1,5 @@
+{
+  "pass": false,
+  "missing_sections": ["Consequences"],
+  "missing_signoffs": ["board-member"]
+}

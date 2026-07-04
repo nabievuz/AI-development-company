@@ -1,0 +1,14 @@
+# DasLab — Data Classification (SSOT).
+# Three classes scope audit + handling. The secret class never enters prompts and
+# (pre-prod gap) must be encrypted at rest; least-privilege + worktree isolation
+# bound each agent; external content is always treated as data, not command.
+version: 1
+classes:
+  public: "shareable; no restriction"
+  internal: "org-only; not for external sharing"
+  secret: "credentials / keys / PII; never in prompts; encrypted at rest (pre-prod gap)"
+
+# Path / label hints that imply the secret class (audit scope).
+secret_markers:
+  paths: ["**/.env*", "**/secrets/**", "**/*secret*", "**/*credential*", "**/*.key", "**/*.pem"]
+  labels: ["secret", "credential", "pii"]

@@ -1,0 +1,14 @@
+# DasLab — Self-Optimizing Loop mode (SSOT).
+# The loop is OFF. DasLab ships the LEVERS (metrics/registry.yaml, the
+# T1-T7 validators, the GATE-6 evidence record) but NOT the controller — no
+# tuning change auto-applies, and metrics are read from real waves only (no fake
+# or projected KPIs). Promotion up the ladder requires a complete GATE-6 record
+# (max_quality_drop 0) AND >= 1 week of clean live T1-T7.
+# Editing this file is governance/policy -> never-auto-approve (QONUN-5).
+version: 1
+mode: shadow              # shadow | measured | limited_live | full
+auto_apply: false         # no tuning change is auto-applied
+ladder: [shadow, measured, limited_live, full]
+promotion_requires:
+  - gate6_record          # complete record, max_quality_drop 0
+  - one_week_clean_live_t1_t7

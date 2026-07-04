@@ -1,0 +1,32 @@
+[
+  {
+    "id": "INC-A",
+    "severity": "SEV2",
+    "age_minutes": 30,
+    "customer_tier": "enterprise"
+  },
+  {
+    "id": "INC-B",
+    "severity": "SEV1",
+    "age_minutes": 5,
+    "customer_tier": "standard"
+  },
+  {
+    "id": "INC-C",
+    "severity": "SEV1",
+    "age_minutes": 50,
+    "customer_tier": "enterprise"
+  },
+  {
+    "id": "INC-D",
+    "severity": "SEV3",
+    "age_minutes": 100,
+    "customer_tier": "enterprise"
+  },
+  {
+    "id": "INC-E",
+    "severity": "SEV2",
+    "age_minutes": 10,
+    "customer_tier": "standard"
+  }
+]

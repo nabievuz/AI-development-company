@@ -1,0 +1,8 @@
+{
+  "allocations": {
+    "engineering": 500000,
+    "marketing": 250000,
+    "product": 200000,
+    "operations": 50000
+  }
+}

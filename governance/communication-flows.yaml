@@ -1,0 +1,254 @@
+# governance/communication-flows.yaml
+# DERIVED + VALIDATABLE view of the org communication graph (ADR-0026).
+# Every edge is a (sender -> receiver) ordered pair mechanically derived
+# from board/ROUTING.md reporting lines; NEVER hand-author new topology
+# here. Regenerate with:  python3 scripts/validate_commflows.py --emit
+# Validated by scripts/validate_commflows.py (WS2 O2-T02, DAS-1465).
+#
+# founder is an EXTERNAL human gate above the chairman, not a routing
+# node: the escalation ladder is ['ic', 'lead', 'cxo', 'founder'] but its terminal 'founder'
+# rung produces NO fleet edge (ADR-0026 section 3). consult edges are
+# deferred to a future kind (ADR-0026 Consequences); v1 is delegation +
+# escalation only.
+version: 1
+flows:
+  - sender: chairman
+    receiver: ceo
+    kind: delegation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: chairman
+    kind: escalation
+    source: routing.reports_to
+  - sender: cto
+    receiver: backend-em
+    kind: delegation
+    source: routing.reports_to
+  - sender: backend-em
+    receiver: cto
+    kind: escalation
+    source: routing.reports_to
+  - sender: backend-em
+    receiver: backend-eng-1
+    kind: delegation
+    source: routing.reports_to
+  - sender: backend-eng-1
+    receiver: backend-em
+    kind: escalation
+    source: routing.reports_to
+  - sender: backend-em
+    receiver: backend-eng-2
+    kind: delegation
+    source: routing.reports_to
+  - sender: backend-eng-2
+    receiver: backend-em
+    kind: escalation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: cto
+    kind: delegation
+    source: routing.reports_to
+  - sender: cto
+    receiver: ceo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cto
+    receiver: frontend-em
+    kind: delegation
+    source: routing.reports_to
+  - sender: frontend-em
+    receiver: cto
+    kind: escalation
+    source: routing.reports_to
+  - sender: frontend-em
+    receiver: frontend-eng-1
+    kind: delegation
+    source: routing.reports_to
+  - sender: frontend-eng-1
+    receiver: frontend-em
+    kind: escalation
+    source: routing.reports_to
+  - sender: frontend-em
+    receiver: frontend-eng-2
+    kind: delegation
+    source: routing.reports_to
+  - sender: frontend-eng-2
+    receiver: frontend-em
+    kind: escalation
+    source: routing.reports_to
+  - sender: qa-lead
+    receiver: qa-eng
+    kind: delegation
+    source: routing.reports_to
+  - sender: qa-eng
+    receiver: qa-lead
+    kind: escalation
+    source: routing.reports_to
+  - sender: cto
+    receiver: qa-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: qa-lead
+    receiver: cto
+    kind: escalation
+    source: routing.reports_to
+  - sender: security-lead
+    receiver: security-eng
+    kind: delegation
+    source: routing.reports_to
+  - sender: security-eng
+    receiver: security-lead
+    kind: escalation
+    source: routing.reports_to
+  - sender: cto
+    receiver: security-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: security-lead
+    receiver: cto
+    kind: escalation
+    source: routing.reports_to
+  - sender: sre-lead
+    receiver: sre-eng
+    kind: delegation
+    source: routing.reports_to
+  - sender: sre-eng
+    receiver: sre-lead
+    kind: escalation
+    source: routing.reports_to
+  - sender: cto
+    receiver: sre-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: sre-lead
+    receiver: cto
+    kind: escalation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: cpo
+    kind: delegation
+    source: routing.reports_to
+  - sender: cpo
+    receiver: ceo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cpo
+    receiver: product-analyst
+    kind: delegation
+    source: routing.reports_to
+  - sender: product-analyst
+    receiver: cpo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cpo
+    receiver: senior-pm
+    kind: delegation
+    source: routing.reports_to
+  - sender: senior-pm
+    receiver: cpo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cpo
+    receiver: tech-writer
+    kind: delegation
+    source: routing.reports_to
+  - sender: tech-writer
+    receiver: cpo
+    kind: escalation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: cdo
+    kind: delegation
+    source: routing.reports_to
+  - sender: cdo
+    receiver: ceo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cdo
+    receiver: design-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: design-lead
+    receiver: cdo
+    kind: escalation
+    source: routing.reports_to
+  - sender: design-lead
+    receiver: product-designer
+    kind: delegation
+    source: routing.reports_to
+  - sender: product-designer
+    receiver: design-lead
+    kind: escalation
+    source: routing.reports_to
+  - sender: design-lead
+    receiver: ux-researcher
+    kind: delegation
+    source: routing.reports_to
+  - sender: ux-researcher
+    receiver: design-lead
+    kind: escalation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: cmo
+    kind: delegation
+    source: routing.reports_to
+  - sender: cmo
+    receiver: ceo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cmo
+    receiver: content-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: content-lead
+    receiver: cmo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cmo
+    receiver: growth-marketer
+    kind: delegation
+    source: routing.reports_to
+  - sender: growth-marketer
+    receiver: cmo
+    kind: escalation
+    source: routing.reports_to
+  - sender: cmo
+    receiver: seo-specialist
+    kind: delegation
+    source: routing.reports_to
+  - sender: seo-specialist
+    receiver: cmo
+    kind: escalation
+    source: routing.reports_to
+  - sender: ceo
+    receiver: coo
+    kind: delegation
+    source: routing.reports_to
+  - sender: coo
+    receiver: ceo
+    kind: escalation
+    source: routing.reports_to
+  - sender: coo
+    receiver: finance-analyst
+    kind: delegation
+    source: routing.reports_to
+  - sender: finance-analyst
+    receiver: coo
+    kind: escalation
+    source: routing.reports_to
+  - sender: coo
+    receiver: legal-analyst
+    kind: delegation
+    source: routing.reports_to
+  - sender: legal-analyst
+    receiver: coo
+    kind: escalation
+    source: routing.reports_to
+  - sender: coo
+    receiver: support-lead
+    kind: delegation
+    source: routing.reports_to
+  - sender: support-lead
+    receiver: coo
+    kind: escalation
+    source: routing.reports_to

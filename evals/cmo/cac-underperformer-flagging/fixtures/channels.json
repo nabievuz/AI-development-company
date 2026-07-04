@@ -1,0 +1,11 @@
+{
+  "target_cac": 50,
+  "channels": [
+    { "name": "paid_search", "spend": 9000, "conversions": 180 },
+    { "name": "display", "spend": 12000, "conversions": 150 },
+    { "name": "social_organic", "spend": 4000, "conversions": 200 },
+    { "name": "affiliate", "spend": 15000, "conversions": 100 },
+    { "name": "email", "spend": 2000, "conversions": 250 },
+    { "name": "podcast_sponsorship", "spend": 20000, "conversions": 250 }
+  ]
+}

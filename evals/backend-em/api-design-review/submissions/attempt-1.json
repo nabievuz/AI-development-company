@@ -1,0 +1,3 @@
+{
+  "issues": ["breaking_change", "missing_pagination", "missing_versioning"]
+}

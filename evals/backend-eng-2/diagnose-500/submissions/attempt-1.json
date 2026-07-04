@@ -1,0 +1,4 @@
+{
+  "root_cause": "null_reference",
+  "fix": "null_check"
+}

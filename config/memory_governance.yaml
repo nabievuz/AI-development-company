@@ -1,0 +1,33 @@
+# DasLab — ArcRift Memory Governance (SSOT).
+# Recall is weighted by trust; quarantined/contradicted memories are excluded;
+# expired (past-TTL) memories are archived. Adding trust_score + ttl to the
+# ArcRift schema is a schema_migration -> Critical / QONUN-5 (the first Critical
+# approval of P3, with a written rollback plan). The LIVE store is ArcRift (an
+# external MCP server using Ollama nomic-embed-text); this config is the SSOT the
+# governance validator enforces.
+version: 1
+
+# A memory record must carry these fields (the migrated schema).
+schema:
+  required_fields: [id, content, project, provenance, trust_score, created_at]
+
+# Provenance -> trust score: verified PR > review-validated > cited source > unverified.
+trust_tiers:
+  verified_pr: 1.0
+  review_validated: 0.7
+  cited_source: 0.5
+  unverified_claim: 0.2
+
+recall:
+  min_trust: 0.3          # recall excludes memories below this trust score
+  dedupe_similarity: 0.85 # token-Jaccard threshold (offline proxy for embedding similarity)
+
+# Per-memory-type lifespan (days) before a memory is archived (TTL).
+ttl_days:
+  decision: 365
+  fact: 180
+  observation: 90
+  default: 120
+
+health:
+  decay_per_bad: 0.05     # memory-health score decays per stale/quarantined memory

@@ -1,0 +1,9 @@
+{
+  "render": {
+    "a": "ErrorView",
+    "b": "Spinner",
+    "c": "EmptyState",
+    "d": "List",
+    "e": "Spinner"
+  }
+}

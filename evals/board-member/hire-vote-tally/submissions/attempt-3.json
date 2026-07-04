@@ -1,0 +1,9 @@
+{
+  "decisions": {
+    "H-1": "approved",
+    "H-2": "pending",
+    "H-3": "rejected",
+    "H-4": "rejected",
+    "H-5": "pending"
+  }
+}

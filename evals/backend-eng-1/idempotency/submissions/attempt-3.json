@@ -1,0 +1,4 @@
+{
+  "idempotent": true,
+  "mechanism": "dedup_token"
+}

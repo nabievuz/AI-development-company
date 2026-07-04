@@ -1,0 +1,10 @@
+{
+  "decisions": {
+    "REQ-11": { "action": "delegate", "route": "security-eng" },
+    "REQ-12": { "action": "escalate", "route": "cto" },
+    "REQ-13": { "action": "escalate", "route": "cto" },
+    "REQ-14": { "action": "delegate", "route": "security-eng" },
+    "REQ-15": { "action": "escalate", "route": "cto" },
+    "REQ-16": { "action": "delegate", "route": "security-eng" }
+  }
+}

@@ -1,0 +1,35 @@
+# PROJECT-OS manifest for the helpdesk-triage sample pack (evals/e2e/sample-pack-2).
+# A deliberately different domain and stack from pack 1 (acme-tasks) to prove the
+# gateway generalizes with no code changes. Compiled by scripts/gateway_compile.py
+# in a tmp/scratch project dir named after `name` — never in place.
+name: helpdesk-triage
+mission: >
+  helpdesk-triage is an AI assistant that reads inbound support tickets,
+  classifies each by intent and urgency, drafts a suggested first reply, and
+  routes the ticket to the correct human queue in Zendesk. It reduces first
+  response time for a mid-size support team while never auto-sending a reply to a
+  customer — every draft stays human-approved.
+constraints:
+  - "No customer reply is ever auto-sent; every draft requires explicit human approval before it leaves the system (tightens the org action-autonomy baseline)"
+  - "Redact card numbers and email addresses from ticket text before any model call"
+  - "Model spend is capped at USD 800 per month with a hard stop on breach"
+  - "Stricter red-team review than the org baseline is required before GATE-4 sign-off"
+stack:
+  languages: [typescript]
+  frameworks: [claude-agent-sdk, express]
+  model_providers: [anthropic]
+  infra: [docker, dokploy, redis]
+budget:
+  tokens: "30M input / 6M output per month"
+  money: "USD 800 / month model plus USD 200 / month infrastructure"
+  worst_case_loop: "cap 5 tool-iterations per ticket; kill-switch trips on a runaway classification loop"
+success_metrics:
+  - metric: "median first-response time"
+    target: "<= 10 minutes"
+    baseline: "45 minutes"
+  - metric: "triage routing accuracy"
+    target: ">= 90%"
+    baseline: "manual routing at roughly 78%"
+  - metric: "auto-sent customer replies (must stay zero)"
+    target: "0"
+    baseline: "0"

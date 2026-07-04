@@ -1,0 +1,21 @@
+{
+  "routes": [
+    {
+      "name": "get_health",
+      "auth": false,
+      "public": true
+    },
+    {
+      "name": "list_users",
+      "auth": true
+    },
+    {
+      "name": "delete_user",
+      "auth": false
+    },
+    {
+      "name": "admin_reset",
+      "auth": false
+    }
+  ]
+}

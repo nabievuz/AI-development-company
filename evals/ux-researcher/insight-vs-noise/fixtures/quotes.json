@@ -1,0 +1,35 @@
+{
+  "participant_count": 5,
+  "quotes": [
+    {
+      "id": "Q1",
+      "participant": "P1",
+      "topic": "checkout_button_discoverability",
+      "text": "I couldn't find the checkout button at all, I had to scroll all the way to the bottom of the page."
+    },
+    {
+      "id": "Q2",
+      "participant": "P2",
+      "topic": "checkout_button_discoverability",
+      "text": "The checkout button was really hard to find, I scrolled past it twice before noticing it."
+    },
+    {
+      "id": "Q3",
+      "participant": "P3",
+      "topic": "checkout_button_discoverability",
+      "text": "Took me a while to find checkout, it's below the fold and easy to miss."
+    },
+    {
+      "id": "Q4",
+      "participant": "P4",
+      "topic": "weather_smalltalk",
+      "text": "It was raining pretty hard on my way here today, kind of a rough commute."
+    },
+    {
+      "id": "Q5",
+      "participant": "P5",
+      "topic": "color_personal_taste",
+      "text": "I just don't personally like the color blue, that's just my own taste though."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "requirements": [
+    "Let users self-export their account data as a CSV file.",
+    "Let users self-export their account data as a PDF file.",
+    "Fix retention: GDPR deletion requests must also delete previously generated export files.",
+    "Alert an admin by email whenever an export job is larger than 10 MB.",
+    "Provide a self-serve export entry point in account settings."
+  ]
+}

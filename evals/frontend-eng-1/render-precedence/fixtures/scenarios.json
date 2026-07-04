@@ -1,0 +1,9 @@
+{
+  "scenarios": [
+    { "id": "a", "error": true, "loading": true, "items": [1, 2] },
+    { "id": "b", "error": false, "loading": true, "items": [] },
+    { "id": "c", "error": false, "loading": false, "items": [] },
+    { "id": "d", "error": false, "loading": false, "items": [1] },
+    { "id": "e", "error": false, "loading": true, "items": [1, 2, 3] }
+  ]
+}

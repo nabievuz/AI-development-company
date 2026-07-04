@@ -1,0 +1,34 @@
+{
+  "charters": {
+    "engineering": {
+      "authority": [
+        "architecture and tooling decisions",
+        "blocking a deploy that fails the QA bar",
+        "on-call rotation and incident process"
+      ],
+      "out_of_scope": [
+        {"item": "marketing claims about engineering", "owner": "cmo"},
+        {"item": "hiring decisions", "owner": "board"},
+        {"item": "vendor commitments over $5k/mo", "owner": "coo"}
+      ]
+    },
+    "product": {
+      "authority": [
+        "product roadmap prioritization",
+        "feature scope decisions",
+        "user research direction"
+      ],
+      "out_of_scope": [
+        {"item": "pricing changes", "owner": "ceo"},
+        {"item": "engineering implementation approach", "owner": "engineering"}
+      ]
+    }
+  },
+  "proposals": [
+    {"id": "P-1", "dept": "engineering", "item": "architecture and tooling decisions"},
+    {"id": "P-2", "dept": "engineering", "item": "vendor commitments over $5k/mo"},
+    {"id": "P-3", "dept": "product", "item": "pricing changes"},
+    {"id": "P-4", "dept": "product", "item": "feature scope decisions"},
+    {"id": "P-5", "dept": "engineering", "item": "hiring decisions"}
+  ]
+}

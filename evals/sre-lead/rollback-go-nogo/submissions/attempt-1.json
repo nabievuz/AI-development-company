@@ -1,0 +1,9 @@
+{
+  "decisions": {
+    "DEP-1": "ROLLBACK",
+    "DEP-2": "FORWARD_FIX",
+    "DEP-3": "ROLLBACK",
+    "DEP-4": "MONITOR",
+    "DEP-5": "ROLLBACK"
+  }
+}

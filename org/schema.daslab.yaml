@@ -1,0 +1,36 @@
+# DasLab — Org Schema (SSOT).
+# ONE declarative source for ORG CONFIGURATION. The generated artifact
+# scripts/_org_generated.py is emitted by gen_org.py and MUST NOT be hand-edited —
+# check_org_drift.py fails CI on any drift (generate-and-diff). This is the SSOT for
+# org config; the file-based BOARD stays the SSOT for work items (ADR-001) — two
+# distinct, non-overlapping SSOTs. Editing this file is governance/policy ->
+# never-auto-approve (QONUN-5). Adopts Prisma's PATTERN, not the tool (Python-native).
+version: 1
+
+gates: [GATE-1, GATE-2, GATE-3, GATE-4, GATE-5, GATE-6]
+
+routing:
+  escalation: [ic, lead, cxo, founder]
+
+# tier: c-suite | lead | ic ; gate_owner: which AADL gates this role signs ; model_cap.
+roles:
+  founder:       {tier: c-suite, gate_owner: [GATE-1],          model_cap: opus}
+  cpo:           {tier: c-suite, gate_owner: [GATE-1],          model_cap: opus}
+  cto:           {tier: c-suite, gate_owner: [GATE-2, GATE-3, GATE-6], model_cap: opus}
+  security-lead: {tier: lead,    gate_owner: [GATE-2, GATE-4],  model_cap: opus}
+  qa-lead:       {tier: lead,    gate_owner: [GATE-4],          model_cap: sonnet}
+  backend-em:    {tier: lead,    gate_owner: [GATE-3],          model_cap: sonnet}
+  coo:           {tier: c-suite, gate_owner: [GATE-5],          model_cap: opus}
+  sre-lead:      {tier: lead,    gate_owner: [GATE-5],          model_cap: sonnet}
+
+# HARD-CODED never-auto-approve categories (QONUN-5). The single source from which
+# scripts/_org_generated.NEVER_AUTO_APPROVE is generated and the validators consume.
+# Must equal config/risk_taxonomy.yaml's never_auto_approve (enforced by check_org_drift).
+never_auto_approve:
+  - new_goal
+  - security_sensitive
+  - schema_migration
+  - gate5_deployment
+  - governance_or_policy
+  - permission_change
+  - secret_change

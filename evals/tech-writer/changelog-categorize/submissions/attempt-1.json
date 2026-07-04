@@ -1,0 +1,14 @@
+{
+  "categories": {
+    "feat": [
+      "feat: add CSV export",
+      "feat: dark mode toggle"
+    ],
+    "fix": [
+      "fix: null deref on empty cart"
+    ],
+    "docs": [
+      "docs: update README install steps"
+    ]
+  }
+}

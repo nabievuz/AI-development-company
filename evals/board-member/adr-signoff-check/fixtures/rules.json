@@ -1,0 +1,9 @@
+{
+  "required_sections": ["Context", "Decision", "Consequences", "Signoff"],
+  "kind": "strategy",
+  "signoff_requirements": {
+    "strategy": ["chairman", "board-member"],
+    "budget": ["chairman"],
+    "hire": ["board-member"]
+  }
+}

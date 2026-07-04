@@ -1,0 +1,9 @@
+{
+  "items": [
+    {"id": "content-refresh-pricing",   "impact": 5, "urgency": 4, "effort": 2},
+    {"id": "seo-blog-series",           "impact": 3, "urgency": 2, "effort": 1},
+    {"id": "customer-case-study",       "impact": 4, "urgency": 5, "effort": 3},
+    {"id": "social-campaign-refresh",   "impact": 2, "urgency": 3, "effort": 4},
+    {"id": "landing-page-copy",         "impact": 5, "urgency": 3, "effort": 4}
+  ]
+}

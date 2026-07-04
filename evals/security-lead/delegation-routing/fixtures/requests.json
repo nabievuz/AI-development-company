@@ -1,0 +1,44 @@
+[
+  {
+    "id": "REQ-11",
+    "description": "Triage a single reported SQL-injection finding in the reports service",
+    "blast_radius": "single-service",
+    "requires_policy_exception": false,
+    "estimated_remediation_cost_usd": 8000
+  },
+  {
+    "id": "REQ-12",
+    "description": "Company-wide rollout of a new mandatory MFA policy for all internal tools",
+    "blast_radius": "org-wide",
+    "requires_policy_exception": false,
+    "estimated_remediation_cost_usd": 40000
+  },
+  {
+    "id": "REQ-13",
+    "description": "Grant a temporary exception to the no-plaintext-secrets policy for a legacy vendor integration",
+    "blast_radius": "single-service",
+    "requires_policy_exception": true,
+    "estimated_remediation_cost_usd": 500
+  },
+  {
+    "id": "REQ-14",
+    "description": "Rotate a leaked API key for the notifications worker",
+    "blast_radius": "single-service",
+    "requires_policy_exception": false,
+    "estimated_remediation_cost_usd": 1200
+  },
+  {
+    "id": "REQ-15",
+    "description": "Full re-architecture of session storage after a cross-service token-replay finding",
+    "blast_radius": "single-service",
+    "requires_policy_exception": false,
+    "estimated_remediation_cost_usd": 150000
+  },
+  {
+    "id": "REQ-16",
+    "description": "Patch a dependency CVE in the image-processing pipeline",
+    "blast_radius": "single-service",
+    "requires_policy_exception": false,
+    "estimated_remediation_cost_usd": 3000
+  }
+]

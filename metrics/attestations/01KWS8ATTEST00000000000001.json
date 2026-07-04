@@ -1,0 +1,49 @@
+{
+  "attest_chain": {
+    "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "self": "sha256:2d26f51d410b1cfe0f9eaef4e73ff032995ad39e88d79ce9b8573ee64ebc187a"
+  },
+  "counts": {
+    "counted_completions": 2,
+    "dispatched": 2
+  },
+  "created_at": "2026-07-04T12:00:00Z",
+  "engine_version": "2.0.0",
+  "event_digest": "sha256:a2369a980c8451d9e49883502c62e646a68ce5935c465495a1cbc01d52abcb94",
+  "evidence": {
+    "digest": "sha256:502972cc6d1ddea3ad01193532c487f2f175d828331f8af27c40b7e2826b8b7b",
+    "dir": "metrics/evidence",
+    "run_ids": [
+      "01KWS8ATTEST00000000000001-DAS-9001",
+      "01KWS8ATTEST00000000000001-DAS-9002"
+    ]
+  },
+  "guardrail_verdicts": {
+    "DAS-9001": "passed",
+    "DAS-9002": "passed"
+  },
+  "ledger_digest": "sha256:dfef14efa5901d9666bb53f96f538db474a6f733f0e37541ed80aec7595dda13",
+  "ledger_hashes": {
+    "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "self": "sha256:c5a04c013816e9287e2936eb2f9830c2d8de7e28d2cccb6710b29d0805696bd9"
+  },
+  "mechanics": {
+    "checkpoint_close": true,
+    "checkpoint_open": true,
+    "events_emitted": {
+      "run_end": 2,
+      "run_start": 2,
+      "span": 2
+    },
+    "evidence_written": true,
+    "guardrails_run": true,
+    "ledger_written": true
+  },
+  "run_id": "01KWS8ATTEST00000000000001",
+  "schema": "daslab.attestation.v1",
+  "tickets": [
+    "DAS-9001",
+    "DAS-9002"
+  ],
+  "wave": 1
+}

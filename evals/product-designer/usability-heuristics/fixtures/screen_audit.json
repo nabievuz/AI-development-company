@@ -1,0 +1,7 @@
+{
+  "screen": "DeleteAccountModal",
+  "has_confirmation_on_destructive_action": false,
+  "shows_loading_indicator": true,
+  "error_messages_generic": true,
+  "consistent_button_placement": true
+}

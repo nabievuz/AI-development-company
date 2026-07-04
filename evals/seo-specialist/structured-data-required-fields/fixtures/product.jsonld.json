@@ -1,0 +1,13 @@
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "Trailblazer Hiking Boots",
+  "description": "Waterproof hiking boots built for rugged terrain.",
+  "image": "",
+  "sku": "",
+  "offers": {
+    "@type": "Offer",
+    "price": 129.99,
+    "priceCurrency": ""
+  }
+}

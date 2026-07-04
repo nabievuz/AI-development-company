@@ -1,0 +1,5 @@
+{
+  "stable_prefix_sha256": "aa928d7f0a21a5dfb5c7de0d0bb32eedd6ed9538441fd88f2d71bc2f7616d75c",
+  "cache_prefix_version": "v19-wave-ledger-reconcile",
+  "note": "Written by check_cache_prefix.py --fix.  Commit this file together with any stable-prefix changes."
+}

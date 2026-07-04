@@ -1,0 +1,102 @@
+# DasLab — Metric Contract Registry (SSOT)
+# Single source of truth for T1-T7.
+# Wired to: board/.events.jsonl (DGO-X event store) + scripts/wave_kpi.py
+# Every metric MUST have a validator in scripts/. No tuning without these.
+version: 1
+updated: 2026-07-03
+
+metrics:
+  T1_busy_fraction:
+    definition: "Share of available agent time spent on useful work"
+    formula: "useful_agent_minutes / total_available_agent_minutes"
+    source: "scheduler traces (board/.events.jsonl: dispatch/complete events)"
+    window: "rolling 7-wave"
+    baseline: 0.11          # measured §15.1
+    target: 0.60            # T1
+    guardrail: "must not reduce T7_quality"
+    owner: metrics
+    validator: scripts/check_busy_fraction.py
+
+  T2_idle_wave_rate:
+    definition: "Share of waves with nothing actionable"
+    formula: "idle_waves / total_waves"
+    source: "DGO-X queue logs"
+    window: "rolling 7-wave"
+    baseline: 0.70          # measured §15.1
+    target: 0.15            # T2 (<=)
+    guardrail: "must not create low-quality frontier refill"
+    owner: scheduler
+    validator: scripts/check_idle_waves.py
+
+  T3_effective_concurrency:
+    definition: "Parallel useful execution count"
+    formula: "median_and_p95(active_useful_agents)"
+    source: "runtime telemetry"
+    window: "per-wave"
+    target: 6               # T3 (>=)
+    guardrail: "must not increase conflicts/rework"
+    owner: scheduler
+    validator: scripts/check_concurrency.py
+
+  T4_cost_model_mix:
+    definition: "Share of work on cheaper capable models"
+    formula: "low_cost_successful_tasks / total_tasks"
+    source: "model routing logs"
+    window: "rolling 7-wave"
+    target: 0.25            # T4 (>= haiku-eligible)
+    guardrail: "must not reduce quality"
+    owner: cost
+    validator: scripts/check_model_mix.py
+
+  T5_recovery_reliability:
+    definition: "Ability to resume without state loss"
+    formula: "successful_replays / recovery_drills"
+    source: "checkpoint tests"
+    window: "per-drill"
+    target: 0.99            # T5 (>=)
+    guardrail: "zero corrupted resume accepted"
+    owner: reliability
+    validator: scripts/check_recovery.py
+
+  T6_review_efficiency:
+    definition: "Review delay and rework economy"
+    formula: "review_cycle_time + rework_rate"
+    source: "review logs"
+    window: "rolling 7-wave"
+    target: "downward trend"
+    guardrail: "no rubber-stamping (T7 must hold)"
+    owner: review
+    validator: scripts/check_review_eff.py
+
+  T7_quality:
+    definition: "Weighted quality score (HARD CONSTRAINT)"
+    formula: "sum(weight_i * dimension_i)  # see config/t7_rubric.yaml"
+    source: "review + CI + evals"
+    window: "per-change"
+    target: "no degradation vs baseline"
+    guardrail: "HARD BLOCKER — all tuning subordinate to this"
+    owner: verification
+    validator: scripts/check_t7_quality.py
+
+# Anti-gaming rule: T1-T6 are only valid when T7 holds AND
+# delivered value (merged PR + passing DoD) is confirmed. Busy/concurrency
+# without useful output does NOT count.
+anti_gaming:
+  rule: "T1..T6 numerator counts a unit ONLY if it ends in merged PR + green CI + T7 pass"
+  validator: scripts/check_metric_gaming.py
+
+# ---------------------------------------------------------------------------
+# Informational metrics  (not hard gates — per ORGANISM §9 default #6)
+# Ships as a reader first; promote to a hard gate after >= 1 wave-week of
+# clean live data AND a pricing re-verification.
+# ---------------------------------------------------------------------------
+informational_metrics:
+  C1_cost_per_run:
+    definition: "Estimated USD token cost aggregated by ticket / agent / tier / run (INFORMATIONAL)"
+    formula: "sum((input_tokens * input_$/1M + cached_input_tokens * cached_$/1M + output_tokens * output_$/1M) / 1_000_000) over span events; grouped four ways: ticket_id, gen_ai.agent.name, gen_ai.request.model, run_id"
+    source: "DGO-X span events (board/.events.jsonl: event_type=span, OTel GenAI token-usage attrs); prices from config/budgets.yaml"
+    window: "per-run informational view (no rolling window until promoted to T-gate)"
+    target: "INFORMATIONAL — no hard threshold; advisory caps in config/budgets.yaml"
+    guardrail: "INFORMATIONAL ONLY — not a blocking gate; pricing drifts; re-verify prices before promotion (ORGANISM §9 default #6)"
+    owner: cost
+    validator: scripts/check_cost.py

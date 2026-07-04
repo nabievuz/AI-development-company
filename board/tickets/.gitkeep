@@ -1,0 +1,3 @@
+# DasLab-platform (org-engine) tickets only.
+# Project tickets live in projects/<slug>/board-tickets/ (see board/README.md).
+# This file keeps the empty live board tracked in git; delete once real tickets land.

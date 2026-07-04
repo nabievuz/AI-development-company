@@ -1,0 +1,50 @@
+[
+  {
+    "id": "VULN-01",
+    "title": "Unauthenticated RCE in image-resize worker",
+    "cvss_score": 9.8,
+    "public_exploit_available": true,
+    "internet_facing": true,
+    "data_sensitivity": "none"
+  },
+  {
+    "id": "VULN-02",
+    "title": "Reflected XSS in internal admin search",
+    "cvss_score": 6.1,
+    "public_exploit_available": false,
+    "internet_facing": false,
+    "data_sensitivity": "none"
+  },
+  {
+    "id": "VULN-03",
+    "title": "IDOR exposing customer billing PII",
+    "cvss_score": 5.4,
+    "public_exploit_available": false,
+    "internet_facing": true,
+    "data_sensitivity": "pii"
+  },
+  {
+    "id": "VULN-04",
+    "title": "Outdated TLS cipher on legacy status page",
+    "cvss_score": 3.1,
+    "public_exploit_available": false,
+    "internet_facing": true,
+    "data_sensitivity": "none"
+  },
+  {
+    "id": "VULN-05",
+    "title": "SSRF in webhook fetcher with public PoC",
+    "cvss_score": 6.8,
+    "public_exploit_available": true,
+    "internet_facing": true,
+    "data_sensitivity": "none"
+  },
+  {
+    "id": "VULN-06",
+    "title": "Privilege escalation via stale JWT audience check",
+    "cvss_score": 7.5,
+    "public_exploit_available": false,
+    "internet_facing": false,
+    "data_sensitivity": "pii"
+  }
+]

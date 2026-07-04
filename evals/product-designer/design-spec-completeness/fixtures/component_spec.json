@@ -1,0 +1,11 @@
+{
+  "component": "PrimaryButton",
+  "states": {
+    "default": {"bg": "#0B5FFF"},
+    "hover": {"bg": "#094ECC"},
+    "disabled": {"bg": "#C9D6EA"}
+  },
+  "a11y": {
+    "aria_label": "Submit form"
+  }
+}

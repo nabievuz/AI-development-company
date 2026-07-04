@@ -1,0 +1,29 @@
+{
+  "session_count": 5,
+  "findings": [
+    {
+      "id": "F1",
+      "description": "Users could not complete checkout after entering a promo code; the form silently rejected the order with no error message.",
+      "participants_affected": 4,
+      "task_blocking": true
+    },
+    {
+      "id": "F2",
+      "description": "Users noted the settings icon uses a slightly different shade of gray than the rest of the toolbar.",
+      "participants_affected": 1,
+      "task_blocking": false
+    },
+    {
+      "id": "F3",
+      "description": "Users repeatedly hovered over the archive icon expecting a tooltip label before clicking it.",
+      "participants_affected": 3,
+      "task_blocking": false
+    },
+    {
+      "id": "F4",
+      "description": "One user's session crashed when uploading a file over 50MB, losing unsaved form data.",
+      "participants_affected": 1,
+      "task_blocking": true
+    }
+  ]
+}

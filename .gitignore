@@ -1,0 +1,49 @@
+.DS_Store
+node_modules/
+.env
+.env.local
+
+# Department trees are part of this repository — tracked, not ignored.
+
+# Project workspaces (each project manages its own git)
+/projects/
+
+# Agent runtime worktrees + workflow scratch (never tracked)
+/.claude/worktrees/
+/.worktrees/
+
+# Per-developer Claude Code settings (machine-specific — never tracked)
+**/settings.local.json
+
+# Python cache
+__pycache__/
+*.pyc
+dokploy-mcp.env
+/.claude/workflows/
+
+# Live wave KPI log (append-only, written by /daslab-cycle + /daslab-run)
+board/.wave-log
+
+# ArcRift store_memory durable outbox (append-only runtime state — ADR 0008, W7)
+board/.arcrift-outbox.jsonl
+
+# DGO-X event store (append-only runtime audit log — ADR 0011, Phase 1)
+board/.events.jsonl
+
+# Metrics-history feeder output (append-only runtime streak evidence — DAS-1476)
+board/.metrics-history.jsonl
+
+# Result-cache store (content-addressed; TTL-governed wave state — DAS-1450 / ORGANISM P6)
+board/.cache/
+
+# ORGANISM run-artifact tree (runtime state — ADR-0023 §5); keep only the final summary.
+# "board/runs/**" ignores everything inside board/runs/ at any depth; the two
+# negations un-ignore the run-id sub-directories (so git can traverse them) and
+# then un-ignore run-summary.md (the one retained committable artifact).  A plain
+# "board/runs/" would block traversal and make the negation inert (git limitation).
+board/runs/**
+!board/runs/*/
+!board/runs/*/run-summary.md
+
+# HTML cockpit snapshot (runtime state — ADR-0028 D-1; written by cockpit_html.py)
+board/.cockpit.html

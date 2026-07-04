@@ -1,0 +1,11 @@
+{
+  "law_note": "QONUN — Founder-Approved Goal Queue: a new goal becomes board tickets only after >=10 Founder discovery questions are answered (or the Founder explicitly declines/waives them) AND the Founder gives an explicit approval signal.",
+  "goals": [
+    {"id": "G1", "title": "ORGANISM WS7 telemetry", "founder_questions_answered": 12, "founder_waived_questions": false, "founder_signal": "APPROVED: proceed with WS7"},
+    {"id": "G2", "title": "New mobile app rewrite", "founder_questions_answered": 4, "founder_waived_questions": false, "founder_signal": "APPROVED: proceed"},
+    {"id": "G3", "title": "Internal tooling refresh", "founder_questions_answered": 6, "founder_waived_questions": true, "founder_signal": "TASDIQLANDI: tasdiqlandi"},
+    {"id": "G4", "title": "International expansion", "founder_questions_answered": 15, "founder_waived_questions": false, "founder_signal": null},
+    {"id": "G5", "title": "Support macro automation", "founder_questions_answered": 10, "founder_waived_questions": false, "founder_signal": "APPROVED"},
+    {"id": "G6", "title": "Speculative crypto pivot", "founder_questions_answered": 2, "founder_waived_questions": false, "founder_signal": null}
+  ]
+}

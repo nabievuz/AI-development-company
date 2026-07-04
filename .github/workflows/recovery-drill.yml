@@ -1,0 +1,48 @@
+name: Recovery drill (T5, scheduled)
+
+# ORGANISM WS1 PULSE — the EXPENSIVE tier of the T5 recovery-reliability gate
+# (DAS-1451). The cheap smoke (1 kill + 1 fork drill) runs on every PR in ci.yml;
+# this workflow runs the >=20-iteration kill/resume accumulation + fork drill on a
+# schedule so T5 accrues real evidence without adding latency to every PR.
+#
+# Each iteration spawns a real child process that `kill -9`s itself mid-wave-2,
+# then resumes via resume_fork and asserts zero-lost / zero-duplicated; all
+# iterations emit `recovery_drill` events that scripts/check_recovery.py scores
+# (ratio >= 0.99, zero corrupted). Events go to a throwaway temp store, never
+# board/.events.jsonl.
+#
+# Trigger manually any time via the Actions tab (workflow_dispatch).
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # daily at 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "Number of kill-drill iterations (>= 20)"
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-drill:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Kill/fork recovery drill — expensive tier (>= 20 iterations)
+        run: python3 scripts/kill_drill.py --iterations "${ITERATIONS:-50}"
+        env:
+          ITERATIONS: ${{ github.event.inputs.iterations }}

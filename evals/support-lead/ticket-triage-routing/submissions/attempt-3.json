@@ -1,0 +1,9 @@
+{
+  "triage": {
+    "T-101": {"category": "billing", "route": "billing-team", "priority": "P2"},
+    "T-102": {"category": "bug", "route": "eng-oncall", "priority": "P1"},
+    "T-103": {"category": "how-to", "route": "support-tier2", "priority": "P3"},
+    "T-104": {"category": "feature-request", "route": "product", "priority": "P3"},
+    "T-105": {"category": "account-access", "route": "support-tier2", "priority": "P2"}
+  }
+}

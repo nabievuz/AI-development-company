@@ -1,0 +1,26 @@
+[
+  {
+    "id": "R1",
+    "title": "Add read-through cache for product catalog",
+    "gate_level": 2,
+    "sections_present": ["problem_statement", "architecture_diagram", "risk_analysis", "cost_estimate"]
+  },
+  {
+    "id": "R2",
+    "title": "Introduce a new event bus for order fan-out",
+    "gate_level": 2,
+    "sections_present": ["problem_statement", "cost_estimate"]
+  },
+  {
+    "id": "R3",
+    "title": "Migrate auth tokens to a new signing scheme",
+    "gate_level": 3,
+    "sections_present": ["problem_statement", "architecture_diagram", "risk_analysis", "security_review", "rollback_plan"]
+  },
+  {
+    "id": "R4",
+    "title": "Replace the payments provider SDK",
+    "gate_level": 3,
+    "sections_present": ["problem_statement", "architecture_diagram", "risk_analysis", "security_review"]
+  }
+]

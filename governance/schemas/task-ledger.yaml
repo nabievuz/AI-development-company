@@ -1,0 +1,34 @@
+# Artifact schema — task-ledger
+# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
+# The file stem MUST equal `name`; tickets reference this via
+# produces: task-ledger / consumes: task-ledger.
+name: task-ledger
+version: 1
+description: >-
+  Per-run plan-of-record emitted by the LOOM outer loop (DAS-1469): the facts a
+  run started from plus the ordered plan it derived.
+fields:
+  - name: run_id
+    type: string
+    required: true
+    description: ULID identifying the run this ledger belongs to.
+  - name: revision
+    type: integer
+    required: true
+    description: Monotonic revision, bumped on each replan.
+  - name: facts
+    type: object
+    required: true
+    description: given / known / to_look_up / educated_guesses captured at plan time.
+  - name: plan
+    type: array
+    required: true
+    description: Ordered list of plan steps derived from the facts.
+  - name: created_at
+    type: string
+    required: true
+    description: ISO-8601 timestamp the ledger was first created (preserved across replans).
+  - name: updated_at
+    type: string
+    required: false
+    description: ISO-8601 timestamp of the most recent revision.

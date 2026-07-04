@@ -1,0 +1,9 @@
+{
+  "messages": [
+    {"id": "M-1", "text": "My card was charged twice this month, can I get a refund for the duplicate?"},
+    {"id": "M-2", "text": "I forgot my password and the reset email isn't arriving, I can't log in."},
+    {"id": "M-3", "text": "Your app keeps crashing every time I open the reports tab."},
+    {"id": "M-4", "text": "It would be great if you added a dark theme to the settings page."},
+    {"id": "M-5", "text": "Where can I find my past invoice history in the dashboard?"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "decisions": {
+    "E1": "decide",
+    "E2": "escalate",
+    "E3": "escalate",
+    "E4": "escalate",
+    "E5": "decide",
+    "E6": "decide"
+  }
+}

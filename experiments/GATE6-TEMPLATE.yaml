@@ -1,0 +1,44 @@
+# GATE-6 Record Template — copy to experiments/GATE6-YYYYMMDD-NNNN.yaml
+# Required by scripts/check_gate6_record.py for every tuning/optimization change.
+gate_6_record:
+  id: GATE6-20260621-0001
+  created_at: 2026-06-21T00:00:00Z
+  proposed_by: ai_optimization_agent      # | human_operator | system_trigger
+  affected_component: scheduler           # | reviewer | memory | ci | governance | routing | release
+  change_type: tune_concurrency           # must match a TUNING_CHANGE_TYPE in the validator
+  hypothesis: "If concurrency width 4->6, T1 busy fraction rises >=10pp without T7 drop."
+  baseline_metrics:
+    T1_busy_fraction: 0.11
+    T2_idle_wave_rate: 0.70
+    T3_concurrency: 3
+    T4_model_mix: 0.0
+    T5_recovery_reliability: null
+    T6_review_efficiency: null
+    T7_quality: 1.00            # baseline normalized
+  proposed_change:
+    description: "Raise rolling-dispatch concurrency cap from 4 to 6."
+    config_diff_hash: sha256:REPLACE
+    blast_radius: medium        # low | medium | high | critical
+  guardrails:
+    max_quality_drop: 0         # MUST be 0 (T7 hard constraint) or validator fails
+    max_incident_risk: low
+    max_cost_increase_percent: 10
+    rollback_condition: "Revert if T7 drops OR rework_rate rises >5% over 3 waves."
+  evidence:
+    trace_ids: []
+    ci_runs: []
+    review_ids: []
+    experiment_ids: []
+  approval:
+    required_role: cxo          # manager | cxo | founder | board (per risk taxonomy)
+    approved_by: ""
+    approved_at: ""
+  rollout:
+    mode: shadow                # shadow | measured | limited_live | full
+    feature_flag: concurrency_cap_6
+    rollback_flag: concurrency_cap_6_rollback
+  result:
+    status: deferred            # applied | reverted | deferred | failed
+    observed_delta: ""
+    lessons_learned: ""
+    adr_link: ""

@@ -1,0 +1,10 @@
+{
+  "module": "profile-shell",
+  "components": [
+    {"name": "ProfileCard", "prop_name": "theme", "prop_drill_depth": 4, "uses_context": false},
+    {"name": "Sidebar", "prop_name": "isOpen", "prop_drill_depth": 1, "uses_context": false},
+    {"name": "SettingsPanel", "prop_name": "locale", "prop_drill_depth": 3, "uses_context": false},
+    {"name": "Avatar", "prop_name": "user", "prop_drill_depth": 5, "uses_context": true},
+    {"name": "Breadcrumbs", "prop_name": "path", "prop_drill_depth": 2, "uses_context": false}
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "decision_rule": "Hires: any single Board member may approve; only Board may reject.",
+  "board_roles": ["chairman", "board-member"],
+  "requests": [
+    {
+      "id": "H-1",
+      "votes": [
+        {"role": "board-member", "vote": "approve"}
+      ]
+    },
+    {
+      "id": "H-2",
+      "votes": [
+        {"role": "ceo", "vote": "approve"}
+      ]
+    },
+    {
+      "id": "H-3",
+      "votes": [
+        {"role": "chairman", "vote": "reject"}
+      ]
+    },
+    {
+      "id": "H-4",
+      "votes": [
+        {"role": "board-member", "vote": "approve"},
+        {"role": "chairman", "vote": "reject"}
+      ]
+    },
+    {
+      "id": "H-5",
+      "votes": []
+    }
+  ]
+}

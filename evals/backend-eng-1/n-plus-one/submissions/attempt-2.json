@@ -1,0 +1,4 @@
+{
+  "has_n_plus_one": true,
+  "fix": "select_related"
+}

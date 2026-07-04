@@ -1,0 +1,4 @@
+{
+  "decision": "no_go",
+  "blocking_reasons": ["failing_tests_on_main", "open_p0_bug", "coverage_below_threshold"]
+}

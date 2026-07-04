@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "obsidian": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-obsidian",
+        "${workspaceFolder}/projects"
+      ],
+      "env": {}
+    },
+    "ArcRift": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${HOME}/ArcRift/backend/dist/mcp/server.js"
+      ],
+      "env": {
+        "ARCRIFT_STORAGE_MODE": "sqlite",
+        "SQLITE_DB_PATH": "${HOME}/ArcRift/backend/ArcRift.db",
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

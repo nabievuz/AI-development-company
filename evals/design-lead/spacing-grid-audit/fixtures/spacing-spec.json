@@ -1,0 +1,14 @@
+{
+  "component": "settings-panel",
+  "grid_base_px": 4,
+  "spacing": [
+    { "token": "space-xs", "px": 4 },
+    { "token": "space-sm", "px": 8 },
+    { "token": "space-md", "px": 12 },
+    { "token": "space-lg", "px": 18 },
+    { "token": "space-xl", "px": 24 },
+    { "token": "space-2xl", "px": 30 },
+    { "token": "space-panel", "px": 16 },
+    { "token": "space-card-gap", "px": 10 }
+  ]
+}

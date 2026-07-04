@@ -1,0 +1,7 @@
+{
+  "components": {
+    "Button": ["primary", "secondary", "ghost"],
+    "Badge": ["neutral", "success", "warning"],
+    "Input": ["default", "error"]
+  }
+}

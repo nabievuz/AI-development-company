@@ -1,0 +1,12 @@
+{
+  "decisions": {
+    "S1": { "action": "delegate", "route": "backend-em" },
+    "S2": { "action": "delegate", "route": "security-lead" },
+    "S3": { "action": "delegate", "route": "sre-lead" },
+    "S4": { "action": "escalate", "route": "ceo" },
+    "S5": { "action": "delegate", "route": "qa-lead" },
+    "S6": { "action": "delegate", "route": "sre-lead" },
+    "S7": { "action": "delegate", "route": "frontend-em" },
+    "S8": { "action": "delegate", "route": "qa-lead" }
+  }
+}

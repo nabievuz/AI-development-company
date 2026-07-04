@@ -1,0 +1,11 @@
+{
+  "charter_note": "CEO may decide within charter; a decision above charter authority must escalate to the Chairman of the Board.",
+  "escalations": [
+    {"id": "E1", "title": "Renew analytics SaaS contract", "budget_usd": 50000, "charter_limit_usd": 100000, "cross_dept": false, "reversible": true},
+    {"id": "E2", "title": "Acquire a 6-person studio", "budget_usd": 250000, "charter_limit_usd": 100000, "cross_dept": false, "reversible": true},
+    {"id": "E3", "title": "Merge Support into Engineering org chart", "budget_usd": 80000, "charter_limit_usd": 100000, "cross_dept": true, "reversible": false},
+    {"id": "E4", "title": "Joint eng+marketing launch task force", "budget_usd": 90000, "charter_limit_usd": 100000, "cross_dept": true, "reversible": true},
+    {"id": "E5", "title": "Renew office lease at exactly the charter cap", "budget_usd": 100000, "charter_limit_usd": 100000, "cross_dept": false, "reversible": false},
+    {"id": "E6", "title": "Irreversible cross-org platform migration", "budget_usd": 500000, "charter_limit_usd": 200000, "cross_dept": true, "reversible": false}
+  ]
+}

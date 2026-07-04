@@ -1,0 +1,56 @@
+# DasLab — Risk Taxonomy + Never-Auto-Approve (config)
+# Grounded in QONUN-5. Consumed by:
+#   scripts/check_never_auto_approve.py  (CI blocker)
+#   the Self-Optimizing Loop's auto-approve gate
+version: 1
+
+risk_classes:
+  low:
+    criteria: "reversible, in-scope, non-security, doc/test/refactor"
+    approval: auto            # RACI authority
+  medium:
+    criteria: "reversible but impactful"
+    approval: "review:manager"
+  high:
+    criteria: "hard to reverse OR multi-file core change"
+    approval: "review:cxo"
+  critical:
+    criteria: "irreversible / security / NEW-GOAL / migration / governance"
+    approval: "human:founder_or_board"   # QONUN-5
+
+# HARD-CODED. Anything matching these is NEVER auto-approved, regardless of
+# how a risk classifier scored it. Enforces QONUN-5.
+never_auto_approve:
+  - new_goal                 # QONUN-5: only Founder authorizes new goals
+  - security_sensitive       # secrets, auth, permissions, crypto
+  - schema_migration         # DB / ArcRift schema changes
+  - gate5_deployment         # AADL GATE-5 (no launch without human)
+  - governance_or_policy     # QONUN/charter/ROUTING/CODEOWNERS edits
+  - permission_change
+  - secret_change
+
+# How a ticket is matched to a never-auto-approve category.
+# (Adapt selectors to your real board frontmatter / path conventions.)
+matchers:
+  new_goal:
+    ticket_type: ["goal", "epic-root"]
+  security_sensitive:
+    labels: ["security", "auth", "secrets"]
+    paths: ["**/auth/**", "**/secrets/**", "**/*secret*"]
+  schema_migration:
+    labels: ["migration", "schema"]
+    # alembic.ini is apply-time config (it holds sqlalchemy.url) — an auto-approved edit
+    # hard-coding the live ArcRift DB URL could repoint `alembic upgrade head`, so it is
+    # part of the migration surface and must require human approval.
+    paths: ["**/migrations/**", "**/schema/**", "arcrift/**/schema*", "**/alembic.ini"]
+  gate5_deployment:
+    labels: ["deploy", "gate-5"]
+    stage: ["GATE-5"]
+  governance_or_policy:
+    # QONUN/charter/routing/codeowners + the governance SSOT configs
+    # (the metric registry, the immutable T7 rubric, the loop mode).
+    paths: ["**/QONUN*", "**/CHARTER*", "**/ROUTING*", "**/CODEOWNERS", "governance/policies/**", "**/t7_rubric.yaml", "**/risk_taxonomy.yaml", "**/loop.yaml", "**/registry.yaml"]
+  permission_change:
+    labels: ["permissions", "rbac"]
+  secret_change:
+    paths: ["**/.env*", "**/secrets/**"]

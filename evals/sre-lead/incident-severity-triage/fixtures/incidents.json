@@ -1,0 +1,37 @@
+[
+  {
+    "id": "INC-1",
+    "error_rate_pct": 62,
+    "affected_users_pct": 40,
+    "revenue_impacting": true,
+    "data_loss": false
+  },
+  {
+    "id": "INC-2",
+    "error_rate_pct": 8,
+    "affected_users_pct": 5,
+    "revenue_impacting": true,
+    "data_loss": false
+  },
+  {
+    "id": "INC-3",
+    "error_rate_pct": 2,
+    "affected_users_pct": 1,
+    "revenue_impacting": false,
+    "data_loss": false
+  },
+  {
+    "id": "INC-4",
+    "error_rate_pct": 0.1,
+    "affected_users_pct": 0,
+    "revenue_impacting": false,
+    "data_loss": true
+  },
+  {
+    "id": "INC-5",
+    "error_rate_pct": 0.5,
+    "affected_users_pct": 0,
+    "revenue_impacting": false,
+    "data_loss": false
+  }
+]

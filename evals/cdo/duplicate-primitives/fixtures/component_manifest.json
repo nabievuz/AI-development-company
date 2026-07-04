@@ -1,0 +1,13 @@
+{
+  "system": "core-ui",
+  "components": [
+    {"name": "PrimaryButton", "purpose": "cta-button"},
+    {"name": "ButtonMain", "purpose": "cta-button"},
+    {"name": "SecondaryButton", "purpose": "secondary-button"},
+    {"name": "AlertBanner", "purpose": "inline-alert"},
+    {"name": "NotificationStrip", "purpose": "inline-alert"},
+    {"name": "ToastMessage", "purpose": "inline-alert"},
+    {"name": "Modal", "purpose": "modal-dialog"},
+    {"name": "Tooltip", "purpose": "tooltip"}
+  ]
+}

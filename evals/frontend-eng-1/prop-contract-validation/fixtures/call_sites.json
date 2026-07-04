@@ -1,0 +1,9 @@
+{
+  "call_sites": [
+    { "id": "a", "props": { "label": "Save", "onClick": "handleSave" } },
+    { "id": "b", "props": { "label": "Save" } },
+    { "id": "c", "props": { "onClick": "handleSave", "disabled": true } },
+    { "id": "d", "props": { "label": "Save", "onClick": "handleSave", "disabled": "true" } },
+    { "id": "e", "props": { "label": "Save", "onClick": "handleSave", "tooltip": "Click to save" } }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "unprotected": [
+    "delete_user",
+    "admin_reset"
+  ]
+}

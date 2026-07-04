@@ -1,0 +1,11 @@
+{
+  "text": "You can now download a daily CSV export of your account activity from Settings -> Data. Older exports are removed after a while.",
+  "judge_scores": {
+    "correctness": 0.8,
+    "evidence_factuality": 0.8,
+    "tests": 0.8,
+    "security": 0.8,
+    "completeness": 0.8,
+    "maintainability": 0.8
+  }
+}

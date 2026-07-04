@@ -1,0 +1,9 @@
+{
+  "cycle": "2026-Q3-release-42",
+  "issues": [
+    {"id": "C-1", "severity": "critical", "resolved": false, "area": "SOC2 evidence gap"},
+    {"id": "C-2", "severity": "medium", "resolved": false, "area": "vendor DPA renewal overdue"},
+    {"id": "C-3", "severity": "high", "resolved": true, "area": "support SLA breach (fixed)"},
+    {"id": "C-4", "severity": "low", "resolved": false, "area": "internal doc stale"}
+  ]
+}

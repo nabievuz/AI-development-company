@@ -1,0 +1,90 @@
+name: Engineering CI
+
+# GitHub only discovers workflows at the repository root, so the engineering
+# product's pipeline lives here (not under engineering/.github/) and scopes
+# itself to engineering/** changes. pnpm is provisioned via corepack from the
+# packageManager field — the same path the DoD documents
+# (corepack enable && pnpm install).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'engineering/**'
+      - '.github/workflows/engineering-ci.yml'
+  pull_request:
+    paths:
+      - 'engineering/**'
+      - '.github/workflows/engineering-ci.yml'
+
+permissions:
+  contents: read
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+defaults:
+  run:
+    working-directory: engineering
+
+jobs:
+  release-gate:
+    name: Engineering 100/100 gate (lint + product-diagnostics)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+        with:
+          node-version-file: engineering/.nvmrc
+
+      - name: Provision pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+          pnpm --version
+
+      - name: Install (frozen lockfile; prepare builds consumed packages)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Product diagnostics — build + typecheck + test (coverage ≥90%) + audit, must be SCORE = 100/100
+        run: node scripts/product-diagnostics.mjs
+
+  integration:
+    name: Integration — distributed rate-limit vs real Redis
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+        with:
+          node-version-file: engineering/.nvmrc
+
+      - name: Provision pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (cross-package resolution)
+        run: pnpm run build
+
+      - name: Integration tests (two replicas, one Redis — global limit holds)
+        run: pnpm run test:integration

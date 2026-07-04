@@ -1,0 +1,3 @@
+{
+  "escalate": ["shared-design-token-change", "adopt-new-state-lib", "flaky-ci-fix"]
+}

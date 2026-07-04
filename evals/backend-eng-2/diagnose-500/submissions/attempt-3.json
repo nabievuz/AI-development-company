@@ -1,0 +1,4 @@
+{
+  "root_cause": "race_condition",
+  "fix": "null_check"
+}

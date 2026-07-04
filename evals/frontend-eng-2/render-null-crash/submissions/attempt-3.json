@@ -1,0 +1,4 @@
+{
+  "bug_line": 4,
+  "fix_kind": "early_return_guard"
+}

@@ -1,0 +1,14 @@
+{
+  "required": [
+    "acknowledge",
+    "assess_impact",
+    "notify_oncall",
+    "mitigate",
+    "postmortem"
+  ],
+  "present": [
+    "acknowledge",
+    "assess_impact",
+    "mitigate"
+  ]
+}

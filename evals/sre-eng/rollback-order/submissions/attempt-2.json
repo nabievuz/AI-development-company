@@ -1,0 +1,8 @@
+{
+  "rollback_sequence": [
+    "flip_traffic",
+    "warm_cache",
+    "deploy_api",
+    "migrate_db"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "budget_usd": 220000,
+  "max_high_risk": 1,
+  "initiatives": [
+    {"name": "enterprise_sso", "cost_usd": 90000, "expected_value_usd": 260000, "risk_tier": "low"},
+    {"name": "usage_based_billing", "cost_usd": 120000, "expected_value_usd": 340000, "risk_tier": "high"},
+    {"name": "public_api_v2", "cost_usd": 70000, "expected_value_usd": 150000, "risk_tier": "low"},
+    {"name": "ai_recommendations", "cost_usd": 100000, "expected_value_usd": 300000, "risk_tier": "high"},
+    {"name": "mobile_offline_mode", "cost_usd": 60000, "expected_value_usd": 110000, "risk_tier": "low"},
+    {"name": "self_serve_onboarding", "cost_usd": 40000, "expected_value_usd": 95000, "risk_tier": "low"}
+  ]
+}

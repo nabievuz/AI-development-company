@@ -1,0 +1,27 @@
+# Artifact schema — typed-contracts
+# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
+# The file stem MUST equal `name`. This is the artifact DAS-1467 itself produces
+# (the produces:/consumes: field + the governance/schemas registry), consumed by
+# the downstream synthesis ticket DAS-1468.
+name: typed-contracts
+version: 1
+description: >-
+  The typed producer/consumer contract layer: the produces:/consumes: frontmatter
+  fields plus the governance/schemas artifact-schema registry they resolve against.
+fields:
+  - name: field_names
+    type: array
+    required: true
+    description: The frontmatter field names introduced (produces, consumes).
+  - name: registry_dir
+    type: string
+    required: true
+    description: Directory holding the pydantic-backed artifact schemas.
+  - name: validator_rule
+    type: string
+    required: true
+    description: The board_lint rule id that enforces the contract (R11).
+  - name: tolerant_read
+    type: boolean
+    required: false
+    description: Whether the fields are read with the tolerant list reader.

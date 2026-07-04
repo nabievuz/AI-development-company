@@ -1,0 +1,12 @@
+# Latent-machine feature flags (ADR-0019, remediation P10).
+#
+# Default OFF: consumerless machinery does not emit or run until a real consumer
+# exists, so the idle DGO-X shadow + T4/T7 governors do not burn tokens every wave
+# (atom-audit P10). Flip a flag to true once its consumer is live.
+#
+# Read via scripts/feature_flags.py (enabled("<flag>")).
+
+dgox_emit: false        # /daslab-cycle step 5d routing_decision shadow emission (ADR-0011 Phase-1, no Phase-2 consumer yet)
+t4_t7_governors: false  # T4 cost/model-mix + T7 quality governor invocations during a wave
+organism_emit: true     # ACTIVATED 2026-07-03 (Founder-authorized): consumers now live (dispatch_emitter, cost_ledger, check_spans, snapshot_evidence). /daslab-cycle ORGANISM WS1 "pulse" run-model: run-open + wave checkpoints (pulse_checkpoint) + run_start/run_end/span emission (dispatch_emitter) at steps 0/5/6; SEPARATE channel from dgox_emit; post-decision, failure-isolated (flag-on == flag-off dispatch)
+heartbeat_enabled: false  # WS4 HEARTBEAT (ADR-0027 SI-7): default OFF. Flip to true ONLY after a >=3-day clean shadow window; Founder-only act (QONUN-5). Consumed by scripts/loop_controller.py --tick.

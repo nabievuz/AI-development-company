@@ -1,0 +1,11 @@
+{
+  "flow": "checkout",
+  "screens": [
+    {"name": "Cart", "transitions": ["Checkout", "Home"], "terminal": false},
+    {"name": "Checkout", "transitions": ["Payment"], "terminal": false},
+    {"name": "Payment", "transitions": [], "terminal": false},
+    {"name": "OrderConfirmation", "transitions": [], "terminal": true},
+    {"name": "Home", "transitions": ["Cart", "Search"], "terminal": false},
+    {"name": "Search", "transitions": [], "terminal": false}
+  ]
+}

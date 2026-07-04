@@ -1,0 +1,11 @@
+{
+  "mau_threshold": 1000,
+  "features": [
+    {"name": "legacy_reports", "mau": 300, "maintenance_cost_usd": 8000, "monthly_revenue_usd": 1200},
+    {"name": "csv_import", "mau": 15000, "maintenance_cost_usd": 2000, "monthly_revenue_usd": 9000},
+    {"name": "old_widget", "mau": 150, "maintenance_cost_usd": 5000, "monthly_revenue_usd": 400},
+    {"name": "push_notifications", "mau": 40000, "maintenance_cost_usd": 6000, "monthly_revenue_usd": 30000},
+    {"name": "beta_forum", "mau": 600, "maintenance_cost_usd": 3000, "monthly_revenue_usd": 100},
+    {"name": "webhooks_v1", "mau": 2500, "maintenance_cost_usd": 4000, "monthly_revenue_usd": 1500}
+  ]
+}

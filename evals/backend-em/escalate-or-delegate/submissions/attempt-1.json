@@ -1,0 +1,7 @@
+{
+  "decisions": [
+    {"scenario": 1, "action": "delegate", "target": "backend-eng-1"},
+    {"scenario": 2, "action": "escalate", "target": "cto"},
+    {"scenario": 3, "action": "delegate", "target": "backend-eng-2"}
+  ]
+}

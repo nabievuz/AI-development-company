@@ -1,0 +1,10 @@
+{
+  "week": "2026-W27",
+  "decisions": [
+    {"id": "adopt-new-state-lib", "cross_dept_impact": false, "exceeds_charter_authority": true, "blocked_waves": 0},
+    {"id": "rename-button-prop", "cross_dept_impact": false, "exceeds_charter_authority": false, "blocked_waves": 0},
+    {"id": "shared-design-token-change", "cross_dept_impact": true, "exceeds_charter_authority": false, "blocked_waves": 0},
+    {"id": "flaky-ci-fix", "cross_dept_impact": false, "exceeds_charter_authority": false, "blocked_waves": 2},
+    {"id": "css-lint-rule-update", "cross_dept_impact": false, "exceeds_charter_authority": false, "blocked_waves": 0}
+  ]
+}

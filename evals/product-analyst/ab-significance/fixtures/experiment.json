@@ -1,0 +1,10 @@
+{
+  "control": {
+    "n": 1000,
+    "conversions": 100
+  },
+  "variant": {
+    "n": 1000,
+    "conversions": 130
+  }
+}

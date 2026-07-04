@@ -1,0 +1,26 @@
+# Development / CI tooling — SOURCE for pip-compile (P13). Not needed at runtime.
+#
+# Compile (Python 3.11, hashed, cross-platform):
+#   uv pip compile --generate-hashes --universal --python-version 3.11 \
+#       requirements-dev.in -o requirements-dev.txt
+#
+# CI installs the compiled requirements-dev.txt with `pip install --require-hashes`.
+# NOTE: gitleaks is a compiled Go binary (a GitHub release asset, NOT a PyPI package)
+# and is installed separately — see https://github.com/gitleaks/gitleaks#installing
+# and .pre-commit-config.yaml. It is intentionally absent from these requirements.
+
+-r requirements.in
+
+# Linting & formatting
+ruff==0.9.10
+black==25.1.0
+
+# Pre-commit framework
+pre-commit==4.2.0
+
+# Test runner
+pytest==8.3.5
+
+# ArcRift schema-migration discipline (E-004 R-13 / ADR-010) — Alembic on SQLite.
+alembic==1.18.4
+SQLAlchemy==2.0.51

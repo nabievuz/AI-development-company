@@ -1,0 +1,10 @@
+{
+  "breaches": {
+    "S-1": false,
+    "S-2": true,
+    "S-3": false,
+    "S-4": true,
+    "S-5": false,
+    "S-6": true
+  }
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "C1",
+    "description": "Choose the datastore for a new checkout-events table.",
+    "options": [
+      { "id": "A", "security_risk": "low", "monthly_cost_usd": 500, "latency_ms": 120 },
+      { "id": "B", "security_risk": "med", "monthly_cost_usd": 300, "latency_ms": 200 },
+      { "id": "C", "security_risk": "high", "monthly_cost_usd": 100, "latency_ms": 50 }
+    ]
+  },
+  {
+    "id": "C2",
+    "description": "Choose the message-queue provider for order-fulfillment events.",
+    "options": [
+      { "id": "A", "security_risk": "low", "monthly_cost_usd": 700, "latency_ms": 90 },
+      { "id": "B", "security_risk": "low", "monthly_cost_usd": 700, "latency_ms": 60 },
+      { "id": "C", "security_risk": "med", "monthly_cost_usd": 900, "latency_ms": 40 }
+    ]
+  },
+  {
+    "id": "C3",
+    "description": "Choose the third-party KYC verification vendor (all remaining vendors carry elevated risk after the shortlist).",
+    "options": [
+      { "id": "A", "security_risk": "high", "monthly_cost_usd": 200, "latency_ms": 30 },
+      { "id": "B", "security_risk": "high", "monthly_cost_usd": 150, "latency_ms": 20 }
+    ]
+  },
+  {
+    "id": "C4",
+    "description": "Choose the CDN provider for static assets (fully tied on cost and latency).",
+    "options": [
+      { "id": "A", "security_risk": "low", "monthly_cost_usd": 1000, "latency_ms": 500 },
+      { "id": "B", "security_risk": "med", "monthly_cost_usd": 1000, "latency_ms": 500 },
+      { "id": "C", "security_risk": "low", "monthly_cost_usd": 1000, "latency_ms": 500 }
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "segment": "SMB-plan",
+  "arpu_monthly_usd": 80,
+  "gross_margin_pct": 70,
+  "monthly_churn_pct": 4,
+  "cac_usd": 900
+}

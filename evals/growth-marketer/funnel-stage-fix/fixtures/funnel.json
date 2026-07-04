@@ -1,0 +1,8 @@
+{
+  "funnel": [
+    { "stage": "landing_page", "visitors": 5000, "benchmark_rate": 1.0 },
+    { "stage": "signup", "visitors": 1800, "benchmark_rate": 0.45 },
+    { "stage": "activation", "visitors": 900, "benchmark_rate": 0.55 },
+    { "stage": "purchase", "visitors": 150, "benchmark_rate": 0.35 }
+  ]
+}

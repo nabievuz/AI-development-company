@@ -1,0 +1,5 @@
+{
+  "feature": "wire_transfer_initiation",
+  "risk_level": "high",
+  "existing_test_plan": ["unit"]
+}

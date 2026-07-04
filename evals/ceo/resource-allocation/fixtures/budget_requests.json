@@ -1,0 +1,9 @@
+{
+  "total_cap_usd": 1000000,
+  "requests": [
+    {"dept": "engineering", "requested_usd": 600000, "priority_tier": 1},
+    {"dept": "marketing", "requested_usd": 300000, "priority_tier": 2},
+    {"dept": "product", "requested_usd": 400000, "priority_tier": 2},
+    {"dept": "operations", "requested_usd": 200000, "priority_tier": 3}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "period": "2026-Q2",
+  "departments": [
+    {"name": "engineering", "budget": 500000, "actual": 560000},
+    {"name": "sales", "budget": 300000, "actual": 280000},
+    {"name": "marketing", "budget": 200000, "actual": 235000},
+    {"name": "support", "budget": 150000, "actual": 151000}
+  ]
+}

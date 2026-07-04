@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <title>DasLab 2.0 Alternativlari: Top-10 Open-Source SWOT va Ball Tahlili</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f172a; --surface: #020617; --accent: #22c55e; --accent-muted: #4ade80;
+      --danger: #ef4444; --text: #e5e7eb; --muted: #9ca3af; --border: #1f2933;
+      --radius: 12px; --shadow-soft: 0 10px 40px rgba(15,23,42,0.9);
+      --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: radial-gradient(circle at top, #1e293b 0, #020617 45%, #000 100%);
+      color: var(--text); min-height: 100vh; padding: 32px 16px;
+      display: flex; justify-content: center;
+    }
+    .shell {
+      max-width: 1280px; width: 100%;
+      background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(3,7,18,0.98));
+      border-radius: 24px; border: 1px solid rgba(148,163,184,0.25);
+      box-shadow: var(--shadow-soft); padding: 24px; position: relative; overflow: hidden;
+    }
+    .shell::before {
+      content: ""; position: absolute; inset: -40%;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(34,197,94,0.12) 0, transparent 40%),
+        radial-gradient(circle at 100% 0%, rgba(56,189,248,0.08) 0, transparent 45%),
+        radial-gradient(circle at 50% 115%, rgba(234,179,8,0.06) 0, transparent 40%);
+      opacity: 0.85; pointer-events: none; z-index: 0;
+    }
+    .shell > * { position: relative; z-index: 1; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; }
+    .title-block h1 { font-size: 1.8rem; letter-spacing: 0.02em; }
+    .title-block p { margin-top: 8px; font-size: 0.95rem; color: var(--muted); max-width: 680px; }
+    .meta { text-align: right; font-size: 0.9rem; color: var(--muted); }
+    .meta strong { display: block; color: var(--accent-muted); }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+    .pill {
+      border-radius: 999px; border: 1px solid rgba(148,163,184,0.4); padding: 4px 10px;
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #cbd5f5;
+      background: radial-gradient(circle at 50% 0%, rgba(59,130,246,0.18) 0, transparent 60%);
+    }
+    .card {
+      background: radial-gradient(circle at 0 0, rgba(15,23,42,0.9) 0, rgba(2,6,23,0.95) 50%, rgba(0,0,0,0.9) 100%);
+      border-radius: var(--radius); border: 1px solid rgba(148,163,184,0.45);
+      padding: 16px; margin-bottom: 24px; overflow: hidden;
+    }
+    .card-title { font-size: 1.02rem; letter-spacing: 0.05em; text-transform: uppercase; color: #cbd5f5; margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 1080px; }
+    th, td { padding: 6px 6px; text-align: center; vertical-align: middle; }
+    th {
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+      border-bottom: 1px solid rgba(148,163,184,0.55); white-space: nowrap;
+    }
+    td.label { text-align: left; color: #e5e7eb; white-space: nowrap; font-weight: 500; }
+    tbody tr:nth-child(odd) td { background: rgba(15,23,42,0.35); }
+    tbody tr:nth-child(even) td { background: rgba(15,23,42,0.15); }
+    td.total { font-weight: 700; color: #bbf7d0; }
+    tr.daslab td { background: rgba(34,197,94,0.14) !important; }
+    tr.daslab td.label { color: #bbf7d0; }
+    .hi { color: #4ade80; font-weight: 700; }
+    .lo { color: #f87171; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 0.74rem; color: var(--muted); }
+    .legend span { white-space: nowrap; }
+    .warn { color: #fbbf24; }
+    .swot-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+    .swot-card {
+      background: radial-gradient(circle at 0 0, rgba(15,23,42,0.92) 0, rgba(2,6,23,0.96) 60%);
+      border: 1px solid rgba(148,163,184,0.4); border-radius: var(--radius); padding: 14px;
+    }
+    .swot-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .swot-head h3 { font-size: 0.98rem; color: #e5e7eb; }
+    .score-badge {
+      display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 10px; border-radius: 999px;
+      background: linear-gradient(90deg, rgba(34,197,94,0.25), rgba(74,222,128,0.08));
+      border: 1px solid rgba(34,197,94,0.6); font-size: 0.8rem; color: #bbf7d0; white-space: nowrap;
+      font-feature-settings: "tnum" 1;
+    }
+    .sub { font-size: 0.74rem; color: var(--muted); margin-bottom: 8px; }
+    .swot-line { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; line-height: 1.45; }
+    .swot-line strong { color: #e5e7eb; font-weight: 600; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; margin-right: 6px; }
+    .dot.S { background: #22c55e; } .dot.W { background: #f97316; }
+    .dot.O { background: #38bdf8; } .dot.T { background: #ef4444; }
+    .summary {
+      margin-top: 8px; background: linear-gradient(135deg, rgba(21,128,61,0.25), rgba(15,23,42,0.98));
+      border-radius: 20px; border: 1px solid rgba(34,197,94,0.4); padding: 16px;
+    }
+    .summary h2 { font-size: 1.05rem; letter-spacing: 0.08em; text-transform: uppercase; color: #bbf7d0; margin-bottom: 10px; }
+    .summary-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,0.85fr); gap: 16px; font-size: 0.9rem; color: var(--muted); }
+    .summary-grid strong { color: #e5e7eb; }
+    .badge-final {
+      display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px;
+      background: rgba(15,23,42,0.8); border: 1px solid rgba(34,197,94,0.6); color: #bbf7d0; font-size: 0.85rem;
+    }
+    .badge-final .label { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.68rem; }
+    @media (max-width: 900px) {
+      .swot-grid, .summary-grid { grid-template-columns: minmax(0,1fr); }
+      header { flex-direction: column; } .meta { text-align: left; }
+      .tag-row { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="title-block">
+        <h1>DasLab 2.0 Alternativlari: Top‑10 Open‑Source Tahlil</h1>
+        <p>
+          OpenHands, AgentScope, CAMEL/Eigent, Letta, ChatDev 2.0, AutoGPT Platform, BMAD‑METHOD v6,
+          MetaGPT, Ruflo va Agent Zero — 12 mezonli capability‑matritsa (0–10) va founder nuqtai
+          nazaridan SWOT. Yulduz/litsenziya/relizlar 2026‑07‑03 kuni GitHub'dan jonli tasdiqlangan.
+        </p>
+      </div>
+      <div class="meta">
+        <strong>Akmaljon Nabiev uchun qaror xaritasi</strong>
+        <span>2026‑07‑03 · DasLab ORGANISM dasturi konteksti</span>
+        <div class="tag-row">
+          <span class="pill">Multi‑agent org engines</span>
+          <span class="pill">Open source</span>
+          <span class="pill">12 mezon · SWOT</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="card-title">Capability matritsa (muallif bahosi, 0–10) — jami /120 bo'yicha saralangan</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left">Loyiha</th>
+              <th>R1 Durable</th><th>R2 Plan+Stall</th><th>R3 Typed</th><th>R4 Guard</th>
+              <th>R5 Tempo</th><th>R6 Observ</th><th>R7 Cockpit</th><th>R8 Rollar</th>
+              <th>R9 Evals</th><th>R10 Memory</th><th>R11 Gates</th><th>R12 Spec→Build</th>
+              <th>Jami</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="daslab"><td class="label">DasLab 2.0 (target)</td><td class="hi">10</td><td class="hi">10</td><td class="hi">10</td><td class="hi">9</td><td class="hi">9</td><td class="hi">10</td><td class="hi">9</td><td class="hi">10</td><td class="hi">9</td><td class="hi">9</td><td class="hi">10</td><td class="hi">10</td><td class="total">115</td></tr>
+            <tr><td class="label">OpenHands</td><td>7</td><td>6</td><td>5</td><td class="hi">7</td><td>6</td><td>6</td><td class="hi">7</td><td>4</td><td class="hi">7</td><td>4</td><td>4</td><td>4</td><td class="total">67</td></tr>
+            <tr><td class="label">AgentScope 2.x</td><td>7</td><td>6</td><td>6</td><td class="hi">7</td><td>3</td><td class="hi">8</td><td class="hi">7</td><td>4</td><td class="hi">7</td><td>6</td><td>4</td><td class="lo">2</td><td class="total">67</td></tr>
+            <tr class="daslab"><td class="label">DasLab 1.0 (hozir)</td><td>4</td><td>4</td><td>4</td><td>5</td><td class="lo">2</td><td>4</td><td>4</td><td>7</td><td class="lo">2</td><td class="hi">8</td><td class="hi">10</td><td>5</td><td class="total">59</td></tr>
+            <tr><td class="label">CAMEL / Workforce</td><td>4</td><td class="hi">7</td><td>5</td><td class="hi">7</td><td>3</td><td>4</td><td>6</td><td>6</td><td>4</td><td>5</td><td>3</td><td class="lo">2</td><td class="total">56</td></tr>
+            <tr><td class="label">Letta (MemGPT)</td><td class="hi">8</td><td>3</td><td>5</td><td>4</td><td>6</td><td>6</td><td>6</td><td class="lo">2</td><td class="lo">2</td><td class="hi">9</td><td class="lo">2</td><td>3</td><td class="total">56</td></tr>
+            <tr><td class="label">ChatDev 2.0</td><td>3</td><td>6</td><td>6</td><td>4</td><td class="lo">2</td><td>5</td><td>6</td><td>5</td><td class="lo">2</td><td>4</td><td>4</td><td>6</td><td class="total">53</td></tr>
+            <tr><td class="label">AutoGPT Platform ⚠</td><td>6</td><td>3</td><td class="hi">7</td><td>5</td><td class="hi">8</td><td>6</td><td>6</td><td class="lo">2</td><td class="lo">2</td><td class="lo">2</td><td>3</td><td class="lo">2</td><td class="total">52</td></tr>
+            <tr><td class="label">BMAD‑METHOD v6</td><td>4</td><td>4</td><td>4</td><td>5</td><td class="lo">2</td><td class="lo">1</td><td class="lo">2</td><td class="hi">8</td><td class="lo">1</td><td>4</td><td class="hi">7</td><td class="hi">8</td><td class="total">50</td></tr>
+            <tr><td class="label">MetaGPT (→Atoms)</td><td>4</td><td>4</td><td>6</td><td>5</td><td class="lo">2</td><td>4</td><td class="lo">1</td><td>6</td><td>3</td><td>3</td><td>3</td><td class="hi">8</td><td class="total">49</td></tr>
+            <tr><td class="label">Ruflo (Claude‑Flow) ⚠</td><td>5</td><td>4</td><td class="lo">2</td><td>3</td><td>4</td><td>3</td><td>5</td><td>6</td><td class="lo">2</td><td>6</td><td class="lo">1</td><td>5</td><td class="total">46</td></tr>
+            <tr><td class="label">Agent Zero</td><td>5</td><td>3</td><td class="lo">1</td><td>4</td><td>5</td><td class="lo">2</td><td>6</td><td>3</td><td class="lo">1</td><td>6</td><td class="lo">2</td><td class="lo">2</td><td class="total">40</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span>R1 durable execution (checkpoint/resume/replay)</span><span>R2 dinamik planner + stall detection</span>
+        <span>R3 typed kontraktlar + routing</span><span>R4 guardrails/bounded retry</span>
+        <span>R5 avtonom tempo/scheduler</span><span>R6 observability (span/token/cost)</span>
+        <span>R7 ops cockpit (OSS)</span><span>R8 mutaxassis rollar chuqurligi</span>
+        <span>R9 per-agent evals</span><span>R10 long-term memory</span>
+        <span>R11 governance/gates</span><span>R12 spec→build (docs pack → soft)</span>
+        <span class="warn">⚠ AutoGPT: platforma qismi Polyform Shield (to'liq OSS emas) · ⚠ Ruflo: hujjatlashtirilgan fabrikatsiya tarixi</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">SWOT matritsa (founder nuqtai nazari, DasLab'ga nisbatan)</div>
+      <div class="swot-grid">
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>1 · OpenHands</h3><span class="score-badge">67/120 · MIT*</span></div>
+          <div class="sub">79.2k★ · $18.8M Series A · haftalik reliz · *enterprise/ papkasi commercial</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> OSS'dagi eng kuchli ijro dvigateli — event-stream + sandbox, 77.6% SWE-bench Verified da'vosi (#1), 20+ benchmark, reliz-gating regression evals.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Bitta generalist injener — org emas: rollar, gate'lar, metrik kontraktlar, spec-pipeline yo'q; fleet/RBAC/audit pullik.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> software-agent-sdk sandbox'ini xavfli ticketlar uchun substrat qilish; regression-eval intizomini golden-eval'larga ko'chirish; stuck-detector evristikasi.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Eng jiddiy tijoriy tahdid — "autonomous software development'ning ochiq standarti" + enterprise sotuv; har bir pitch shu bilan solishtiriladi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>2 · AgentScope 2.x</h3><span class="score-badge">67/120 · Apache-2.0</span></div>
+          <div class="sub">27.4k★ · Alibaba Tongyi Lab · Py/TS/Java · v2.0.1</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Eng kuchli infra: async runtime + distributed interrupt-service, Docker/E2B sandbox, permission system, OTel-native Studio, eval+finetune modullari.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Framework, org emas — board/gates/goal-queue yo'q; 14 oyda 3 ta breaking major (0.x→2.x); Alibaba Cloud tortishuvi.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Interrupt-service dizayni → wave checkpoint/resume; OTel span konventsiyalari; sandbox backend'lari; Studio run-replay UX → cockpit.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Alibaba "Agent Team"ni chuqurlashtirsa, infra qatlami nol narxda kommoditizatsiya bo'ladi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>3 · CAMEL / Workforce / Eigent</h3><span class="score-badge">56/120 · Apache-2.0</span></div>
+          <div class="sub">17.3k★ (+OWL 19.8k★ litsenziyasiz!) · Eigent AI Ltd · reliz sekinlashgan</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Eng yaxshi OSS coordinator/planner/worker + kodifikatsiyalangan failure-recovery (FailureHandlingConfig); GAIA #1 OSS obro'si; sintetik-data staki.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Durable execution va telemetriya zaif, governance yo'q; framework so'nayapti — kompaniya Eigent'ga pul tikkan; OWL repo LICENSE'siz.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> FailureHandlingConfig semantikasi → bounded-retry qoidalari; muvaffaqiyatsizlikda dynamic-worker-spawn → eskalatsiya klapani; data-gen → eval to'plamlari.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Eigent — "AI workforce" hikoyasining eng yaqin mahsulot raqibi (desktop, ochiq, daromad da'vosi).</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>4 · Letta (ex-MemGPT)</h3><span class="score-badge">56/120 · Apache-2.0</span></div>
+          <div class="sub">23.6k★ · $10M seed (Felicis) · fokus Letta Code'ga ko'chgan</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Xotira fanining yetakchisi: self-editing memory blocks, sleep-time konsolidatsiya, git-backed MemFS (defrag, worktree-concurrent), 42.5% Terminal-Bench (haqiqiy leaderboard).</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Delivery-org emas — rollar/gate'lar/board yo'q; OSS server maintenance-mode tomon; deprecation whiplash (tool rules o'ldirildi).</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Git-backed MemFS patterni → ArcRift (versiyalangan memory-commit + defrag); sleep-time konsolidatsiya → DasLab idle-tempo ishi (idle 0.70 gap'iga to'g'ridan-to'g'ri zarba).</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> "Stateful agents" kategoriyasini egallagan; xotira ustiga org-qatlam qursa, pastdan hujum qiladi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>5 · ChatDev 2.0 "DevAll"</h3><span class="score-badge">53/120 · Apache-2.0</span></div>
+          <div class="sub">33.4k★ · Tsinghua/OpenBMB · v2.2.0 · akademik sur'at</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Agent-jamoa kommunikatsiyasi bo'yicha eng kuchli ilmiy korpus (chat-chain, dehallucination, MacNet 1000+ agent scaling-law, Puppeteer RL-orkestrator); yosh lekin haqiqiy OSS konsol.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Grad-student bus-faktori; SDLC chuqurligidan voz kechib platformaga pivot; durability/evals/cost yo'q.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Communicative dehallucination → dispatch'dan oldin majburiy ticket-clarification bosqichi; Puppeteer-uslub learned wake-up → planner; MacNet qonuni → wave hajmini asoslash.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Tijoriy tahdid past; faqat narrativ xavfi ("DevAll" default mental model bo'lishi).</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>6 · AutoGPT Platform ⚠</h3><span class="score-badge">52/120 · Polyform+MIT</span></div>
+          <div class="sub">185.3k★ · $12M (Redpoint) · platforma qismi OSS EMAS (Polyform Shield)</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Ulkan distribution; production-grade cron+webhook trigger infra; typed block-pin'lar; marketplace + per-block kredit metering.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Muhim qismi source-available (raqobat taqiqlangan) — OSI emas; blocks ≠ rollar; lifecycle/evals/spec→build yo'q; avtomatlashtirish shifti.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Per-block kredit metering → budget governor dizayni; trigger arxitekturasi; marketplace ishonch signallari (run count, rating) → skills reuse.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Prosumer "hire agents" narrativini egallagan; code-delivery vertikali chiqsa past segmentni siqadi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>7 · BMAD-METHOD v6</h3><span class="score-badge">50/120 · MIT+™</span></div>
+          <div class="sub">50.0k★ · BMad Code LLC · ~150 contributor · v6.9.0 · harness-agnostik</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> AI-agile kategoriyasining brendi; eng chuqur persona/workflow kutubxonasi (34+ workflow); self-contained story-fayllar; marketplace tarmoq effekti.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Dvigatel yo'q — parallel wave, telemetriya, budget, evals, avtonom sikl yo'q; sifat haydovchi-odam qo'lida; inson-sur'atli.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Step-file token arxitekturasi → uzun workflow'lar; scale-adaptive routing (DasLab'ning qat'iy 6-bosqichi kichik ishlar uchun og'ir — haqiqiy gap!); party-mode adversarial review-crew.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> "BMAD + istalgan harness" — "AI software team qanday quriladi?"ning default javobi; DasLab o'zini "avtonom boshqariladigan org" deb pozitsiyalashi shart, aks holda BMAD-klon ko'rinadi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>8 · MetaGPT (→ Atoms)</h3><span class="score-badge">49/120 · MIT</span></div>
+          <div class="sub">68.4k★ · DeepWisdom (>$50M) · OSS 26 oy muzlagan (v0.8.1, 2024-04)</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Kanonik SOP→artefakt pipeline (PRD→design→tasks→code, ICLR oral); typed pub-sub message pool; ulkan mindshare.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> OSS repo amalda o'lik — energiya yopiq Atoms'da; durability/scheduler/cockpit/evals/gates yo'q; demo-masshtab shifti.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> PRD/design/tasks artefakt sxemalari → GATEWAY'ni qat'iylashtirish; pub-sub subscription routing → ticketlar; Atoms "Race Mode" (raqobatlashuvchi parallel jamoalar) → eval g'oyasi.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Atoms = DasLab tezisi mahsulotlashtirilgan holda (>$50M, ARR da'volari) — enterprise tier chiqsa "docs-pack → biznes" sotib olinadigan tovarga aylanadi.</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>9 · Ruflo (ex-Claude-Flow) ⚠</h3><span class="score-badge">46/120 · MIT</span></div>
+          <div class="sub">62.7k★ · solo dev · 13 oyda 1553 reliz · hujjatlashtirilgan fabrikatsiya tarixi</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Misli ko'rilmagan distribution (700k npm); HNSW xotira qatlami haqiqatan kuchli; Ed25519-imzolangan relizlar; kunlik shipping.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Auditlar: ~300 tooldan ~290 stub; "84.8% SWE-bench" random.uniform() bilan yasalgan; Math.random() metrikalar; gate'lar yo'q (--dangerously-skip-permissions); ishonch inqirozi.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Ed25519-imzolangan wave-manifest'lar; hooks'ni Claude Code plugin qilib qadoqlash; ReasoningBank-uslub pattern-retrieval → ArcRift.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> "Claude swarm" mindshare/SEO'ni egallagan; v3 tozalash muvaffaq bo'lsa tezligi xavfli; shishirilgan da'volari butun kategoriya ishonchini zaharlaydi — DasLab farqi = committed evidence (T1–T7 anti-gaming).</div>
+        </article>
+
+        <article class="swot-card">
+          <div class="swot-head"><h3>10 · Agent Zero</h3><span class="score-badge">40/120 · MIT</span></div>
+          <div class="sub">18.3k★ · Agent Zero s.r.o. · v2.2 (kecha) · bitta Docker = to'liq Linux</div>
+          <div class="swot-line"><span class="dot S"></span><strong>S:</strong> Eng yaxshi runtime UX (brauzerda desktop, launcher, 1 buyruqda o'rnatish); Time-Travel snapshot/rollback; Plugin Hub (100+, AI security-scan bilan); local-model iqtisodi.</div>
+          <div class="swot-line"><span class="dot W"></span><strong>W:</strong> Bitta agent-daraxt — board/kontraktlar/telemetriya/lifecycle yo'q; Kali-root avtonomiya enterprise uchun nonstarter.</div>
+          <div class="swot-line"><span class="dot O"></span><strong>O:</strong> Snapshot/rollback semantikasi → wave-checkpoint; skill/pluginlarni o'rnatishdan oldin AI security-scan; launcher-darajali qadoqlash → DasLab'ni founder bo'lmaganlar ham ishga tushira olsin.</div>
+          <div class="swot-line"><span class="dot T"></span><strong>T:</strong> Plugin Hub'i BMAD'ni yutgani runtime'lar metodologiyani kommoditizatsiya qilishini isbotlaydi — DasLab moat'i docs-pack emas, governance-dvigatel bo'lishi kerak.</div>
+        </article>
+
+      </div>
+    </section>
+
+    <section class="summary">
+      <h2>Founder-level yakuniy natija</h2>
+      <div class="summary-grid">
+        <div>
+          <p>
+            <strong>Hech bir OSS loyiha DasLab'ning to'rt ustunini birlashtirmaydi</strong> — gated
+            governance (begona maksimum: BMAD 7), spec→build kompilyator (MetaGPT/BMAD 8 — lekin
+            dvigatelsiz/muzlagan), typed kontraktlar va per-agent evals hech qayerda birga kelmaydi.
+            DasLab 1.0 (59/120) hozirning o'zida 12 ishtirokchidan #3; ORGANISM bajarilsa (115/120)
+            eng yaqin raqibdan 45+ ball uzoqlashadi. Sektor patterni — org-qatlam qiymati yopiladi
+            (MetaGPT→Atoms, GPT-Engineer→Lovable $12B muzokara, CAMEL→Eigent, Letta→Constellation):
+            tezis tasdiqlandi, lekin vaqt hisoblangan.
+          </p>
+          <p style="margin-top: 12px;">
+            Eng qimmatli importlar: <strong>Letta MemFS</strong> (git-backed xotira → ArcRift),
+            <strong>OpenHands regression-eval intizomi</strong>, <strong>AgentScope interrupt-service +
+            OTel</strong>, <strong>BMAD step-file + scale-adaptive routing</strong>,
+            <strong>CAMEL FailureHandlingConfig</strong>, <strong>Agent Zero snapshot/rollback</strong>.
+            Ogohlantirishlar: Ruflo yulduziga aldanmaslik (fabrikatsiya auditlari), AutoGPT Polyform
+            (OSS emas), OWL LICENSE'siz.
+          </p>
+        </div>
+        <div style="text-align:right;">
+          <div class="badge-final">
+            <span class="label">Xulosa</span>
+            <span>Muqobil yo'q · ORGANISM'ni bajarish = kategoriya yetakchiligi</span>
+          </div>
+          <p style="margin-top: 12px; font-size: 0.85rem; color: var(--muted);">
+            Kvartallik watch-list: OpenHands Cloud gating · Alibaba "Agent Team" · Atoms enterprise ·
+            Eigent o'sishi · BMAD v7 · Archon (harness-builder, 22.7k★ — Project-OS kompilyatoriga
+            eng yaqin qo'shni).
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

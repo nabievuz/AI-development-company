@@ -1,0 +1,11 @@
+{
+  "text": "Nightly data exports are here. Every night at 02:00 UTC we generate a CSV of the previous day's account activity; download it any time from Settings -> Data. Exports auto-delete after 30 days. No action needed - your first export arrives the night after this release.",
+  "judge_scores": {
+    "correctness": 0.9,
+    "evidence_factuality": 0.9,
+    "tests": 0.9,
+    "security": 0.9,
+    "completeness": 0.9,
+    "maintainability": 0.9
+  }
+}

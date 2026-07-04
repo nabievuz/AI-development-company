@@ -1,0 +1,11 @@
+{
+  "release": "v2.4.0",
+  "coverage_pct": 62,
+  "coverage_threshold": 80,
+  "failing_tests_on_main": ["test_checkout_flow"],
+  "flaky_tests": ["test_email_send"],
+  "open_bugs": [
+    {"id": "BUG-101", "severity": "P0"},
+    {"id": "BUG-102", "severity": "P2"}
+  ]
+}

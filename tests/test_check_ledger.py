@@ -1,0 +1,329 @@
+"""tests/test_check_ledger.py — pytest suite for scripts/check_ledger.py.
+
+Coverage (DAS-1470 acceptance criteria):
+- validate_ledger accepts a well-formed progress-ledger and rejects a missing
+  or wrong-typed field (schema
+  {request_satisfied, in_loop, progress_being_made, next_tickets[], instruction}).
+- update_stall implements the stall rule:
+  in_loop || !progress_being_made -> stall+1, else max(0, stall-1).
+- step_inner_loop: request_satisfied terminates; stall>3 with budget regenerates
+  the task-ledger (facts-update + plan-update) and appends a REPLANNED event;
+  budget exhausted raises a pause-on-stall interrupt card.
+- A synthetic stalled run triggers REPLANNED within <= 2 waves, and triggers
+  pause-on-stall (interrupt-card) once the max_replans budget is exhausted.
+- All emitted events go through scripts/dgox/events.py typed builders.
+- created_at is a caller-supplied argument (injectable).
+- The CLI validates a ledger file and exits 0/1/2 appropriately.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Path setup — make scripts/ importable regardless of pytest invocation root.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).parent.parent
+_SCRIPTS = _REPO_ROOT / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+import check_ledger as cl  # noqa: E402
+import task_ledger as tl  # noqa: E402
+from dgox.events import iter_events, validate_replanned  # noqa: E402
+
+FIXED_TS = "2026-07-03T12:00:00Z"
+RUN_ID = "01J9Z8QK3M7Q0W9E4R5T6Y7U8I"
+ANCHOR = "DAS-1470"
+
+
+def _good_ledger(**overrides: object) -> dict:
+    base = {
+        "request_satisfied": False,
+        "in_loop": False,
+        "progress_being_made": True,
+        "next_tickets": ["DAS-1471", "DAS-1472"],
+        "instruction": "Continue the wave.",
+    }
+    base.update(overrides)
+    return base
+
+
+def _stalled_ledger() -> dict:
+    # in_loop True -> always increments the stall counter.
+    return _good_ledger(in_loop=True, progress_being_made=False)
+
+
+def _build_seed_task_ledger(runs_dir: Path) -> None:
+    tl.build_task_ledger(
+        run_id=RUN_ID,
+        facts=tl.Facts(given=["ship the inner loop"], known=["wave 0 baseline"]),
+        plan=["DAS-1470"],
+        created_at=FIXED_TS,
+        runs_dir=runs_dir,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schema validation
+# ---------------------------------------------------------------------------
+
+
+class TestValidateLedger:
+    def test_well_formed_ledger_has_no_errors(self):
+        assert cl.validate_ledger(_good_ledger()) == []
+
+    def test_satisfied_ledger_with_empty_instruction_ok(self):
+        ledger = _good_ledger(request_satisfied=True, next_tickets=[], instruction="")
+        assert cl.validate_ledger(ledger) == []
+
+    @pytest.mark.parametrize("field", list(cl.LEDGER_FIELDS))
+    def test_missing_field_is_error(self, field: str):
+        ledger = _good_ledger()
+        del ledger[field]
+        errors = cl.validate_ledger(ledger)
+        assert any(field in e for e in errors), errors
+
+    def test_flag_must_be_bool_not_int(self):
+        # A truthy int must NOT pass — the loop branches on genuine bools.
+        errors = cl.validate_ledger(_good_ledger(in_loop=1))
+        assert any("in_loop" in e for e in errors)
+
+    def test_next_tickets_must_be_list_of_nonempty_strings(self):
+        assert any("next_tickets" in e for e in cl.validate_ledger(_good_ledger(next_tickets="DAS-1")))
+        assert any("next_tickets" in e for e in cl.validate_ledger(_good_ledger(next_tickets=[""])))
+        assert any("next_tickets" in e for e in cl.validate_ledger(_good_ledger(next_tickets=[1])))
+
+    def test_instruction_must_be_string(self):
+        assert any("instruction" in e for e in cl.validate_ledger(_good_ledger(instruction=42)))
+
+    def test_non_dict_ledger_is_error(self):
+        assert cl.validate_ledger(["not", "a", "dict"]) != []
+
+
+# ---------------------------------------------------------------------------
+# Stall rule
+# ---------------------------------------------------------------------------
+
+
+class TestStallRule:
+    def test_in_loop_increments(self):
+        assert cl.update_stall(0, in_loop=True, progress_being_made=True) == 1
+
+    def test_no_progress_increments(self):
+        assert cl.update_stall(2, in_loop=False, progress_being_made=False) == 3
+
+    def test_progress_and_not_looping_decrements(self):
+        assert cl.update_stall(3, in_loop=False, progress_being_made=True) == 2
+
+    def test_decrement_floors_at_zero(self):
+        assert cl.update_stall(0, in_loop=False, progress_being_made=True) == 0
+
+
+# ---------------------------------------------------------------------------
+# Progress-ledger write/read round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestWriteReadLedger:
+    def test_round_trip(self, tmp_path: Path):
+        runs = tmp_path / "runs"
+        path = cl.write_progress_ledger(
+            run_id=RUN_ID, runs_dir=runs, **_good_ledger()
+        )
+        assert path == cl.progress_ledger_path(RUN_ID, runs)
+        assert cl.read_progress_ledger(RUN_ID, runs) == _good_ledger()
+
+    def test_write_rejects_invalid(self, tmp_path: Path):
+        with pytest.raises(ValueError):
+            cl.write_progress_ledger(
+                run_id=RUN_ID,
+                runs_dir=tmp_path,
+                request_satisfied=False,
+                in_loop=False,
+                progress_being_made=True,
+                next_tickets=[""],  # invalid
+                instruction="x",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Inner-loop stepping
+# ---------------------------------------------------------------------------
+
+
+class TestStepInnerLoop:
+    def test_satisfied_terminates_without_touching_stall(self, tmp_path: Path):
+        state = cl.LoopState(stall=2, max_replans=2)
+        decision = cl.step_inner_loop(
+            ledger=_good_ledger(request_satisfied=True),
+            state=state,
+            run_id=RUN_ID,
+            anchor_ticket=ANCHOR,
+            wave=1,
+            created_at=FIXED_TS,
+            runs_dir=tmp_path,
+            store_path=tmp_path / "events.jsonl",
+            interrupts_dir=tmp_path / "interrupts",
+        )
+        assert decision.action == "satisfied"
+        assert state.stall == 2  # unchanged
+
+    def test_progress_keeps_continuing(self, tmp_path: Path):
+        state = cl.LoopState(stall=1, max_replans=2)
+        decision = cl.step_inner_loop(
+            ledger=_good_ledger(),  # progress, not looping
+            state=state,
+            run_id=RUN_ID,
+            anchor_ticket=ANCHOR,
+            wave=1,
+            created_at=FIXED_TS,
+            runs_dir=tmp_path,
+            store_path=tmp_path / "events.jsonl",
+            interrupts_dir=tmp_path / "interrupts",
+        )
+        assert decision.action == "continue"
+        assert state.stall == 0
+
+    def test_invalid_ledger_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError):
+            cl.step_inner_loop(
+                ledger={"in_loop": True},  # missing fields
+                state=cl.LoopState(),
+                run_id=RUN_ID,
+                anchor_ticket=ANCHOR,
+                wave=1,
+                created_at=FIXED_TS,
+                runs_dir=tmp_path,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Acceptance: stalled run triggers REPLANNED <= 2 waves, then pause-on-stall
+# ---------------------------------------------------------------------------
+
+
+class TestStalledRunReplanThenPause:
+    def test_replanned_within_two_waves(self, tmp_path: Path):
+        runs = tmp_path / "runs"
+        store = tmp_path / "events.jsonl"
+        interrupts = tmp_path / "interrupts"
+        _build_seed_task_ledger(runs)
+
+        # Seed stall just below threshold so a replan fires within <= 2 stalled
+        # waves (wave 1 crosses to 3=continue, wave 2 crosses to 4=replan).
+        state = cl.LoopState(stall=cl.STALL_THRESHOLD - 1, max_replans=2)
+        decisions = cl.run_inner_loop(
+            [_stalled_ledger(), _stalled_ledger()],
+            state=state,
+            run_id=RUN_ID,
+            anchor_ticket=ANCHOR,
+            created_at=FIXED_TS,
+            runs_dir=runs,
+            store_path=store,
+            interrupts_dir=interrupts,
+        )
+        # A REPLANNED decision occurred within the first 2 waves.
+        replans = [d for d in decisions if d.action == "replanned"]
+        assert replans, decisions
+        assert len(decisions) <= 2
+
+        # The task-ledger was regenerated (revision bumped, plan = next_tickets).
+        after = tl.read_task_ledger(RUN_ID, runs)
+        assert after["revision"] == 2
+        assert after["plan"] == ["DAS-1471", "DAS-1472"]
+
+        # A typed `replanned` event was appended and is schema-valid.
+        events = list(iter_events(store, event_type="replanned"))
+        assert len(events) == 1
+        assert validate_replanned(events[0]) == []
+        assert events[0]["ticket_id"] == ANCHOR
+        assert events[0]["max_replans_remaining"] == 1
+
+        # Stall was reset after the replan.
+        assert state.stall == 0
+        assert state.max_replans == 1
+
+    def test_pause_on_stall_when_budget_exhausted(self, tmp_path: Path):
+        runs = tmp_path / "runs"
+        store = tmp_path / "events.jsonl"
+        interrupts = tmp_path / "interrupts"
+        _build_seed_task_ledger(runs)
+
+        # Only one replan allowed. Feed a long stalled stream; after the single
+        # replan the budget is exhausted and the next crossing pauses.
+        state = cl.LoopState(stall=cl.STALL_THRESHOLD, max_replans=1)
+        stalled = [_stalled_ledger() for _ in range(12)]
+        decisions = cl.run_inner_loop(
+            stalled,
+            state=state,
+            run_id=RUN_ID,
+            anchor_ticket=ANCHOR,
+            created_at=FIXED_TS,
+            runs_dir=runs,
+            store_path=store,
+            interrupts_dir=interrupts,
+        )
+
+        actions = [d.action for d in decisions]
+        assert "replanned" in actions
+        assert actions[-1] == "paused"  # loop halts on pause-on-stall
+        assert state.max_replans == 0
+
+        paused = decisions[-1]
+        assert paused.interrupt_card_path is not None
+        card = json.loads(paused.interrupt_card_path.read_text())
+        # Conforms to the DAS-1446 interrupt-card schema.
+        assert set(card) == {"question", "options", "ticket", "payload", "created_by"}
+        assert card["ticket"] == ANCHOR
+        assert card["options"]  # non-empty
+        assert card["payload"]["run_id"] == RUN_ID
+
+        # Exactly one replan event was emitted before the pause.
+        assert len(list(iter_events(store, event_type="replanned"))) == 1
+
+    def test_unique_card_ids_on_repeated_pauses(self, tmp_path: Path):
+        interrupts = tmp_path / "interrupts"
+        p1 = cl.raise_stall_interrupt_card(
+            run_id=RUN_ID, anchor_ticket=ANCHOR, stall=4, wave=5,
+            instruction="steer", interrupts_dir=interrupts,
+        )
+        p2 = cl.raise_stall_interrupt_card(
+            run_id=RUN_ID, anchor_ticket=ANCHOR, stall=4, wave=9,
+            instruction="steer", interrupts_dir=interrupts,
+        )
+        assert p1 != p2
+        assert p1.name == f"{ANCHOR}-stall-1.json"
+        assert p2.name == f"{ANCHOR}-stall-2.json"
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+class TestCli:
+    def test_cli_accepts_valid_ledger(self, tmp_path: Path, capsys):
+        path = tmp_path / "progress-ledger.json"
+        path.write_text(json.dumps(_good_ledger()), encoding="utf-8")
+        assert cl.main(["--path", str(path)]) == 0
+
+    def test_cli_rejects_invalid_ledger(self, tmp_path: Path):
+        path = tmp_path / "progress-ledger.json"
+        bad = _good_ledger()
+        del bad["instruction"]
+        path.write_text(json.dumps(bad), encoding="utf-8")
+        assert cl.main(["--path", str(path)]) == 1
+
+    def test_cli_missing_file_is_usage_error(self, tmp_path: Path):
+        assert cl.main(["--path", str(tmp_path / "nope.json")]) == 2
+
+    def test_cli_run_id_resolves(self, tmp_path: Path):
+        runs = tmp_path / "runs"
+        cl.write_progress_ledger(run_id=RUN_ID, runs_dir=runs, **_good_ledger())
+        assert cl.main(["--run-id", RUN_ID, "--runs-dir", str(runs)]) == 0

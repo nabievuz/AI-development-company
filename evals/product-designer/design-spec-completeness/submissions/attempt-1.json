@@ -1,0 +1,7 @@
+{
+  "missing": [
+    "state:focus",
+    "state:error",
+    "a11y:focus_visible"
+  ]
+}

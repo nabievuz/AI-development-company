@@ -1,0 +1,9 @@
+# Runtime third-party dependencies for scripts/*.py — SOURCE for pip-compile (P13).
+#
+# Compile (Python 3.11, hashed, cross-platform):
+#   uv pip compile --generate-hashes --universal --python-version 3.11 \
+#       requirements.in -o requirements.txt
+#
+# Most scripts use only the stdlib; the exception is PyYAML (~15 validators import it
+# and hard-exit if absent), so it is a required runtime dependency.
+PyYAML==6.0.2

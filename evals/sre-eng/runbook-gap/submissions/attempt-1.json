@@ -1,0 +1,6 @@
+{
+  "missing_steps": [
+    "notify_oncall",
+    "postmortem"
+  ]
+}

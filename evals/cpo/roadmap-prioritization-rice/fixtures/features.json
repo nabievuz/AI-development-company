@@ -1,0 +1,12 @@
+{
+  "quarter": "Q3",
+  "capacity_weeks": 10,
+  "features": [
+    {"name": "bulk_export", "reach": 4000, "impact": 2, "confidence": 0.8, "effort_weeks": 3},
+    {"name": "sso_login", "reach": 1500, "impact": 3, "confidence": 1.0, "effort_weeks": 4},
+    {"name": "dark_mode", "reach": 6000, "impact": 1, "confidence": 0.6, "effort_weeks": 2},
+    {"name": "api_webhooks", "reach": 800, "impact": 3, "confidence": 0.7, "effort_weeks": 5},
+    {"name": "mobile_push", "reach": 3000, "impact": 2, "confidence": 0.9, "effort_weeks": 4},
+    {"name": "audit_log", "reach": 500, "impact": 2, "confidence": 1.0, "effort_weeks": 2}
+  ]
+}

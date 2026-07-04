@@ -1,0 +1,6 @@
+{
+  "decision": "build-vs-buy — internal billing-reconciliation tool",
+  "build": {"upfront_cost_usd": 120000, "monthly_maintenance_usd": 4000},
+  "buy": {"monthly_subscription_usd": 9000},
+  "horizon_months": 36
+}

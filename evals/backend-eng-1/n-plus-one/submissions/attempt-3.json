@@ -1,0 +1,4 @@
+{
+  "has_n_plus_one": true,
+  "fix": "cache_it"
+}

@@ -1,0 +1,8 @@
+{
+  "commits": [
+    "feat: add CSV export",
+    "fix: null deref on empty cart",
+    "docs: update README install steps",
+    "feat: dark mode toggle"
+  ]
+}

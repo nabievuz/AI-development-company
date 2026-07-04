@@ -1,0 +1,34 @@
+# PROJECT-OS manifest for the acme-tasks sample pack (evals/e2e/sample-pack).
+# Compiled by scripts/gateway_compile.py in a tmp/scratch project dir named after
+# `name` — never in place. See evals/e2e/README.md for the honest scope note.
+name: acme-tasks
+mission: >
+  acme-tasks is a small team task-management SaaS: authenticated users create,
+  organize, and track tasks inside shared workspaces, and a Slack integration
+  posts due-date and assignment notifications. It replaces ad-hoc spreadsheets
+  for small teams that need lightweight, auditable task tracking with clear
+  ownership and deadlines.
+constraints:
+  - "PII: store only email and display name; mask the email in any outbound Slack message (tightens the org data-handling baseline)"
+  - "Data residency: all task and workspace data stays in EU-region storage (org allows global; this project restricts to EU)"
+  - "p95 latency for task read endpoints stays at or under 400ms"
+  - "Require an extra security-lead sign-off before the Slack outbound integration is enabled in production"
+stack:
+  languages: [python, typescript]
+  frameworks: [fastapi, react]
+  model_providers: []
+  infra: [docker, postgres, dokploy]
+budget:
+  tokens: "not applicable — v1 ships no model inference"
+  money: "USD 300 / month infrastructure ceiling"
+  worst_case_loop: "v1 has no autonomous agent loop; background notification jobs are capped at 3 retries with exponential backoff"
+success_metrics:
+  - metric: "weekly active workspaces"
+    target: ">= 40 by the end of the first quarter"
+    baseline: "0 (net-new product)"
+  - metric: "task-create p95 latency"
+    target: "<= 400ms"
+    baseline: "unmeasured (net-new)"
+  - metric: "Slack notification delivery success rate"
+    target: ">= 99%"
+    baseline: "0 (net-new integration)"

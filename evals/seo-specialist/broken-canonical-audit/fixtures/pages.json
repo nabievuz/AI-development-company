@@ -1,0 +1,24 @@
+{
+  "pages": [
+    {
+      "url": "https://example.com/shoes/running",
+      "canonical": "https://example.com/shoes/running"
+    },
+    {
+      "url": "https://example.com/shoes/running?color=red",
+      "canonical": "https://example.com/shoes/running"
+    },
+    {
+      "url": "https://example.com/blog/post-1",
+      "canonical": ""
+    },
+    {
+      "url": "https://example.com/blog/post-1-print",
+      "canonical": "https://example.com/blog/post-1-old"
+    },
+    {
+      "url": "https://example.com/contact",
+      "canonical": "https://example.com/contact"
+    }
+  ]
+}

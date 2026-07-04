@@ -1,0 +1,11 @@
+{
+  "system": "core-ui",
+  "components": [
+    {"name": "Button.primary", "fill": {"token": "color.brand.primary"}},
+    {"name": "Alert.danger", "fill": {"hex": "#D32F2F"}},
+    {"name": "Card.surface", "fill": {"token": "color.surface.base"}},
+    {"name": "Badge.warning", "fill": {"hex": "#FFB300"}},
+    {"name": "Input.border", "fill": {"token": "color.border.default"}},
+    {"name": "Tooltip.bg", "fill": {"hex": "#212121"}}
+  ]
+}

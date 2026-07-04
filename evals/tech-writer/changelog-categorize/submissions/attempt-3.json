@@ -1,0 +1,13 @@
+{
+  "categories": {
+    "feat": [
+      "feat: add CSV export"
+    ],
+    "fix": [
+      "fix: null deref on empty cart"
+    ],
+    "docs": [
+      "docs: update README install steps"
+    ]
+  }
+}

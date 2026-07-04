@@ -1,0 +1,31 @@
+# Artifact schema — eval-harness
+# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
+# The file stem MUST equal `name`; tickets reference this via
+# produces: eval-harness / consumes: eval-harness.
+name: eval-harness
+version: 1
+description: >-
+  Golden-eval accuracy x cost scorecard emitted by scripts/agent_eval.py (P19 /
+  DAS-1487): one record per (role, model-tier), scored over k attempts against the
+  evals/<role>/<task-id>/ golden-task tree. Consumed downstream by DAS-1488.
+fields:
+  - name: role
+    type: string
+    required: true
+    description: Role key (board/ROUTING.md) the scorecard belongs to.
+  - name: tier
+    type: string
+    required: true
+    description: Model tier evaluated (opus / sonnet / haiku / unspecified).
+  - name: accuracy
+    type: number
+    required: true
+    description: Mean fractional credit in [0,1] over the role's golden tasks.
+  - name: cost_usd
+    type: number
+    required: false
+    description: Estimated USD cost from the DGO-X span ledger; null when inert (no spans yet).
+  - name: tasks
+    type: array
+    required: true
+    description: Per-task breakdown — task_id, rubric flag, accuracy, and per-attempt credits.

@@ -1,0 +1,7 @@
+{
+  "function": "clamp",
+  "params": {
+    "lo": 0,
+    "hi": 100
+  }
+}

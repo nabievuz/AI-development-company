@@ -1,0 +1,13 @@
+{
+  "screen": "billing-settings",
+  "usages": [
+    { "component": "Button", "variant": "primary" },
+    { "component": "Button", "variant": "danger" },
+    { "component": "Badge", "variant": "success" },
+    { "component": "Badge", "variant": "info" },
+    { "component": "Input", "variant": "default" },
+    { "component": "Input", "variant": "disabled" },
+    { "component": "Button", "variant": "secondary" },
+    { "component": "Tooltip", "variant": "default" }
+  ]
+}

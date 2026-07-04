@@ -1,0 +1,51 @@
+# config/budgets.yaml — DasLab cost budget SSOT (ORGANISM WS3 P12 / DAS-1459)
+#
+# Pricing source: claude-api skill, Current Models table cached 2026-06-04.
+# Re-verify these numbers when model IDs or list prices change.
+#
+# Unit prices are USD per 1 million tokens.
+# cached_input_per_1m = cache-read price ≈ 0.1× base input (per shared/prompt-caching.md).
+#
+# To update: check the claude-api skill "Current Models" table, confirm new
+# model IDs in governance/policies/model-allocation.md, then update the tier
+# sections below and re-run `python3 scripts/check_cost.py`.
+
+version: 1
+updated: 2026-07-03
+
+# ---------------------------------------------------------------------------
+# Per-tier unit prices  (opus / sonnet / haiku — Model Allocation Law)
+# ---------------------------------------------------------------------------
+# Pricing source: claude-api skill, Current Models table cached 2026-06-04
+tiers:
+  opus:
+    model_id: claude-opus-4-8
+    input_per_1m: 5.00
+    cached_input_per_1m: 0.50
+    output_per_1m: 25.00
+
+  sonnet:
+    model_id: claude-sonnet-4-6
+    input_per_1m: 3.00
+    cached_input_per_1m: 0.30
+    output_per_1m: 15.00
+
+  haiku:
+    model_id: claude-haiku-4-5
+    input_per_1m: 1.00
+    cached_input_per_1m: 0.10
+    output_per_1m: 5.00
+
+# ---------------------------------------------------------------------------
+# Per-run caps  (informational — not a blocking gate until C1 is promoted)
+# ---------------------------------------------------------------------------
+caps:
+  per_run:
+    max_input_tokens: 10_000_000      # 10M input tokens per run
+    max_output_tokens: 2_000_000      # 2M output tokens per run
+    max_cost_usd: 50.00               # $50 estimated cost per run
+
+  per_day:
+    max_input_tokens: 100_000_000     # 100M input tokens per calendar day
+    max_output_tokens: 20_000_000     # 20M output tokens per calendar day
+    max_cost_usd: 500.00              # $500 estimated cost per calendar day

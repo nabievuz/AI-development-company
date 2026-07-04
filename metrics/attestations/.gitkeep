@@ -1,0 +1,4 @@
+# Committed WaveAttestation receipts (ADR-0031 §4).
+# TRACKED, never gitignored: a fresh clone / CI reads these to verify a wave
+# emitted its events, ran its guardrails, wrote its ledgers, and snapshotted
+# evidence. One redacted, doubly hash-chained receipt per run: <run_id>.json.

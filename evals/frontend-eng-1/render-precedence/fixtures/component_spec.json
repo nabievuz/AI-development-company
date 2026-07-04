@@ -1,0 +1,9 @@
+{
+  "component": "DataView",
+  "render_priority": [
+    { "when": "error", "render": "ErrorView" },
+    { "when": "loading", "render": "Spinner" },
+    { "when": "items.length === 0", "render": "EmptyState" },
+    { "when": "otherwise", "render": "List" }
+  ]
+}

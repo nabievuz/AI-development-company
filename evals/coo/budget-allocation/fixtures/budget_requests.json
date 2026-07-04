@@ -1,0 +1,11 @@
+{
+  "quarter": "2026-Q3",
+  "total_budget_usd": 200000,
+  "requests": [
+    {"dept": "Finance", "amount_usd": 50000, "priority_score": 6},
+    {"dept": "Vendor Tools", "amount_usd": 30000, "priority_score": 5},
+    {"dept": "Support", "amount_usd": 80000, "priority_score": 9},
+    {"dept": "Facilities", "amount_usd": 40000, "priority_score": 4},
+    {"dept": "Legal", "amount_usd": 60000, "priority_score": 8}
+  ]
+}

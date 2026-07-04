@@ -1,0 +1,10 @@
+{
+  "app": "console-web",
+  "routes": [
+    {"name": "dashboard", "initial_bundle_kb": 220, "is_critical_path": true},
+    {"name": "settings", "initial_bundle_kb": 180, "is_critical_path": false},
+    {"name": "onboarding", "initial_bundle_kb": 90, "is_critical_path": false},
+    {"name": "analytics", "initial_bundle_kb": 260, "is_critical_path": false},
+    {"name": "billing", "initial_bundle_kb": 140, "is_critical_path": false}
+  ]
+}

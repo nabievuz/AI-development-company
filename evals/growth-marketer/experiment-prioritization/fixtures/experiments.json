@@ -1,0 +1,8 @@
+{
+  "experiments": [
+    { "name": "referral_incentive", "reach": 8, "impact": 6, "confidence": 7, "effort": 3 },
+    { "name": "onboarding_checklist", "reach": 9, "impact": 8, "confidence": 8, "effort": 5 },
+    { "name": "pricing_page_redesign", "reach": 5, "impact": 9, "confidence": 6, "effort": 8 },
+    { "name": "email_drip_campaign", "reach": 10, "impact": 4, "confidence": 9, "effort": 2 }
+  ]
+}

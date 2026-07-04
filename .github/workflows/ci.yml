@@ -1,0 +1,279 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies (hash-pinned — P13 / OSSF Pinned-Dependencies)
+        run: |
+          python -m pip install --upgrade pip
+          grep -q -- '--hash=sha256' requirements-dev.txt   # guard: the lockfile MUST be hashed
+          pip install --require-hashes -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check scripts tests
+
+      - name: Compile all tracked Python
+        run: python -m py_compile $(git ls-files '*.py')
+
+      - name: Board lint
+        run: python3 scripts/board_lint.py
+
+      - name: Agents in sync
+        run: python3 scripts/check_agents_sync.py
+
+      - name: Gate order
+        run: python3 scripts/check_gates.py
+
+      - name: No hardcoded paths (LAW A — self-locating root)
+        run: python3 scripts/check_no_hardcoded_paths.py
+
+      - name: Project isolation (LAW C — project-agnostic engine)
+        run: python3 scripts/check_project_isolation.py
+
+      - name: No dead runtime (no dead legacy :3100 endpoint)
+        run: python3 scripts/check_no_dead_runtime.py
+
+      - name: Precedence enforced (no charter/overlay relaxes a board rule)
+        run: python3 scripts/check_precedence.py
+
+      - name: Cache-prefix invariants (ADR 0006 — W4)
+        run: python3 scripts/check_cache_prefix.py
+
+      - name: CODEOWNERS complete + in sync
+        run: python3 scripts/check_codeowners.py
+
+      - name: Quickstart works on a fresh clone
+        run: python3 scripts/check_quickstart.py
+
+      - name: Link integrity (blocking)
+        run: python3 scripts/check_links.py
+
+      # --- evidence-and-safety validators ---
+      - name: T7 quality rubric intact (immutable hard blocker — R-3)
+        run: python3 scripts/check_t7_quality.py
+      - name: T1 busy-fraction gate (R-1)
+        run: python3 scripts/check_busy_fraction.py
+      - name: Never-auto-approve / QONUN-5 (R-4)
+        run: python3 scripts/check_never_auto_approve.py --board board --config config/risk_taxonomy.yaml
+      - name: Clarify gate / Definition-of-Ready (ADR-0014, fail-closed — ADR-0013 ratified 2026-06-26)
+        run: python3 scripts/check_clarifications.py --strict
+      - name: Approved-goal-queue integrity / QONUN-3 (ADR-0014)
+        run: python3 scripts/check_approved_goal_queue.py
+      - name: SPEC.md consistency / Phase 2 (ADR-0015, dormant until a SPEC exists)
+        run: python3 scripts/check_spec_consistency.py
+      - name: Ticket dependency graph / Phase 3 (ADR-0016, acyclic + no dangling deps)
+        run: python3 scripts/check_dependency_graph.py
+      - name: Role-overlay contract / P3 (ADR-0018, strict — Mission/Scope/DoD/Escalation)
+        run: python3 scripts/check_overlay_sections.py --strict
+      - name: Gate promotion status / P1b (ADR-0020, informational — unmeasured is SKIPPED, not green)
+        run: python3 scripts/gate_promotion.py
+      - name: GATE-6 evidence record, max_quality_drop 0 (R-2)
+        run: python3 scripts/check_gate6_record.py --events board/.events.jsonl --experiments experiments
+      - name: BREAK-GLASS 24h post-incident review (R-8)
+        run: python3 scripts/check_break_glass_review.py
+      - name: Self-optimizing loop stays off / shadow (RFC-001)
+        run: python3 scripts/check_loop_mode.py
+
+      # --- Org Schema SSOT generate-and-diff drift gate ---
+      - name: Org Schema in sync — generated constants + never-auto-approve (R-12)
+        run: python3 scripts/check_org_drift.py
+      # --- ArcRift migration discipline — shadow-SQLite validation ---
+      - name: ArcRift migration upgrade()+downgrade() shadow validation (R-13)
+        run: python3 -m pytest tests/test_arcrift_migration.py -q
+
+      # --- enforcement: T2-T6 + anti-gaming + attestation ---
+      - name: T2 idle-wave rate (R-1)
+        run: python3 scripts/check_idle_waves.py
+      - name: T3 effective concurrency (R-1)
+        run: python3 scripts/check_concurrency.py
+      - name: T4 cost/model-mix (R-1)
+        run: python3 scripts/check_model_mix.py
+      - name: T5 recovery reliability — inert-by-design shadow check (R-1)
+        # Bare check_recovery.py has NO teeth on an empty board: it reads
+        # recovery_drill events and exits 0 when none exist (inert by design).
+        # The REAL T5 teeth is the "T5 kill-drill (real crash+resume)" step below.
+        run: python3 scripts/check_recovery.py
+      - name: T6 review efficiency (R-1)
+        run: python3 scripts/check_review_eff.py
+      - name: Anti-gaming + T1b (R-9)
+        run: python3 scripts/check_metric_gaming.py
+      - name: GATE-6 cryptographic attestation (R-2 / ADR-0003)
+        run: python3 scripts/check_gate6_attestation.py
+      - name: Wave-attestation completeness + hash-chain (GATE-4 / ADR-0031 / DAS-1500)
+        # Verifies every committed metrics/attestations/<run_id>.json is COMPLETE
+        # (every ticket has run_start/run_end/span, run_end carried the metrics_lib
+        # fields, every counted run has committed evidence, ledger digest present)
+        # and its prev/self hash-chain is intact. Inert (exit 0) only when none
+        # exist; the committed sample makes this gate BITE on real data.
+        run: python3 scripts/check_attestation.py
+      - name: Wave reconciliation — ledger ⇄ attestation bijection + chain + coverage (GATE-4 / ADR-0032 / DAS-1506)
+        # Proves the committed dispatch record reconciles: every board/wave-ledger.jsonl
+        # entry bijects to its committed attestation (ticket set + recomputed
+        # attestation_hash agree), the ledger hash-chain is unbroken and per-run wave
+        # indices are gap-free, every recorded ticket is terminal, and every
+        # post-baseline run_id-bearing done ticket is covered. Inert (exit 0) only when
+        # both ledger and attestations are empty; the committed sample gives it teeth.
+        run: python3 scripts/check_wave_reconciliation.py
+
+      # --- ORGANISM validators wired as REAL gates (must exit 0) ---
+      # These validators shipped but were "present but never RUN as gates"
+      # (self-audit finding). Each runs here and must exit 0.
+      - name: Clean-room import-ban gate — no donor libraries (§2 clean-room / F-5)
+        # Was only inside diagnostics; now a dedicated blocking CI step so a banned
+        # donor import (langgraph / crewai / agency-swarm / superagi / agent-framework)
+        # fails CI directly.
+        run: python3 scripts/check_import_ban.py
+      - name: Communication-flows closed-graph gate (ADR-0026)
+        run: python3 scripts/check_comm_flows.py
+      - name: Communication-flows shape + derivation gate (ADR-0026 / DAS-1465 / F-5)
+        # validate_commflows.py checks the authored communication-flows.yaml shape +
+        # its round-trip derivation from ROUTING.md — distinct from check_comm_flows.py
+        # (closed-graph drift). Was covered only indirectly via pytest; now a real gate.
+        run: python3 scripts/validate_commflows.py
+      - name: DGO-X span coverage + well-formedness gate (DAS-1456)
+        run: python3 scripts/check_spans.py
+      - name: C1 cost-ledger gate (ORGANISM WS3 P12 / DAS-1459)
+        run: python3 scripts/check_cost.py
+      - name: Progress-ledger schema gate (P7 / DAS-1470)
+        # Per-ledger validator (--path). Validates every board/runs/*/progress-ledger.json;
+        # inert pass (no-op, exit 0) when a run has produced no ledger yet.
+        run: |
+          shopt -s nullglob
+          found=0
+          for led in board/runs/*/progress-ledger.json; do
+            found=1
+            python3 scripts/check_ledger.py --path "$led"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "check_ledger: no board/runs/*/progress-ledger.json present — inert pass (no run ledgers to validate)"
+          fi
+      - name: Golden-eval competence gate — REAL teeth (a role below 0.80 fails CI)
+        # All 32 roles with --enforce: any role scoring < 0.80 exits non-zero.
+        run: python3 scripts/agent_eval.py --all --enforce
+      - name: Golden-eval anti-gaming gate — empty-probe + task.md answer-key leak (DAS-1536 / F-5)
+        # Fails CI if a degenerate submission earns credit OR a task.md example scores
+        # >= 0.5 through its own verifier (the graded answer leaked into the prompt).
+        # Was covered only indirectly via pytest; now a dedicated blocking step.
+        run: python3 scripts/agent_eval.py --check-gaming
+
+      # --- safety & observability ---
+      - name: ArcRift memory governance (R-5)
+        run: python3 scripts/check_memory_governance.py
+      - name: Secrets never in prompts/runtime (R-6)
+        run: python3 scripts/check_secrets.py
+      - name: Least-privilege per agent (R-6)
+        run: python3 scripts/check_permissions.py
+      - name: Prompt-injection guard (R-6)
+        run: python3 scripts/check_injection_guard.py
+      - name: Operator cockpit renders (R-7, smoke)
+        run: python3 scripts/cockpit.py > /dev/null && python3 scripts/cockpit.py --glossary > /dev/null
+
+      # --- operational maturity ---
+      - name: Replay-QA recovery drills (T5 / RFC-003)
+        run: python3 scripts/replay_qa.py
+      - name: T5 kill-drill (real crash+resume) — real T5 teeth (DAS-1451)
+        # Real kill -9 mid-wave-2 + resume + fork, into a throwaway temp store
+        # (never board/.events.jsonl). The >=20-iteration accumulation runs on the
+        # scheduled recovery-drill.yml workflow to keep PR latency low.
+        run: python3 scripts/kill_drill.py --smoke
+      - name: Kill-switch / safety-rail drill — cheap smoke (WS4 SI-2..SI-7 / DAS-1478)
+        # One full drill pass: break-glass halt + auto-expiry, quiet hours, budget
+        # caps, max_concurrent_waves, zero gate/approval violations, loop stays off.
+        # The >=20-pass accumulation runs on the scheduled kill-switch-drill.yml job.
+        run: python3 scripts/kill_switch_drill.py --smoke
+      - name: Operator trust tools render (R10/R11/R15, smoke)
+        run: |
+          echo '{"ticket_type":"feature","stage":"GATE-3","paths":["src/x.py"]}' > "${RUNNER_TEMP:-/tmp}/intent_smoke.json"
+          python3 scripts/intent_preview.py --plan-file "${RUNNER_TEMP:-/tmp}/intent_smoke.json" > /dev/null   # R10
+          python3 scripts/approval_digest.py > /dev/null                                                       # R11
+          python3 scripts/escalation_context.py --ticket DAS-SMOKE-NONEXISTENT > /dev/null                     # R15
+
+      # --- advanced optimization (trigger-gated; gates inert until live data) ---
+      - name: Blind review + rotation (T6 anti-drift)
+        run: python3 scripts/check_blind_review.py
+      - name: P5 advanced tools render (R16/R20/R21, smoke)
+        run: |
+          python3 scripts/alerting.py > /dev/null
+          python3 scripts/trends.py > /dev/null
+          python3 scripts/adaptive_taxonomy.py > /dev/null
+
+      # --- self-optimization loop controller (reports only; loop stays off) ---
+      - name: Loop promotion controller (RFC-001 §5, smoke)
+        run: python3 scripts/loop_controller.py > /dev/null
+
+      - name: Tests
+        run: python -m pytest -q
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  portability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Clone to a different path (simulate another machine) and boot
+        run: |
+          dest="${RUNNER_TEMP}/machine-b"
+          git clone . "$dest"
+          cd "$dest"
+          python3 scripts/bootstrap.py                 # idempotent first-run setup (creates projects/)
+          python3 scripts/doctor.py                    # exit 0 on a bare runner: REQUIRED pass, ArcRift/Ollama=WARN
+          python3 scripts/gen_subagents.py && git diff --exit-code   # zero drift: .claude/agents + ROUTING
+          python3 scripts/check_no_hardcoded_paths.py
+          python3 scripts/check_project_isolation.py
+          python3 scripts/check_no_dead_runtime.py
+          python3 scripts/check_codeowners.py
+          python3 scripts/board_lint.py
+          python3 scripts/check_links.py
+
+  release-gate:
+    runs-on: ubuntu-latest
+    needs: [validate, secret-scan, portability]
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Diagnostics — must print SCORE = 100/100
+        run: python3 scripts/diagnostics.py

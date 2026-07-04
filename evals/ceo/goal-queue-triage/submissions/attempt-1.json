@@ -1,0 +1,10 @@
+{
+  "decisions": {
+    "G1": "approved",
+    "G2": "blocked",
+    "G3": "approved",
+    "G4": "blocked",
+    "G5": "approved",
+    "G6": "blocked"
+  }
+}

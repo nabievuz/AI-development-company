@@ -1,0 +1,8 @@
+{
+  "steps": [
+    "migrate_db",
+    "deploy_api",
+    "warm_cache",
+    "flip_traffic"
+  ]
+}

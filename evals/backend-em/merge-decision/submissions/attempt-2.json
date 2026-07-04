@@ -1,0 +1,4 @@
+{
+  "decision": "request_changes",
+  "reason": "missing_idempotency"
+}

@@ -1,0 +1,4 @@
+{
+  "idempotent": true,
+  "mechanism": "idempotency_key"
+}

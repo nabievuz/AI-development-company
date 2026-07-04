@@ -1,0 +1,8 @@
+{
+  "acceptance_criteria": [
+    "Given a user with a registered email, When they request a password reset, Then a reset email is sent within a reasonable time.",
+    "Given a reset link that has expired, When the user clicks it, Then they see an expired link message.",
+    "Given repeated reset requests from the same source, When the rate limit is hit, Then further requests are throttled.",
+    "Given an invalid email address, When the reset is requested, Then a clear invalid email validation error is shown instead of a 500."
+  ]
+}

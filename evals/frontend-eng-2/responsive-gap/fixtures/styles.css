@@ -1,0 +1,18 @@
+.sidebar {
+  width: 250px;
+  float: left;
+}
+
+.main {
+  margin-left: 260px;
+}
+
+@media (max-width: 599px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; }
+}
+
+@media (min-width: 768px) {
+  .sidebar { width: 300px; }
+  .main { margin-left: 310px; }
+}

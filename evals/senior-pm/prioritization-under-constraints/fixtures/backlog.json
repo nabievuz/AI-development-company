@@ -1,0 +1,11 @@
+{
+  "capacity_weeks": 7,
+  "items": [
+    {"id": "A", "name": "Inline CSV preview before export", "effort_weeks": 2, "value": 5, "depends_on": []},
+    {"id": "B", "name": "Bulk export API for enterprise accounts", "effort_weeks": 3, "value": 8, "depends_on": []},
+    {"id": "C", "name": "Scheduled recurring exports", "effort_weeks": 2, "value": 4, "depends_on": ["A"]},
+    {"id": "D", "name": "Self-serve export UI redesign", "effort_weeks": 4, "value": 9, "depends_on": []},
+    {"id": "E", "name": "Export usage analytics widget", "effort_weeks": 1, "value": 2, "depends_on": []},
+    {"id": "F", "name": "Per-partner export rate limiting", "effort_weeks": 3, "value": 6, "depends_on": ["B"]}
+  ]
+}

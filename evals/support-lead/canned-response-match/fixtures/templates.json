@@ -1,0 +1,24 @@
+{
+  "templates": [
+    {
+      "id": "TPL-REFUND",
+      "use_when": "the customer reports a billing charge problem or asks for a refund"
+    },
+    {
+      "id": "TPL-PWRESET",
+      "use_when": "the customer cannot log in and needs password-reset / account-access help"
+    },
+    {
+      "id": "TPL-BUG-ACK",
+      "use_when": "the customer reports a crash, error, or broken functionality"
+    },
+    {
+      "id": "TPL-FEATURE-ACK",
+      "use_when": "the customer suggests a new feature or enhancement idea"
+    },
+    {
+      "id": "TPL-GENERAL",
+      "use_when": "the customer asks a general how-to / informational question with no blocker"
+    }
+  ]
+}

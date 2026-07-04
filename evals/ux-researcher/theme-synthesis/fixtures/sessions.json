@@ -1,0 +1,36 @@
+{
+  "sessions": [
+    {
+      "session_id": "S1",
+      "observations": [
+        {"theme": "navigation_confusion", "note": "Participant clicked the logo expecting it to go home; it did nothing."},
+        {"theme": "search_slow", "note": "Search results took over 5 seconds to appear."}
+      ]
+    },
+    {
+      "session_id": "S2",
+      "observations": [
+        {"theme": "navigation_confusion", "note": "Participant got lost trying to return to the previous screen, used browser back instead."}
+      ]
+    },
+    {
+      "session_id": "S3",
+      "observations": [
+        {"theme": "navigation_confusion", "note": "Participant expected a breadcrumb trail and didn't find one."},
+        {"theme": "onboarding_unclear", "note": "Participant skipped the onboarding tour because the purpose wasn't clear."}
+      ]
+    },
+    {
+      "session_id": "S4",
+      "observations": [
+        {"theme": "search_slow", "note": "Participant repeated the same search twice, thinking it hadn't registered."}
+      ]
+    },
+    {
+      "session_id": "S5",
+      "observations": [
+        {"theme": "onboarding_unclear", "note": "Participant asked the moderator what the onboarding checklist was for."}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "quarter": "2026-Q3",
+  "vendors": [
+    {"name": "Acme Cloud", "annual_cost_usd": 120000, "cost_change_pct": 8, "sla_breaches_ytd": 0},
+    {"name": "BetaPay", "annual_cost_usd": 45000, "cost_change_pct": 25, "sla_breaches_ytd": 1},
+    {"name": "GammaSupport", "annual_cost_usd": 30000, "cost_change_pct": 5, "sla_breaches_ytd": 3},
+    {"name": "DeltaHosting", "annual_cost_usd": 60000, "cost_change_pct": 12, "sla_breaches_ytd": 0},
+    {"name": "EpsilonCRM", "annual_cost_usd": 20000, "cost_change_pct": 22, "sla_breaches_ytd": 2}
+  ]
+}

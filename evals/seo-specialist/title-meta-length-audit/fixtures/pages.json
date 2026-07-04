@@ -1,0 +1,34 @@
+{
+  "pages": [
+    {
+      "id": "home",
+      "title": "Home Improvement Tips for Every Season Guide",
+      "meta_description": "Discover practical home improvement tips and seasonal maintenance guides to keep your house in great shape all year long."
+    },
+    {
+      "id": "about",
+      "title": "About Us",
+      "meta_description": "Learn more about our company history, mission, and the team behind our products and services."
+    },
+    {
+      "id": "product-a",
+      "title": "Best Waterproof Hiking Boots for Rugged Mountain Terrain and Long Trail Adventures 2026",
+      "meta_description": "Shop our best waterproof hiking boots built for rugged terrain, long trails, and all-weather adventures."
+    },
+    {
+      "id": "blog-post",
+      "title": "Ten Ways to Improve Your Garden This Spring",
+      "meta_description": "Quick spring gardening tips."
+    },
+    {
+      "id": "contact",
+      "title": "Contact Our Customer Support Team Today",
+      "meta_description": "Reach our customer support team by phone, email, or live chat for any questions about your order, returns, shipping, or account issues, we are here to help every day of the week including weekends and holidays."
+    },
+    {
+      "id": "faq",
+      "title": "Frequently Asked Questions About Shipping",
+      "meta_description": "Find answers to frequently asked questions about shipping times, costs, tracking, and delivery options for all orders."
+    }
+  ]
+}

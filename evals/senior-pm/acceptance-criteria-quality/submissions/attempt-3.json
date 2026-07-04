@@ -1,0 +1,8 @@
+{
+  "acceptance_criteria": [
+    "Given an expired reset link, When clicked, Then show an expired-link message and offer to resend.",
+    "Rate limit repeated reset requests for the same account so automated hammering is blocked.",
+    "Given an invalid or malformed email, When submitting the reset form, Then show a specific invalid email error, not a 500.",
+    "A reset token that has already been used to change the password once must be rejected if it is used again."
+  ]
+}

@@ -1,0 +1,5 @@
+--- a/config.py
++++ b/config.py
++API_KEY = "sk-EXAMPLE-FAKE-TEST-KEY-REDACTED"
++DEBUG = True
+-LEGACY = 1

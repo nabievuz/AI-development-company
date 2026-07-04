@@ -1,0 +1,9 @@
+{
+  "classifications": {
+    "P-1": {"status": "within_authority", "escalate_to": null},
+    "P-2": {"status": "escalate", "escalate_to": "coo"},
+    "P-3": {"status": "escalate", "escalate_to": "ceo"},
+    "P-4": {"status": "within_authority", "escalate_to": null},
+    "P-5": {"status": "escalate", "escalate_to": "board"}
+  }
+}

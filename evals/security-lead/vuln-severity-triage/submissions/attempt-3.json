@@ -1,0 +1,10 @@
+{
+  "triage": {
+    "VULN-01": { "severity": "critical", "decision": "block" },
+    "VULN-02": { "severity": "high", "decision": "block" },
+    "VULN-03": { "severity": "medium", "decision": "accept" },
+    "VULN-04": { "severity": "low", "decision": "accept" },
+    "VULN-05": { "severity": "critical", "decision": "block" },
+    "VULN-06": { "severity": "high", "decision": "block" }
+  }
+}

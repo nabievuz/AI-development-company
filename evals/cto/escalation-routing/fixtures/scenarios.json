@@ -1,0 +1,66 @@
+[
+  {
+    "id": "S1",
+    "domain": "backend",
+    "description": "Add a caching layer in front of the checkout API to cut p99 latency.",
+    "budget_usd": 15000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S2",
+    "domain": "security",
+    "description": "Rotate all customer-facing API keys after a vendor breach disclosure.",
+    "budget_usd": 5000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S3",
+    "domain": "infra",
+    "description": "Migrate the primary database to a new cloud region for latency reasons.",
+    "budget_usd": 400000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S4",
+    "domain": "frontend",
+    "description": "Redesign the onboarding flow; Product and Design leadership disagree on scope.",
+    "budget_usd": 20000,
+    "cross_dept_conflict": true,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S5",
+    "domain": "quality",
+    "description": "Adopt a new mandatory QA sign-off gate that blocks all releases company-wide.",
+    "budget_usd": 8000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": true
+  },
+  {
+    "id": "S6",
+    "domain": "infra",
+    "description": "Add a read replica to reduce reporting-query load on the primary DB.",
+    "budget_usd": 30000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S7",
+    "domain": "frontend",
+    "description": "Ship a dark-mode toggle to the settings page.",
+    "budget_usd": 12000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  },
+  {
+    "id": "S8",
+    "domain": "quality",
+    "description": "Add a new regression suite for the payments checkout path.",
+    "budget_usd": 9000,
+    "cross_dept_conflict": false,
+    "requires_ceo_approval": false
+  }
+]

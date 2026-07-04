@@ -1,0 +1,9 @@
+{
+  "total_budget": 100000,
+  "channels": [
+    { "name": "paid_search", "spend": 40000, "roas": 3.5 },
+    { "name": "display", "spend": 20000, "roas": 1.2 },
+    { "name": "social", "spend": 25000, "roas": 2.8 },
+    { "name": "affiliate", "spend": 15000, "roas": 0.8 }
+  ]
+}

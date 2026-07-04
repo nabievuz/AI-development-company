@@ -1,0 +1,4 @@
+{
+  "vuln_line": 3,
+  "vuln_type": "sql_injection"
+}

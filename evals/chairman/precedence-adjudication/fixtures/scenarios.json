@@ -1,0 +1,29 @@
+{
+  "precedence_order": [
+    "1. governance/charter.md — company charter.",
+    "2. Board-issued policy in governance/ (security, compliance, hiring, conduct).",
+    "3. <dept>/CLAUDE.md — dept charter.",
+    "4. <dept>/agents/<role>/AGENTS.md — role overlay.",
+    "5. <dept>/AGENTS.md — runtime instructions.",
+    "6. AGENTS.md — the org spec itself."
+  ],
+  "rule": "When documents disagree, lower-precedence may add constraints but never relax them set higher up. Lower level NUMBER = HIGHER precedence = wins a direct conflict.",
+  "scenarios": [
+    {
+      "scenario_id": "S1",
+      "description": "engineering/CLAUDE.md (the Engineering dept charter) says a PR needs one reviewer approval before merge. engineering/agents/qa-eng/AGENTS.md (the QA Engineer role overlay) says a QA Engineer's own PRs may self-merge without review. The two conflict — which one governs?"
+    },
+    {
+      "scenario_id": "S2",
+      "description": "governance/charter.md states the company charter requires board sign-off on any budget over $10k. A board-issued security policy document living under governance/ states security-tooling purchases under $50k are pre-approved without board sign-off. The two conflict — which one governs?"
+    },
+    {
+      "scenario_id": "S3",
+      "description": "product/AGENTS.md (the Product dept's runtime instructions) tells every product role to skip the discovery-gate for goals under $1k. The root AGENTS.md org spec requires the Founder discovery gate for every new goal regardless of size. The two conflict — which one governs?"
+    },
+    {
+      "scenario_id": "S4",
+      "description": "design/agents/product-designer/AGENTS.md (the Product Designer role overlay) says the Product Designer may work two tickets at once when both are trivial. design/AGENTS.md (the Design dept's runtime instructions) enforces WIP = 1 for every role without exception. The two conflict — which one governs?"
+    }
+  ]
+}

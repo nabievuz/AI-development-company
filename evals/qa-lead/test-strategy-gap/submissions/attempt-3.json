@@ -1,0 +1,3 @@
+{
+  "missing_test_types": ["integration", "e2e", "security", "performance"]
+}

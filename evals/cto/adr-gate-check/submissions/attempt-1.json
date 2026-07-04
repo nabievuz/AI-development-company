@@ -1,0 +1,8 @@
+{
+  "results": {
+    "R1": { "pass": true, "missing": [] },
+    "R2": { "pass": false, "missing": ["architecture_diagram", "risk_analysis"] },
+    "R3": { "pass": true, "missing": [] },
+    "R4": { "pass": false, "missing": ["rollback_plan"] }
+  }
+}

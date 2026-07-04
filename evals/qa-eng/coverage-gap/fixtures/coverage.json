@@ -1,0 +1,9 @@
+{
+  "module": "config_loader",
+  "functions": [
+    {"name": "load_config", "covered": true},
+    {"name": "parse_config", "covered": false},
+    {"name": "validate_token", "covered": false},
+    {"name": "emit_report", "covered": true}
+  ]
+}

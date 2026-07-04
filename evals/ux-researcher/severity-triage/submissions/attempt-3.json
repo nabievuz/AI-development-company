@@ -1,0 +1,8 @@
+{
+  "severities": {
+    "F1": "critical",
+    "F2": "minor",
+    "F3": "minor",
+    "F4": "major"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "component": "SubmitButton",
+  "props": {
+    "label": { "type": "string", "required": true },
+    "onClick": { "type": "function", "required": true },
+    "disabled": { "type": "boolean", "required": false },
+    "variant": { "type": "string", "required": false, "enum": ["primary", "secondary"] }
+  }
+}

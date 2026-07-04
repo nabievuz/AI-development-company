@@ -1,0 +1,37 @@
+[
+  {
+    "id": "DEP-1",
+    "data_loss_risk": false,
+    "migration_irreversible": false,
+    "error_rate_increase_pct": 12,
+    "p99_latency_increase_pct": 20
+  },
+  {
+    "id": "DEP-2",
+    "data_loss_risk": false,
+    "migration_irreversible": true,
+    "error_rate_increase_pct": 15,
+    "p99_latency_increase_pct": 10
+  },
+  {
+    "id": "DEP-3",
+    "data_loss_risk": true,
+    "migration_irreversible": true,
+    "error_rate_increase_pct": 2,
+    "p99_latency_increase_pct": 5
+  },
+  {
+    "id": "DEP-4",
+    "data_loss_risk": false,
+    "migration_irreversible": false,
+    "error_rate_increase_pct": 1,
+    "p99_latency_increase_pct": 10
+  },
+  {
+    "id": "DEP-5",
+    "data_loss_risk": false,
+    "migration_irreversible": false,
+    "error_rate_increase_pct": 0,
+    "p99_latency_increase_pct": 150
+  }
+]

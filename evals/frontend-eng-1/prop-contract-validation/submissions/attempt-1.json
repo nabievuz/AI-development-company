@@ -1,0 +1,9 @@
+{
+  "verdicts": {
+    "a": "valid",
+    "b": "invalid",
+    "c": "invalid",
+    "d": "invalid",
+    "e": "invalid"
+  }
+}

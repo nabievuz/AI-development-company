@@ -1,0 +1,9 @@
+{
+  "acceptance_criteria": [
+    "Given a valid account, When the user requests a password reset, Then a reset email with a link is sent.",
+    "Given a reset link older than its expiry window, When the user clicks it, Then the user sees a clear 'This link has expired' message and can request a new one.",
+    "Given more than N reset requests for the same account within a short window, When the rate limit is exceeded, Then the endpoint returns a clear rate-limit response instead of accepting further requests.",
+    "Given an email address that is invalid or malformed, When the user submits the reset request, Then the user sees a specific invalid email message rather than a generic 500 error.",
+    "Given a reset token that has already been used to successfully change the password, When it is used again, Then the request is rejected because the token was already used."
+  ]
+}

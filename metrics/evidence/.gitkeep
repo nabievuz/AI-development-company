@@ -1,0 +1,5 @@
+# Committed KPI evidence (P13 / DAS-1460).
+# This directory is TRACKED (committed, NOT gitignored): scripts/snapshot_evidence.py
+# writes metrics/evidence/<run_id>.json here as durable, git-auditable proof for
+# the counted completions that check_metric_gaming.py requires. Keep this .gitkeep
+# so the directory exists on a fresh clone even before any run has produced a snapshot.

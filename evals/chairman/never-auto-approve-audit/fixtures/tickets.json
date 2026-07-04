@@ -1,0 +1,38 @@
+[
+  {
+    "id": "DAS-9001",
+    "approval": "auto",
+    "ticket_type": "feature",
+    "labels": []
+  },
+  {
+    "id": "DAS-9002",
+    "approval": "auto",
+    "ticket_type": "security_sensitive",
+    "labels": []
+  },
+  {
+    "id": "DAS-9003",
+    "approval": "manual:cxo",
+    "ticket_type": "schema_migration",
+    "labels": []
+  },
+  {
+    "id": "DAS-9004",
+    "approval": "auto",
+    "ticket_type": "chore",
+    "labels": ["governance_or_policy"]
+  },
+  {
+    "id": "DAS-9005",
+    "approval": "auto",
+    "ticket_type": "secret_change",
+    "labels": []
+  },
+  {
+    "id": "DAS-9006",
+    "approval": "human:founder",
+    "ticket_type": "gate5_deployment",
+    "labels": []
+  }
+]

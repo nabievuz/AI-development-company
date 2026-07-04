@@ -1,0 +1,9 @@
+{
+  "classifications": {
+    "s1": "no-cleanup",
+    "s2": "stale-value",
+    "s3": "race-condition",
+    "s4": "ok",
+    "s5": "ok"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "results": {
+    "RFC-201": { "pass": true, "missing": [] },
+    "RFC-202": { "pass": false, "missing": ["trust_boundaries"] },
+    "RFC-203": { "pass": true, "missing": [] },
+    "RFC-204": { "pass": false, "missing": ["mitigations", "risk_acceptance_log"] },
+    "RFC-205": { "pass": true, "missing": [] },
+    "RFC-206": { "pass": true, "missing": [] }
+  }
+}

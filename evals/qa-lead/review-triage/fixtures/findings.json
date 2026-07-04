@@ -1,0 +1,10 @@
+{
+  "pr": "PR-882",
+  "findings": [
+    {"id": "F1", "severity": "blocker", "category": "correctness"},
+    {"id": "F2", "severity": "major", "category": "security"},
+    {"id": "F3", "severity": "minor", "category": "style"},
+    {"id": "F4", "severity": "nit", "category": "naming"},
+    {"id": "F5", "severity": "major", "category": "style"}
+  ]
+}

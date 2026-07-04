@@ -1,0 +1,45 @@
+[
+  {
+    "id": "RFC-201",
+    "title": "New OAuth token-refresh service",
+    "gate_level": 2,
+    "evidence_present": ["data_flow_diagram", "trust_boundaries", "mitigations"]
+  },
+  {
+    "id": "RFC-202",
+    "title": "Internal admin CSV export",
+    "gate_level": 2,
+    "evidence_present": ["data_flow_diagram", "mitigations"]
+  },
+  {
+    "id": "RFC-203",
+    "title": "Payments webhook redriver",
+    "gate_level": 4,
+    "evidence_present": ["data_flow_diagram", "trust_boundaries", "mitigations", "redteam_report", "risk_acceptance_log"]
+  },
+  {
+    "id": "RFC-204",
+    "title": "Customer PII export batch job",
+    "gate_level": 4,
+    "evidence_present": ["data_flow_diagram", "trust_boundaries", "redteam_report"]
+  },
+  {
+    "id": "RFC-205",
+    "title": "Public API rate-limit bypass fix deploy",
+    "gate_level": 5,
+    "evidence_present": [
+      "data_flow_diagram", "trust_boundaries", "mitigations",
+      "redteam_report", "risk_acceptance_log",
+      "pen_test_results", "secrets_scan_clean"
+    ]
+  },
+  {
+    "id": "RFC-206",
+    "title": "New third-party SSO provider deploy",
+    "gate_level": 5,
+    "evidence_present": [
+      "data_flow_diagram", "trust_boundaries", "mitigations",
+      "redteam_report", "pen_test_results"
+    ]
+  }
+]
