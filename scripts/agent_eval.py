@@ -382,7 +382,7 @@ def _json_candidates(text: str) -> list[object]:
             value = json.loads(frag)
         except (ValueError, TypeError):
             return
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             out.append(value)
 
     for match in _re.finditer(r"```[a-zA-Z0-9]*\n(.*?)```", text, _re.S):

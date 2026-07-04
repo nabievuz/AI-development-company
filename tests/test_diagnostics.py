@@ -97,7 +97,7 @@ def test_ruff_absent_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     real_run = mod.subprocess.run
 
     def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
-        if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "ruff":
+        if isinstance(cmd, list | tuple) and cmd and cmd[0] == "ruff":
             raise FileNotFoundError("ruff not installed")
         return real_run(cmd, *args, **kwargs)
 
