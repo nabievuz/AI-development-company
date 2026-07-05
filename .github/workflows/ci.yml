@@ -236,6 +236,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
+          # Silence gitleaks-action's internal stdlib DeprecationWarnings (DEP0040
+          # punycode / DEP0169 url.parse) — upstream code, still deprecated on node24;
+          # scoped to these two codes so genuinely new warnings still surface.
+          NODE_OPTIONS: "--disable-warning=DEP0040 --disable-warning=DEP0169"
 
   portability:
     strategy:
