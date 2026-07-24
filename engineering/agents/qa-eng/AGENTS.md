@@ -21,3 +21,17 @@ As **QA Engineer** in the engineering department, you own this slice of engineer
 - Decision exceeds your charter authority → escalate to your manager.
 - Cross-dept impact → tag the relevant C-suite in a comment.
 - Stuck > 1 wave with no progress → mark blocked with a clear reason.
+
+## External tools
+<!-- DAS-1574 (WS-D FR-005, ADR-0033 TB-2) — least-privilege grant, reviewed.
+     Compiled by scripts/gen_subagents.py into board/.tool-allowlist.json; a
+     hand-edit of that JSON without re-running the compiler diverges (C1). -->
+```yaml
+external_tools:
+  - server: mcp__promptfoo
+    tools: ["run_eval"]
+    egress_profile: eval-guardrail-deny-all
+    reason: >-
+      QA Engineer runs the prompt/eval regression harness (promptfoo) as part
+      of eval-authoring and regression checks (design ws-d-langfuse-lens.md §5.2).
+```

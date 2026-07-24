@@ -54,3 +54,4 @@ board/.control-plane-audit.jsonl
 # Control-plane vendored offline install bundle (machine-specific wheels +
 # unpacked packages for running WS-H without network access — never tracked)
 tools/control_plane/.vendor/
+board/.tool-audit.jsonl

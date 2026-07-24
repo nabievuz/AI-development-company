@@ -1,7 +1,7 @@
 ---
 id: DAS-1570
 title: MUSTAQIL WS-D LENS — self-host observability and governed-tool admission (EPIC)
-status: backlog
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -74,3 +74,6 @@ the feature-flag scaffold (`ws_d_langfuse_lens` already landed `false`). Runs
 parallel from WS-A per the master-prompt sequence; only DAS-1574 (tool-admission
 Development) carries a hard dependency on the WS-A tool-bridge sidecar
 (DAS-1547) since that ticket builds the 0033 edge mechanism it reuses.
+
+### 2026-07-24 — Orchestrator (/daslab-cycle)
+**EPIC CLOSED — WS-D LENS complete.** All six AADL gates closed: GATE-1 (1571, ADR-0036 ratified — corrected LangSmith→self-host Langfuse) → GATE-2 (1572, OTLP field-map + redaction + tool-admission design) → GATE-3 (1573 exporter + 1574 eval-tool admission; security-eng red-team PASSED — redaction-before-wire, in-tenant fail-closed, least-privilege grants) → GATE-4 (1575, SC + 2 residuals) → GATE-5 (1576, self-host Langfuse runbook, flag OFF) → GATE-6 (1577, redaction/in-tenant/allow-list-drift health check). Behind ws_d_langfuse_lens OFF. LOCAL-ONLY. WS-C (after B) + WS-E + WS-G now the frontier.

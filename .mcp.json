@@ -37,6 +37,30 @@
         "${workspaceFolder}/tools/browser/browser_bridge.py"
       ],
       "env": {}
+    },
+    "promptfoo": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/mcp_bridges/promptfoo_tool_bridge.py"
+      ],
+      "env": {}
+    },
+    "agentshield": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/mcp_bridges/agentshield_tool_bridge.py"
+      ],
+      "env": {}
+    },
+    "presidio": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/mcp_bridges/presidio_tool_bridge.py"
+      ],
+      "env": {}
     }
   }
 }

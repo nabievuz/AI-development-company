@@ -1,1 +1,12 @@
-{}
+{
+  "mcp__agentshield__scan_action": [
+    "security-lead"
+  ],
+  "mcp__presidio__analyze_text": [
+    "security-lead"
+  ],
+  "mcp__promptfoo__run_eval": [
+    "qa-eng",
+    "qa-lead"
+  ]
+}

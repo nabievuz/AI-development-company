@@ -37,3 +37,13 @@ profiles:
   # scoped profile added in a separate reviewed change (security_sensitive +
   # governance_or_policy, QONUN-5) — this profile is never widened in place.
   browser-deny-all: []
+
+  # WS-D eval/guardrail tool shortlist — promptfoo, AgentShield, Presidio
+  # (DAS-1574, ADR-0033 TB-4 reused verbatim, design doc §5.1). DENY-ALL by
+  # design: these are in-process eval/guardrail utilities operating on local
+  # fixtures / text handed to them directly, not browsers or research tools —
+  # no default network need, so no host ships here. A role that later needs
+  # one of these tools to reach a real network target gets a NEW, narrowly
+  # scoped profile added in a separate reviewed change (security_sensitive +
+  # governance_or_policy, QONUN-5) — this profile is never widened in place.
+  eval-guardrail-deny-all: []

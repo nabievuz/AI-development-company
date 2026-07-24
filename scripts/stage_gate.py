@@ -468,6 +468,18 @@ def maintenance_schedule() -> dict:
                           "non-zero exit is an ALERT routed to a follow-up ticket, never "
                           "silently retried or auto-fixed",
             },
+            {
+                "name": "ws-d-lens-health",
+                "kind": "ws-d-eval",
+                "command": ["python3", "scripts/ws_d_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-d-lens-health.md",
+                "safety": "read-only exporter redaction-on-export probe + in-tenant target "
+                          "check (langfuse_observability) + promptfoo/AgentShield/Presidio "
+                          "allow-list drift (ADR-0036/ADR-0033 GATE-6, DAS-1577); a non-zero "
+                          "exit is an ALERT routed to a follow-up ticket, never silently "
+                          "retried or auto-fixed",
+            },
         ],
     }
 

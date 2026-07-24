@@ -2,7 +2,7 @@
 
 - **Goal:** mustaqil-ws-d-lens
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed
 
 > WHAT/WHY only. The HOW (the OTLP exporter shape, the self-host Langfuse
 > deployment, the promptfoo/AgentShield/Presidio wiring) lives in ADR-0036 and
