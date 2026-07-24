@@ -446,6 +446,16 @@ def maintenance_schedule() -> dict:
                 "cadence": "weekly",
                 "safety": "ArcRift prune of stale/incorrect memories (Persistent Memory Law)",
             },
+            {
+                "name": "ws-a-tool-edge-health",
+                "kind": "ws-a-eval",
+                "command": ["python3", "scripts/ws_a_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-a-tool-edge-health.md",
+                "safety": "read-only allow-list-drift + redaction probe (ADR-0033 GATE-6, "
+                          "DAS-1551); a non-zero exit is an ALERT routed to a follow-up "
+                          "ticket, never silently retried or auto-fixed",
+            },
         ],
     }
 

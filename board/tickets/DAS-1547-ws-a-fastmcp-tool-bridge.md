@@ -1,7 +1,7 @@
 ---
 id: DAS-1547
 title: WS-A Development — FastMCP tool-bridge sidecar under tools, fold in the spike, flag OFF
-status: in_review
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -121,3 +121,81 @@ Development done (TB-1/TB-2/TB-3), spikes hardened (not rewritten), all behind
 - ⚠️ Pre-existing suite red (NOT mine, out of footprint): `tests/test_feature_flags.py` (3 fails) — its hardcoded `DEFAULTS` expectation predates the MUSTAQIL `ws_*` flag expansion (DAS-1543) in `scripts/feature_flags.py`; needs a one-line dict refresh by that owner. I did not touch `feature_flags.py`/`features.yaml`/`test_feature_flags.py`.
 - Footprint note: regenerated `.github/CODEOWNERS` (generated file) to add the `/tools/` area — required to land the tracked spike + reach diagnostics 100/100; trivial to revert if the reviewer prefers it split out.
 - LOCAL-ONLY honored: no commit/push/PR/branch — files edited in place on `docs/governed-devin-langchain-direction`. `in_review` here is a board-state handoff, not a pushed PR (per dispatch instruction).
+
+### 2026-07-24 — Security Engineer red-team (GATE-3)
+Adversarially verified each bound GATE-2 condition against the CODE (not just that tests
+exist). Ran the folded suite (`pytest tests/test_ws_a_tool_bridge.py tests/test_ws_a_browser_tool_egress.py`
+= 54 passed, 2 skipped) PLUS 66 ephemeral hand-crafted probes (deleted; no permanent
+test files added — T1–T5 remain DAS-1549's job).
+
+| # | Condition | Verdict | Attack + result |
+|---|---|---|---|
+| C1 | allow-list drift | **HOLDS** | Artifact is git-TRACKED + not gitignored (`git check-ignore` → not ignored). `test_c1_allowlist_matches_overlays_no_drift` recompiles overlays and diffs the committed JSON; it runs in CI (`ci.yml` line 226 `python -m pytest -q`). Simulated hand-edit `{"mcp__playwright":["ceo"]}` ≠ regenerated `{}` → RED build. Real, working generate-and-diff. |
+| C2 | no `"*"`-roles bypass | **HOLDS** | Compiler maps server-wide `tools:["*"]` → explicit sorted role list, emits no `"*"` value. `decide()` denies `roles=="*"` (non-list) AND `["*"]` (member). `load_allowlist()` returns `{}` on any `"*"` value/member. A crafted `server:"*"` overlay yields key `"*"` but that key never matches any `mcp__…` tool_name → inert deny. No any-role path. |
+| C3 | hook fail-CLOSED | **HOLDS** (1 residual) | Wrapper `sh -c 'python3 … \|\| exit 2'`: spawn failure / missing interpreter → exit 2 (verified rc=2 = PreToolUse block). Internal crash → `except`→`_emit_deny`+exit 2. Flag-OFF = inert allow, no audit write (byte-identical, verified). Relies on the documented CLI+SDK exit-code-2=deny contract. **Residual → DAS-1549 T1:** with flag ON, an *unparseable* event JSON parses to `{}` → `tool_name=""` → `decide()` returns allow ("not an external tool"). Low-risk (the `mcp__.*` matcher itself keys off tool_name, so a matched-yet-unreadable event is self-inconsistent) — NOT a blocking hole, but T1 should add a malformed-event-with-flag-ON → deny case. |
+| C4 | redirect | **HOLDS** | `_NoRedirect.redirect_request` returns `None` → urllib raises on every 3xx; egress gate runs before any network syscall, so a 302-to-internal cannot re-enter. |
+| C5 | SSRF | **HOLDS** (1 residual) | `check_egress` resolves the host and blocks 169.254.169.254, 127.0.0.1, 10.x, 192.168.x, ::1, fe80::, and `::ffff:127.0.0.1` (v4-mapped) — all denied even when the host is allow-listed; a plain domain entry never waives the block; unresolvable → deny. **Residual → DAS-1549 T3:** classic TOCTOU — the guard's `getaddrinfo` and urllib's own connect-time resolution are independent, so a DNS-rebinding responder could differ between them. Condition text ("resolve the target … never trust the host string alone") is SATISFIED; pinning the vetted IP into the connection is a future hardening, not a GATE-3 blocker. |
+| C6 | domain match | **HOLDS** | `host_matches` label-anchored: `evil-example.com`, `example.com.evil.com`, `notexample.com` all DENIED; exact base + dotted sub-domain ALLOWED; `*.base` = sub-domains only, never apex/look-alike. Case + trailing-dot normalized. |
+| C7 | redaction | **HOLDS** | Scrubber redacts sk-ant, Bearer, JWT, AKIA, ghp_, DSN, PEM, email, phone, AND a novel mixed-entropy token via the `{32,}` fallback; preserves Tier-M git-SHA/sha256/numeric digests; redact-then-truncate confirmed (secret gone even adjacent to the 280 cap). Structural primary control verified: the audit record stores only `tool/agent/decision/reason` (bridge-generated) — raw tool OUTPUT never enters the store (Tier-F), so an unclassified/novel secret in tool output stays out regardless of regex coverage. |
+
+**Overall: GATE-3 red-team PASSED — cleared for CTO ratification.** All C1–C7 hold; the two
+residuals above are non-blocking hardening items formally handed to DAS-1549 (T1 malformed-event
+deny; T3 TOCTOU-rebinding note). Status stays `in_review`, `assignee: cto`. `board_lint.py` exit 0.
+
+### 2026-07-24 — CTO (GATE-3 closure)
+**RATIFIED — AADL Stage-3 / GATE-3 (Development) CLOSED for WS-A part 1.** Independently
+re-verified rather than rubber-stamping the red-team:
+- `python3 scripts/diagnostics.py` → **SCORE = 100/100** (all 7 categories PASS incl. Security 10/10, no-dead-runtime holds).
+- `python3 -m pytest tests/test_ws_a_tool_bridge.py tests/test_ws_a_browser_tool_egress.py` → **54 passed, 2 skipped** (skips = optional `mcp` absent, expected).
+- `python3 scripts/board_lint.py` → **OK, 180 tickets, 0 violations** (the DAS-1507 body-status WARN is pre-existing, unrelated, non-fatal).
+
+**Decision basis:** the blocking Security-Engineer red-team (2026-07-24, above) returned
+**PASSED — all C1–C7 HOLD** against the CODE (66 adversarial probes + the folded 54-test
+suite). The seven bound GATE-2 conditions are met: C1 tracked generate-and-diff allow-list
+(hand-edit ⇒ red build), C2 no `"*"`-roles bypass, C3 PreToolUse fail-CLOSED, C4 no unchecked
+redirect, C5 resolve-and-block SSRF ranges, C6 label-boundary domain match, C7 ADR-0012 §2
+scrubber with structural raw-payload primary control. The two non-blocking residuals
+(T1 malformed-event-flag-ON → deny; C5/T3 DNS-rebinding TOCTOU hardening) are captured as
+**DAS-1549's formal T1/T3 negative tests** — verified present in `board/tickets/DAS-1549-ws-a-negative-tests.md`.
+
+**Safety at closure:** everything stays behind `ws_a_tool_bridge` **OFF** — the sidecar is
+inert, dispatch is byte-identical to pre-merge, and the FastMCP sidecar is absent-by-default
+(`mcp` not in core `requirements.txt`). **No live reach exists at GATE-3 closure.**
+
+**LOCAL-ONLY:** no PR/CI exists on this branch, so the "merged PR + green CI" AC clause is
+formally deferred by the LOCAL-ONLY constraint (same disposition as the earlier WS-A tickets);
+GATE-3 is accepted on local green. Setting `status: done`. Closing GATE-3 unblocks DAS-1549 (Testing).
+
+### 2026-07-24 — Backend EM (C3 fail-open remediation — bound condition)
+**Fixed a real C3 fail-OPEN in my own code, found by DAS-1549 T1 (GATE-4 MUST-PASS).**
+
+- **Bug:** in `tools/mcp_bridges/audit_external_tool.py`, `main()` — with `ws_a_tool_bridge`
+  **ON** and a malformed/unparseable PreToolUse event on stdin, the code caught the JSON
+  `ValueError`, defaulted `event = {}` → `tool_name = ""` → `decide()` took the "not an
+  external tool" branch → **allow**. A matched `mcp__.*` call with an unreadable event
+  slipped through ungoverned. Bound condition C3 requires **fail-CLOSED**.
+- **Fix (minimal, fail-CLOSED):** added `_deny_unidentified(what)` helper and rerouted the
+  two undeterminable-identity cases through it — (1) unparseable event (`json.loads`
+  `ValueError`) and (2) valid JSON that is not an event object (`not isinstance(event, dict)`
+  — null/list/scalar). Both now **DENY**: emit the same PreToolUse block signal a real
+  external-tool refusal uses (`_emit_deny`), write a scrubbed audit line (fail-closed on the
+  audit write too — `audit()` swallows OSError), and `return 2` to match the file's existing
+  exit-2 fail-closed mechanics (crash guard) so the call blocks even if stdout is ignored.
+- **Flag-OFF contract PRESERVED (SC-003):** the `if not _flag_on(): _emit_allow(); return 0`
+  short-circuit is untouched — flag OFF stays an inert no-op (allow `{}`, no audit write,
+  byte-identical to pre-merge). The fix applies ONLY to the flag-ON + undeterminable-identity
+  path; the OFF path never denies.
+- **Test un-marked:** removed the `@pytest.mark.xfail(strict=True)` from
+  `test_t1_malformed_event_with_flag_on_must_deny_not_allow` in `tests/test_ws_a_tool_bridge.py`
+  (assertions unchanged) — it now runs as a normal test and **PASSES**.
+
+**Verification:** `pytest tests/test_ws_a_tool_bridge.py -q` = **42 passed, 1 skipped** (T1 now
+a normal pass, no xfail); full `pytest -q` = **1943 passed, 4 skipped** (SC-003 / flag-off no-op
+tests green, no collateral breakage — the earlier `test_feature_flags.py` reds are resolved);
+`diagnostics.py` = **100/100**; `ruff check` clean on both touched files; `board_lint.py` exit 0
+(180 tickets, 0 violations; DAS-1507 WARN pre-existing/non-fatal).
+
+**Disposition:** DAS-1547 stays `status: done` — this is a bound-condition (C3/T1) remediation,
+logged here. DAS-1549 status **unchanged** (the QA Lead closes GATE-4 next). LOCAL-ONLY honored:
+no commit/push/PR/branch; edited in place on `docs/governed-devin-langchain-direction`. Footprint:
+only `tools/mcp_bridges/audit_external_tool.py`, `tests/test_ws_a_tool_bridge.py`, and this log.

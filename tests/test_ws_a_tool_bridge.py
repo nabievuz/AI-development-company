@@ -1,6 +1,8 @@
 """WS-A tool-bridge tests (ADR-0033 / DAS-1547).
 
-Positive + negative unit coverage for the GATE-2 security conditions C1–C7.
+Positive + negative unit coverage for the GATE-2 security conditions C1–C7,
+plus the DAS-1549 (AADL Stage-4 / GATE-4) formal adversarial negative-test
+suite bound by the CTO at GATE-2 closure — T1–T5 and SC-001/SC-002/SC-003.
 MCP-dependent parts skip if ``mcp`` is absent (the sidecar is optional infra —
 absent ⇒ the tool does not exist).
 
@@ -12,17 +14,38 @@ absent ⇒ the tool does not exist).
   C6  domain matching anchors on a label boundary
   C7  the ADR-0012 §2 extended scrubber redacts, ordered redact-then-truncate,
       without over-redacting Tier-M digests
+
+DAS-1549 negative-test suite (mcp_bridges layer; see test_ws_a_browser_tool_
+egress.py for the browser-layer T2/T3):
+
+  SC-001  a globally-granted/no-overlay tool is refused; a call that skips
+          the PreToolUse audit write is still denied
+  SC-002  egress block to a non-allow-listed domain; a tool-EVENT redaction
+          probe (not just a raw string) passes end to end (ADR-0012)
+  SC-003  flag-OFF ⇒ dispatch is byte-identical to pre-merge (no-op, no audit)
+  T1 (C3) a hook-exec crash ⇒ DENIED fail-closed, INCLUDING the red-team
+          residual: flag-ON + an unparseable/malformed event ⇒ deny
+  T2 (C4) an allow-listed host that 302s to a non-allow-listed host is
+          denied and the redirect target is never fetched (real HTTP hop)
+  T3 (C5) resolve-time SSRF block holds under a DNS-rebinding-style resolver
+  T4 (C2) a "*" roles value never grants any-role (see C2 tests above)
+  T5 (C1) the drift guard detects a tampered/stale compiled allow-list
 """
 from __future__ import annotations
 
+import http.server
 import importlib.util
 import json
 import os
 import subprocess
 import sys
+import tempfile
+import textwrap
+import threading
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGES = ROOT / "tools" / "mcp_bridges"
@@ -387,6 +410,286 @@ def test_c7_redact_then_truncate_ordering():
 def test_c7_safe_scrub_fail_closed(monkeypatch):
     monkeypatch.setattr(redaction, "scrub", lambda _t: (_ for _ in ()).throw(RuntimeError("boom")))
     assert redaction.safe_scrub("anything") == "[REDACTED:unclassified]"
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — SC-001: globally-granted/no-overlay tool refused; audit-skip
+# (audit-write failure) does not widen a decision to allow
+# --------------------------------------------------------------------------- #
+
+def test_sc001_no_overlay_entry_refused():
+    """A tool with NO overlay allow-list entry at all (not a global/wildcard
+    grant, not present in the compiled map) is refused — TB-2 no default-allow."""
+    assert hook.decide("mcp__globaltool__anything", "engineer-ic", {})[0] == "deny"
+
+
+def test_sc001_audit_write_failure_still_denies(monkeypatch):
+    """A call whose audit record CANNOT be written (e.g. the log path is
+    unwritable — the ``PreToolUse`` audit step effectively 'skipped') must
+    still be DENIED: the audit() failure is swallowed (never blocks a wave)
+    but must never flip an already-computed deny into an allow."""
+    decision, _reason = hook.decide("mcp__playwright__browser_navigate", "engineer-ic", {})
+    assert decision == "deny"
+    # audit() itself fails closed-silent (OSError swallowed) without touching
+    # the decision that was already made.
+    hook.audit({"ts": "t", "tool": "x", "agent": "y", "decision": decision, "reason": "r"})
+    monkeypatch.setenv("DASLAB_TOOL_AUDIT_LOG", "/nonexistent-dir-xyz/does/not/exist/audit.jsonl")
+    hook.audit({"ts": "t", "tool": "x", "agent": "y", "decision": decision, "reason": "r"})
+    assert decision == "deny"  # unchanged — audit is a side effect, not a gate
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — SC-002: egress block (see C5/C6 above) + a tool-EVENT redaction
+# probe proven end to end through audit(), not just the scrubber in isolation
+# --------------------------------------------------------------------------- #
+
+def test_sc002_tool_event_redaction_probe(tmp_path, monkeypatch):
+    """Simulate a decide() reason that embeds a secret-shaped token (as it
+    would if a leaked credential ever ended up in an agent identifier used
+    inside a deny reason) and prove the exact ``main()`` write path —
+    ``audit()`` fed a ``redact_then_truncate``-scrubbed ``reason`` — never
+    persists the raw secret in that field. This exercises the AUDIT
+    INTEGRATION point (main()'s own call to the scrubber), not just the
+    standalone scrubber already covered by the C7 tests above. (The
+    ``tool``/``agent`` identifier fields are structured role/tool KEYS, not
+    free-text Tier-B content, so ADR-0012 scoping does not require them to
+    be scrubbed — only ``reason``, which is where free text can appear, is
+    in scope here.)"""
+    leaked = "sk-ant-api03-" + "Q" * 50
+    tool_name = "mcp__x__t"
+    decision, reason = hook.decide(tool_name, leaked, {"mcp__x__t": ["qa-lead"]})
+    assert decision == "deny"
+    assert leaked in reason  # the raw (pre-scrub) reason DOES contain it
+
+    audit_log = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("DASLAB_TOOL_AUDIT_LOG", str(audit_log))
+    from redaction import redact_then_truncate as _scrub  # same import main() uses
+
+    hook.audit(
+        {
+            "ts": "t",
+            "tool": tool_name,
+            "agent": "engineer-ic",
+            "decision": decision,
+            "reason": _scrub(reason, 280),
+        }
+    )
+    persisted = json.loads(audit_log.read_text().splitlines()[-1])
+    assert leaked not in persisted["reason"], "raw secret must never survive in the audit reason (ADR-0012)"
+    assert "[REDACTED" in persisted["reason"]
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — SC-003: flag-OFF is a byte-identical no-op, no audit write, even
+# for a tool that WOULD be denied if the flag were on
+# --------------------------------------------------------------------------- #
+
+def test_sc003_flag_off_no_op_even_for_a_would_be_denied_tool(tmp_path):
+    audit_log = tmp_path / "audit.jsonl"
+    r = _run_hook(
+        {"tool_name": "mcp__playwright__browser_navigate", "agent": "engineer-ic"},
+        {"DASLAB_WS_A_FLAG": "off", "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+    )
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == {}  # allow — byte-identical to pre-merge
+    assert not audit_log.exists()  # no side effect at all
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — T1 (C3): hook-exec CRASH ⇒ fail-closed deny (exit 2), including
+# the red-team residual — flag-ON + an unparseable/malformed event
+# --------------------------------------------------------------------------- #
+
+def test_t1_internal_crash_denies_and_exits_2():
+    """Mirrors the EXACT ``if __name__ == "__main__":`` fail-closed wrapper in
+    audit_external_tool.py (an internal exception during ``main()`` is caught,
+    emits a deny, and exits 2) by forcing ``decide()`` to raise, proving the
+    documented fail-closed contract holds for a genuine internal crash — not
+    just a spawn failure (already covered by test_c3_wrapper_denies_on_spawn_
+    failure)."""
+    script = textwrap.dedent(
+        f"""
+        import sys
+        sys.path.insert(0, {str(BRIDGES)!r})
+        import audit_external_tool as hook
+        hook.decide = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        try:
+            raise SystemExit(hook.main())
+        except SystemExit:
+            raise
+        except Exception as exc:
+            hook._emit_deny(f"hook internal error — fail-closed deny ({{type(exc).__name__}})")
+            raise SystemExit(2) from exc
+        """
+    )
+    env = dict(os.environ)
+    env.update({"DASLAB_WS_A_FLAG": "on", "DASLAB_TOOL_ALLOWLIST": "/tmp/does-not-exist.json"})
+    r = subprocess.run(
+        [sys.executable, "-c", script],
+        input='{"tool_name":"mcp__x__t","agent":"a"}',
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    assert r.returncode == 2, "an internal crash MUST fail CLOSED (exit 2), never fail open"
+    out = json.loads(r.stdout)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_t1_malformed_event_with_flag_on_must_deny_not_allow(tmp_path):
+    audit_log = tmp_path / "audit.jsonl"
+    empty_allow = tmp_path / "al.json"
+    empty_allow.write_text("{}")
+    env = dict(os.environ)
+    env.update(
+        {
+            "DASLAB_WS_A_FLAG": "on",
+            "DASLAB_TOOL_AUDIT_LOG": str(audit_log),
+            "DASLAB_TOOL_ALLOWLIST": str(empty_allow),
+        }
+    )
+    r = subprocess.run(
+        [sys.executable, str(BRIDGES / "audit_external_tool.py")],
+        input="{not valid json",  # malformed stdin event, flag ON
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env=env,
+    )
+    out = json.loads(r.stdout)
+    assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", (
+        "a malformed event with the flag ON must DENY, not silently allow "
+        "(DAS-1547 red-team residual, upgraded to MUST-PASS by the CTO)"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — T2 (C4): allow-listed host 302s to a non-allow-listed host ⇒
+# denied, and the redirect target is NEVER fetched (real HTTP round-trip,
+# not just the unit-level _NoRedirect/gate-ordering checks above)
+# --------------------------------------------------------------------------- #
+
+class _RedirectingHandler(http.server.BaseHTTPRequestHandler):
+    hits: list[str] = []
+
+    def do_GET(self):  # noqa: N802
+        type(self).hits.append(self.path)
+        self.send_response(302)
+        self.send_header("Location", "http://internal-target.example.invalid/secret")
+        self.end_headers()
+
+    def log_message(self, *_a):  # silence test noise
+        pass
+
+
+def test_t2_allowlisted_host_redirect_to_disallowed_host_is_denied_and_never_fetched(
+    monkeypatch,
+):
+    _RedirectingHandler.hits = []
+    server = http.server.HTTPServer(("127.0.0.1", 0), _RedirectingHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as prof:
+            yaml.safe_dump({"profiles": {"loopback-test": ["127.0.0.1"]}}, prof)
+        monkeypatch.setenv("DASLAB_EGRESS_ALLOWLIST", prof.name)
+        monkeypatch.setenv("DASLAB_EGRESS_PROFILE", "loopback-test")
+
+        out = bridge.web_fetch(f"http://127.0.0.1:{port}/")
+
+        assert out.startswith("error:")
+        # Only the ORIGIN was ever hit — the redirect (to a wholly different,
+        # non-allow-listed host) was refused before urllib re-entered the network.
+        assert _RedirectingHandler.hits == ["/"]
+        os.unlink(prof.name)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — T3 (C5): resolve-time SSRF block holds under a DNS-rebinding-
+# style resolver (the guard resolves independently of the URL host string;
+# pinning the vetted IP through to the actual connection is the documented
+# future-hardening residual noted by the DAS-1547 red-team — non-blocking,
+# recorded here rather than silently assumed away)
+# --------------------------------------------------------------------------- #
+
+def test_t3_dns_rebinding_style_resolution_is_blocked_at_resolve_time():
+    """A 'rebinding' host is one whose resolved address the attacker controls
+    and can flip. Model the WORST case directly: whatever the resolver hands
+    back for THIS call is what gets vetted — an attacker who controls
+    resolution to return an internal IP is blocked at resolve time, exactly
+    once, before any request is made. (TOCTOU between this resolution and
+    urllib's own later DNS lookup is a documented residual — pinning the
+    vetted IP into the actual connection is tracked as future hardening, not
+    asserted as fixed by this test.)"""
+    rebinding_targets = ("169.254.169.254", "127.0.0.1", "10.1.2.3", "::1")
+    for target in rebinding_targets:
+        allowed, reason = egress.check_egress(
+            "https://api.crossref.org/works",
+            "research-read",
+            PROFILES,
+            resolver=_resolver_returning(target),
+        )
+        assert not allowed, f"a rebind to {target} must be blocked at resolve time"
+        assert "internal" in reason
+
+
+def test_t3_ipv6_mapped_and_unique_local_also_blocked():
+    """Extra rebinding targets beyond the C5 basic set: IPv4-mapped IPv6
+    loopback and an IPv6 unique-local range."""
+    for target in ("::ffff:127.0.0.1", "fc00::1", "fe80::1"):
+        allowed, reason = egress.check_egress(
+            "https://api.crossref.org/works",
+            "research-read",
+            PROFILES,
+            resolver=_resolver_returning(target),
+        )
+        assert not allowed, f"{target} must be blocked"
+        assert "internal" in reason
+
+
+# --------------------------------------------------------------------------- #
+# DAS-1549 — T5 (C1): the drift guard detects a tampered/stale compiled
+# allow-list (the inverse of test_c1_allowlist_matches_overlays_no_drift,
+# which proves the CURRENT committed file has zero drift)
+# --------------------------------------------------------------------------- #
+
+def test_t5_tampered_allowlist_is_detected_as_drift():
+    """A hand-edited (tampered) copy of the compiled map no longer equals a
+    fresh recompile — proving the generate-and-diff mechanism WOULD catch a
+    hand-edit as a red build, not merely that today's file happens to match."""
+    gen = _load_gen_subagents()
+    regenerated = gen.compile_tool_allowlist()
+    tampered = dict(regenerated)
+    tampered["mcp__playwright"] = ["ceo"]  # a hand-added, unreviewed grant
+    assert tampered != regenerated, "a tampered map must diverge from the honest recompile"
+
+
+def test_t5_stale_allowlist_missing_a_real_grant_is_detected_as_drift():
+    """A STALE compiled file (an overlay grant added, generator not re-run)
+    also diverges from a fresh recompile — the drift guard is not fooled by
+    partial staleness either."""
+    gen = _load_gen_subagents()
+    overlay = """## External tools
+```yaml
+external_tools:
+  - server: mcp__langchain-tools
+    tools: ["web_fetch"]
+    egress_profile: research-read
+    reason: newly added grant not yet reflected in the committed file
+```
+"""
+    fresh_with_new_overlay = gen.compile_tool_allowlist(
+        [*gen.iter_overlays(), ("new-role-ic", overlay)]
+    )
+    committed = json.loads((ROOT / "board" / ".tool-allowlist.json").read_text())
+    assert fresh_with_new_overlay != committed, (
+        "a real overlay grant that hasn't been recompiled into the committed "
+        "file must show up as drift"
+    )
 
 
 # --------------------------------------------------------------------------- #

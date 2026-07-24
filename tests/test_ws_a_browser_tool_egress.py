@@ -3,7 +3,10 @@
 Covers the DAS-1546 GATE-2 security condition **C8** (action-level least
 privilege for the browser/computer-use surface) and confirms the inherited
 **C4/C5/C6** egress controls (DAS-1547 foundation, reused not forked) apply
-at the browser layer too, plus the FR-006 untrusted-data posture.
+at the browser layer too, plus the FR-006 untrusted-data posture. Also
+carries the DAS-1549 (AADL Stage-4 / GATE-4) browser-layer negative tests for
+T2 (redirect) and T3 (SSRF/DNS-rebinding), per DAS-1548's own note that those
+apply "at the browser layer too".
 
   C8  default grant = navigate + read + screenshot ONLY; every write/submit/
       upload/clipboard/local-app-control action is denied without an explicit
@@ -14,15 +17,25 @@ at the browser layer too, plus the FR-006 untrusted-data posture.
   FR-006  fetched content is returned as inert data, never interpreted
   TB-5  the browser tool is absent-by-default (mcp not in core requirements)
         and its egress profile is deny-all until a reviewed change lists hosts
+
+  T2 (DAS-1549)  an allow-listed host that 302s to a non-allow-listed host is
+                 denied at the browser layer too; the redirect target is
+                 never fetched (real HTTP round-trip via navigate())
+  T3 (DAS-1549)  resolve-time SSRF block holds under a DNS-rebinding-style
+                 resolver at the browser layer too
 """
 from __future__ import annotations
 
+import http.server
 import importlib.util
 import inspect
 import json
+import tempfile
+import threading
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_BROWSER = ROOT / "tools" / "browser"
@@ -195,6 +208,70 @@ def test_c6_browser_label_boundary_matching_reused():
     assert not browser.check_egress(
         "https://example.org.evil.com/", "browser-test", profiles, pub
     )[0]
+
+
+class _BrowserRedirectingHandler(http.server.BaseHTTPRequestHandler):
+    hits: list[str] = []
+
+    def do_GET(self):  # noqa: N802
+        type(self).hits.append(self.path)
+        self.send_response(302)
+        self.send_header("Location", "http://internal-target.example.invalid/secret")
+        self.end_headers()
+
+    def log_message(self, *_a):  # silence test noise
+        pass
+
+
+def test_t2_browser_allowlisted_host_redirect_to_disallowed_host_denied_never_fetched(
+    monkeypatch,
+):
+    """DAS-1549 T2 at the browser layer (DAS-1548's own note: 'T2 redirect ...
+    apply at the browser layer too'). An allow-listed origin 302s to a
+    wholly different, non-allow-listed host; navigate() must refuse and the
+    redirect target must never be reached — proven with a real local HTTP
+    server, not just the unit-level _NoRedirect check."""
+    _BrowserRedirectingHandler.hits = []
+    server = http.server.HTTPServer(("127.0.0.1", 0), _BrowserRedirectingHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as prof:
+            yaml.safe_dump({"profiles": {"loopback-test": ["127.0.0.1"]}}, prof)
+        monkeypatch.setenv("DASLAB_EGRESS_ALLOWLIST", prof.name)
+        monkeypatch.setenv("DASLAB_EGRESS_PROFILE", "loopback-test")
+
+        out = browser.navigate(f"http://127.0.0.1:{port}/")
+
+        assert out.startswith("error:")
+        assert _BrowserRedirectingHandler.hits == ["/"], "the redirect target must never be fetched"
+        import os
+
+        os.unlink(prof.name)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_t3_browser_dns_rebinding_style_resolution_blocked_at_resolve_time():
+    """DAS-1549 T3 at the browser layer (shared C5 residual per DAS-1548's
+    red-team: 'inherits the same DAS-1549 TOCTOU-rebinding residual noted on
+    DAS-1547'). Whatever a rebinding attacker's resolver hands back for THIS
+    call is vetted and blocked at resolve time — through the EXACT imported
+    ``check_egress`` function the browser bridge uses (not a reimplementation).
+    Pinning the vetted IP through to the real connection remains a documented
+    future-hardening item, not asserted as fixed here."""
+    profiles = {"browser-test": ["good.example"]}
+    for target in ("169.254.169.254", "127.0.0.1", "10.1.2.3", "::1", "::ffff:127.0.0.1"):
+        allowed, reason = browser.check_egress(
+            "https://good.example/",
+            "browser-test",
+            profiles,
+            resolver=_resolver_returning(target),
+        )
+        assert not allowed, f"a rebind to {target} must be blocked at resolve time"
+        assert "internal" in reason
 
 
 def test_egress_profile_deny_all_ships_by_default():

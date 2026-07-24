@@ -160,6 +160,35 @@ def _emit_deny(reason: str) -> None:
     )
 
 
+def _deny_unidentified(what: str) -> int:
+    """C3 fail-CLOSED (DAS-1549 T1): the WS-A flag is ON but the tool identity
+    cannot be determined, so DENY — never default to allow.
+
+    A matched ``mcp__.*`` call whose PreToolUse event is unparseable (or is valid
+    JSON but not an event object) would otherwise fall through ``decide()``'s
+    "not an external tool" allow branch and slip through ungoverned. This emits
+    the same PreToolUse block signal a real external-tool refusal uses, writes a
+    best-effort scrubbed audit line (fail-closed on the audit write too — ``audit``
+    swallows OSError), and exits 2 to match the file's existing fail-closed
+    mechanics so the call is blocked even if stdout is ignored.
+    """
+    reason = (
+        f"{what} with the WS-A flag ON — cannot determine tool identity; "
+        "fail-closed deny (C3)"
+    )
+    audit(
+        {
+            "ts": _now(),
+            "tool": "",
+            "agent": "unknown",
+            "decision": "deny",
+            "reason": redact_then_truncate(reason, 280),
+        }
+    )
+    _emit_deny(reason)
+    return 2
+
+
 def main() -> int:
     # TB-5: with the WS-A flag OFF (the only state at merge) the hook is INERT —
     # it passes every call through, so a wave is byte-identical to pre-merge and
@@ -173,7 +202,12 @@ def main() -> int:
     try:
         event = json.loads(raw)
     except ValueError:
-        event = {}
+        # C3 fail-CLOSED: flag ON + unparseable event ⇒ deny, do not allow.
+        return _deny_unidentified("unparseable PreToolUse event")
+    if not isinstance(event, dict):
+        # Valid JSON but not an event object (null/list/scalar) — identity still
+        # undeterminable; same fail-closed deny.
+        return _deny_unidentified("PreToolUse event is not an object")
     tool_name = event.get("tool_name", "")
     agent_type = event.get("agent_type") or event.get("agent") or "unknown"
     decision, reason = decide(tool_name, agent_type, load_allowlist())

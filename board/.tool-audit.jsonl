@@ -1,0 +1,14 @@
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "2026-07-24T05:50:29Z", "tool": "", "agent": "unknown", "decision": "deny", "reason": "unparseable PreToolUse event with the WS-A flag ON — cannot determine tool identity; fail-closed deny (C3)"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
+{"ts": "t", "tool": "x", "agent": "y", "decision": "deny", "reason": "r"}
