@@ -1,6 +1,6 @@
 # ADR 0038 — Enterprise-internal self-host hardening (the TENANT target)
 
-- **Status:** Proposed (Backend EM authors; **CTO ratifies — RACI 3.1/3.6**; Security Lead + COO consulted — RBAC, audit, secrets)
+- **Status:** Accepted (Backend EM authored; **CTO ratified 2026-07-24 — RACI 3.1/3.6**; Security Lead + COO consulted — RBAC, audit, secrets)
 - **Date:** 2026-07-22
 - **Scope:** Platform / org-engine — the enterprise-**internal** self-hosted deployment target (MUSTAQIL workstream E, TENANT)
 - **Deciders:** Backend EM (author), **CTO (accountable)**; Security Lead (consulted — RBAC, secrets, audit export); COO (consulted — GATE-6 maintenance surface)
@@ -18,7 +18,7 @@ DasLab's governance is already enterprise-grade (AADL, RACI, attestation, redact
 **Adopt enterprise-internal self-host as the TENANT target with invariants; explicitly exclude SaaS packaging.** Invariants:
 
 ### TN-1 — In-tenant only; nothing leaves the boundary
-The sandbox (E2B / OpenHands, MUSTAQIL WS-C), observability (**self-hosted Langfuse**, ADR 0036 — not hosted LangSmith), and the tool bridges (ADR 0033) all run inside the tenant. No external SaaS dependency is required to operate; any egress is redacted per ADR 0012, and no source code or IP leaves the tenant.
+The sandbox (E2B / OpenHands, MUSTAQIL WS-C), observability (**self-hosted Langfuse**, ADR 0036 — not hosted LangSmith), and the tool bridges (ADR 0033) all run inside the tenant. No external SaaS dependency is required to operate; any egress is redacted per ADR 0012, and no source code or IP leaves the tenant. **The one accepted proprietary exception is the Claude model call** (Founder MODEL STANCE Q9): on a Claude subscription the model call resolves to Anthropic over account auth (not a metered API key), which is the sole endpoint declared `accepted_external_roles` in `check_in_tenant.py`. Every *other* code/IP-carrying endpoint — sandbox, observability, audit, memory, embeddings, tools — MUST be in-tenant; the open-weight in-tenant inference path (TN-1's own eject-path, vLLM / SGLang) is a **deferred** adapter (SPEC-006 FR-005), not the near-term build.
 
 ### TN-2 — Remove single-user / macOS assumptions
 All paths are self-locating (ADR 0003, `check_no_hardcoded_paths`); the engine runs Linux-first in CI and in the tenant; per-user configuration and workspace isolation replace the single-operator assumption. This closes the named audit weakness rather than documenting around it. The engine **installs on an Ubuntu server (Linux-first) or macOS**, and is operated both from the CLI and from the **self-hosted web control plane** (ADR 0039).
@@ -45,7 +45,7 @@ This is **internal self-host**. SOC 2 certification, SSO/SAML/SCIM, multi-tenant
 
 ## Enforcement / acceptance
 
-- Ratified by the **CTO**; Security Lead + COO consulted. `Proposed` until sign-off.
+- **Ratified by the CTO on 2026-07-24** (RACI 3.1/3.6 A); Security Lead consulted on RBAC + secrets + audit export, COO consulted on the GATE-6 maintenance surface. TN-1…TN-5 + the scope boundary judged sound and coherent against the Founder discovery answers and the in-tenant runtime BOM (`docs/research/2026-07-23-daslab-production-stack-and-toolkits-mining.md` §2): **TN-1/Q9** — in-tenant only, with the Claude subscription model call the single accepted external exception (now named explicitly in TN-1 and enforced by `check_in_tenant.py`'s `accepted_external_roles`); the LiteLLM in-tenant gateway realizes the ADR 0009 admission layer (SPEC-006 FR-004) and the open-weight vLLM/SGLang inference path is a **deferred, flag-OFF eject-path, not the near-term build** (SPEC-006 FR-005, Q9); **TN-3/Q6** — RBAC maps the org + Founder gate onto real access control: only a Founder-identity principal approves an AADL gate, a team may hold read-only audit access, and an agent identity can never hold gate-approval authority (QONUN-5 human-only mapping); **TN-4/TN-5** — event store + attestation exported read-only as redacted OTel/JSON to the tenant SIEM, secrets in the tenant vault, browser/computer-use treated as untrusted egress under an allow-list; guardrails (Presidio + classifier + policy, SPEC-006 FR-006) and evals (promptfoo golden-set-before-judge, FR-007) enter only through the ADR 0033 governed MCP edge. The **scope boundary is binding (Q10)**: SOC 2 / SSO-SAML-SCIM / multi-tenant isolation / billing are out of scope — internal self-host only. No defect found; `Proposed` → `Accepted` on this sign-off.
 - TN-1…TN-5 are the **Definition-of-Done for MUSTAQIL WS-E (TENANT)**; a WS-E PR is reviewed against them, and TN-2 portability is gated by `check_no_hardcoded_paths`.
 - The scope boundary is binding: a PR that adds SOC 2 tooling, SSO, or multi-tenant billing under this ADR is out of scope and rejected — that work needs its own funded program and ADR.
 - Any future "what does enterprise-internal require / are we building a SaaS?" question resolves here — internal self-host, and **no**.

@@ -55,3 +55,6 @@ board/.control-plane-audit.jsonl
 # unpacked packages for running WS-H without network access — never tracked)
 tools/control_plane/.vendor/
 board/.tool-audit.jsonl
+
+# WS-E RBAC gate_approval audit ledger (append-only runtime state — ADR-0038 TN-3/TN-4)
+board/.rbac-audit.jsonl

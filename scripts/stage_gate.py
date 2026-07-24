@@ -493,6 +493,21 @@ def maintenance_schedule() -> dict:
                           "DAS-1569); a non-zero exit is an ALERT routed to a follow-up "
                           "ticket, never silently retried or auto-fixed",
             },
+            {
+                "name": "ws-e-tenant-health",
+                "kind": "ws-e-eval",
+                "command": ["python3", "scripts/ws_e_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-e-tenant-health.md",
+                "safety": "read-only RBAC-grant drift (gate.approve/config.edit.security "
+                          "stay founder-only; agent:* still denied gate.approve) + gateway "
+                          "TN-1 host-pin drift (a rogue role=model host stays refused) + "
+                          "in-tenant precondition drift (check_in_tenant.py) + guardrail/"
+                          "golden-set eval drift (Presidio redaction + no-pass-is-RED) "
+                          "(ADR-0038/ADR-0033 GATE-6, DAS-1587); a non-zero exit is an "
+                          "ALERT routed to a follow-up ticket, never silently retried or "
+                          "auto-fixed",
+            },
         ],
     }
 

@@ -1,0 +1,23 @@
+{
+  "_comment": "DAS-1584 FR-007 hand-labeled golden set — clean pass, no anti-gaming case. Shape matches tools/mcp_bridges/promptfoo_tool_bridge.run_eval's fixture contract: {cases:[{name,prompt,expected_contains,actual}]}. Each 'actual' is the recorded correct completion; 'expected_contains' is the hand-labeled required substring. Fixture values are deliberately NOT real-credential-shaped (gitleaks-safe placeholders) — the case is graded on substring containment, not on the input looking like a genuine secret.",
+  "cases": [
+    {
+      "name": "detect-email-pii",
+      "prompt": "Redact PII from: Contact Jane at jane.doe@example.com for the handoff.",
+      "expected_contains": "[REDACTED:pii]",
+      "actual": "Contact Jane at [REDACTED:pii] for the handoff."
+    },
+    {
+      "name": "detect-fake-api-key",
+      "prompt": "Redact secrets from: rotate key AKIA-FAKE-EVAL-FIXTURE-TOKEN now.",
+      "expected_contains": "[REDACTED:api_key]",
+      "actual": "rotate key [REDACTED:api_key] now."
+    },
+    {
+      "name": "preserve-tier-m",
+      "prompt": "Redact from: order 88421 status READY, hash a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "expected_contains": "order 88421 status READY",
+      "actual": "order 88421 status READY, hash a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    }
+  ]
+}

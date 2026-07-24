@@ -1,7 +1,7 @@
 ---
 id: DAS-1579
 title: MUSTAQIL WS-E TENANT — enterprise-internal self-host hardening plus in-tenant runtime BOM (EPIC)
-status: backlog
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -96,3 +96,6 @@ agent cannot provision; the config/policy/adapter code + tests stay buildable `t
 the earlier stages. Sequence overlaps WS-C (noted, not a `depends_on`). Depends on the
 prep bootstrap DAS-1543 for the TN-1 in-tenant precondition + the `ws_e_tenant_hardening`
 scaffold. Org-engine epic — no `project:` field (board_lint R9).
+
+### 2026-07-25 — Orchestrator (/daslab-cycle)
+**EPIC CLOSED — WS-E TENANT complete.** All six AADL gates: GATE-1 (1580 ADR-0038, RBAC+audit+in-tenant BOM, non-goals binding) → GATE-2 (1581 design) → GATE-3 (1582 RBAC + 1583 LiteLLM gateway + 1584 Presidio/promptfoo; security-eng red-team PASSED — no RBAC bypass; R2 gateway host-pin hardened) → GATE-4 (1585 SC-001..005 + R1/R2/R3) → GATE-5 (1586 in-tenant stack runbook, R1 ledger FS-ownership at deploy, flag OFF) → GATE-6 (1587 RBAC/host-pin/in-tenant/guardrail drift health check). Behind ws_e_tenant_hardening OFF (+ ws_e_openweight_ejectpath OFF). vLLM/SGLang deferred. LOCAL-ONLY. Unblocks WS-G PROOF + WS-H CONTROL (after B+D+E).

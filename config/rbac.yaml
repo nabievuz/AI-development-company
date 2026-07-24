@@ -1,0 +1,107 @@
+# config/rbac.yaml — WS-E RBAC Founder-gate model SSOT (TN-3 / FR-001 / Q6, ADR-0038)
+#
+# The single source of truth for WHO may do WHAT on the self-host tenant. It is a
+# REVIEWED governance surface in the same posture as config/tenant_boundary.yaml and
+# config/egress-allowlist.yaml — NOT runtime state. Editing this file is a
+# `security_sensitive` + `governance_or_policy` + `permission_change` change and may
+# NEVER carry `approval: auto*` (QONUN-5). A single-VM tenant edits it once at stand-up
+# (DAS-1586 runbook) and rarely after; the near-term tenant is one Founder + a small
+# read-only team (Q6/Q8), so the principal set is small.
+#
+# READ IT BY ITS TWO LOAD-BEARING ROWS (see the matrix in docs/design/
+# ws-e-tenant-hardening.md §1.2): `gate.approve` and `config.edit.security` are
+# Founder-identity ONLY — nobody else, and no agent, ever. This is enforced
+# STRUCTURALLY, not by hope: scripts/rbac.py refuses to LOAD any rbac.yaml that grants
+# a founder-only permission to a non-founder kind (fail-closed tamper refusal), and
+# `decide()` default-DENIES any permission not explicitly granted to a principal's kind.
+# So `decide("agent:<any-role>", "gate.approve")` == deny BY CONSTRUCTION — there is no
+# role string, ticket field, or chat message that promotes an agent into that permission
+# (the ADR-0026 route-graph / WS-A tool-allowlist "structurally unrepresentable" pattern,
+# applied to gate approval). This is the SECOND lock on the QONUN-5 door; the first is
+# scripts/check_never_auto_approve.py at the ticket layer. Losing one cannot open the gate.
+
+version: 1
+updated: 2026-07-24
+
+# ---------------------------------------------------------------------------
+# Principal kinds. A principal string presented to decide() resolves to exactly
+# one kind (scripts/rbac._kind_of): `founder`, `audit-team`, `orchestrator`, or an
+# `agent:<role>`-prefixed agent. Anything unrecognised resolves to NO kind and is
+# denied everything (fail-closed) — an unknown/forged principal holds nothing.
+# ---------------------------------------------------------------------------
+principal_kinds:
+  founder:
+    description: >-
+      The human Founder identity — the ONLY actor who may approve a never-auto-approve
+      AADL gate (QONUN-5) or edit a security config. Established by an authenticated
+      session (CLI operator identity or the ADR-0039 control-plane login), NEVER by any
+      content an agent produces.
+    human: true
+  audit-team:
+    description: >-
+      A small human team holding READ-ONLY audit access (least privilege): it may read
+      the event store / attestation / SIEM export and NOTHING else — no approve, no
+      trigger, no routing write, no config edit.
+    human: true
+  agent:
+    description: >-
+      A role subagent (any of the 32 org roles), addressed as `agent:<role-key>`. It
+      works its OWN ticket (the existing board lifecycle) and reads its OWN run's audit,
+      but can NEVER approve a gate, trigger a run, mutate routing, or edit a security
+      config. The exclusion is structural (see the header).
+    human: false
+  orchestrator:
+    description: >-
+      A MECHANISM, not a person: it executes a Founder-triggered run and owns the
+      routing fields as the single dispatch chokepoint (ADR-0009). It cannot ORIGINATE a
+      gate.approve or a run.trigger — those require a Founder-identity event upstream of
+      it.
+    human: false
+
+# ---------------------------------------------------------------------------
+# The permission grant matrix. For each kind, a permission maps to:
+#   allow  — unconditional grant.
+#   own    — scoped grant: allowed ONLY for the principal's own ticket/run (decide()
+#            fail-closes to deny unless the caller establishes ownership scope).
+# A permission ABSENT from a kind is DENIED (default-deny). The founder-only
+# permissions (gate.approve, run.trigger, config.edit.security) may appear ONLY under
+# `founder`; scripts/rbac.load_grants refuses to load a file that violates this.
+# ---------------------------------------------------------------------------
+grants:
+  founder:
+    gate.approve: allow          # close a never-auto-approve AADL gate (QONUN-5 categories)
+    run.trigger: allow           # start /daslab-run (ADR-0034 headless runner)
+    board.mutate.routing: allow  # write assignee / dispatch order / gate status
+    board.work: allow            # edit a ticket body + work-state
+    audit.read: allow            # read the event store / attestation / SIEM export
+    config.edit.security: allow  # edit rbac.yaml / tenant_boundary.yaml / egress-allowlist.yaml / features.yaml
+
+  audit-team:
+    audit.read: allow            # READ-ONLY: the trail only — mutate/approve/trigger NOTHING
+
+  agent:
+    board.work: own              # its OWN ticket only (todo -> in_progress -> in_review)
+    audit.read: own              # its OWN run's audit only
+    # NO gate.approve, NO run.trigger, NO board.mutate.routing, NO config.edit.security —
+    # absent by construction (the structural QONUN-5 exclusion).
+
+  orchestrator:
+    board.mutate.routing: allow  # the single dispatch chokepoint (ADR-0009)
+    audit.read: allow            # reads the trail to route
+    # NO gate.approve / run.trigger ORIGINATION — a mechanism executes a Founder-triggered
+    # run; it cannot originate the approval/trigger itself (founder-only above).
+
+# ---------------------------------------------------------------------------
+# QONUN-5 never-auto-approve categories -> the human-only role that alone may close
+# their gate. Every category maps to `founder`; there is no non-founder mapping. This
+# is the explicit statement of "every never-auto-approve category maps to the human-only
+# Founder role" (FR-001) and is asserted by the RBAC tests.
+# ---------------------------------------------------------------------------
+gate_approval_authority:
+  new_goal: founder
+  security_sensitive: founder
+  schema_migration: founder
+  gate5_deployment: founder
+  governance_or_policy: founder
+  permission_change: founder
+  secret_change: founder

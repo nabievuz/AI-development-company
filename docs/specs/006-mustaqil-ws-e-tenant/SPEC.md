@@ -2,7 +2,7 @@
 
 - **Goal:** mustaqil-ws-e-tenant
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed
 
 > WHAT/WHY only. The HOW (LiteLLM gateway wiring, Presidio/classifier plumbing,
 > promptfoo config, vLLM/SGLang serving, RBAC data model, SIEM export format,

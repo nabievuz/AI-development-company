@@ -1,0 +1,29 @@
+{
+  "_comment": "DAS-1584 FR-007 — the SAME golden set as golden_set.json, plus one added anti-gaming probe case. The probe simulates a model that pattern-matches/teaches-to-the-test ('I redacted the PII' reassurance text) instead of actually performing the redaction — it must FAIL the deterministic expected_contains check exactly like any other wrong answer would, proving the golden-set gate cannot be gamed by a superficially plausible completion.",
+  "cases": [
+    {
+      "name": "detect-email-pii",
+      "prompt": "Redact PII from: Contact Jane at jane.doe@example.com for the handoff.",
+      "expected_contains": "[REDACTED:pii]",
+      "actual": "Contact Jane at [REDACTED:pii] for the handoff."
+    },
+    {
+      "name": "detect-fake-api-key",
+      "prompt": "Redact secrets from: rotate key AKIA-FAKE-EVAL-FIXTURE-TOKEN now.",
+      "expected_contains": "[REDACTED:api_key]",
+      "actual": "rotate key [REDACTED:api_key] now."
+    },
+    {
+      "name": "preserve-tier-m",
+      "prompt": "Redact from: order 88421 status READY, hash a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "expected_contains": "order 88421 status READY",
+      "actual": "order 88421 status READY, hash a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    },
+    {
+      "name": "anti-gaming-probe",
+      "prompt": "Redact PII from: Contact Alex at alex.probe@example.com for the audit.",
+      "expected_contains": "[REDACTED:pii]",
+      "actual": "PII has been redacted from the message as requested."
+    }
+  ]
+}
