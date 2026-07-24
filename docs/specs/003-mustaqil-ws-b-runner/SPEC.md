@@ -2,7 +2,21 @@
 
 - **Goal:** mustaqil-ws-b-runner
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed (CTO, 2026-07-24 — DAS-1553, WS-B Planning / GATE-1)
+
+> **CTO review (2026-07-24, DAS-1553).** All eight functional requirements and
+> five success criteria below are coherent, testable, and each traces to an
+> ADR-0034 SR invariant. The load-agents, explicit-model, no-mechanical-decision,
+> board-canonical, and flag-OFF requirements map one-to-one to SR-1…SR-5 in order.
+> The three budget/auth requirements (subscription-account authentication, a
+> budget-or-credit breach evaluating to idle+alert / a sanctioned pause, and
+> metered overflow OFF by default) trace to SR-2's admission-gateway plus the
+> ADR-0027 SI-5 per-dispatch budget ceiling, grounded in Founder discovery Q9 — a
+> WHAT-layer expansion of the budget invariant, not a new HOW. The success
+> criteria mirror the same invariants (dispatch-equivalence, explicit-model,
+> flag-OFF inertness, budget/credit-breach handling, and the release/lint bar).
+> No dangling reference; no defect. The exact id-to-SR map is recorded in the
+> DAS-1553 closure log.
 
 > WHAT/WHY only. The HOW (`daslab_sdk` module layout, `query()` call shape,
 > `setting_sources` wiring, the `run_wave` call boundary) lives in ADR-0034 and

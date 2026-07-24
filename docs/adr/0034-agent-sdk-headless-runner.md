@@ -1,6 +1,6 @@
 # ADR 0034 — Claude Agent SDK headless runner: the future SDK runner ADR 0009/0010 deferred
 
-- **Status:** Proposed (Backend EM authors; **CTO ratifies — RACI 3.1/3.6**; Security Lead consulted — secrets, admission)
+- **Status:** Accepted (Backend EM authors; **CTO ratified 2026-07-24 — RACI 3.1/3.6**; Security Lead consulted — secrets, admission)
 - **Date:** 2026-07-22
 - **Scope:** Platform / org-engine — a programmatic (headless) dispatch entrypoint
 - **Deciders:** Backend EM (author), **CTO (accountable)**; Security Lead (consulted)
@@ -42,7 +42,7 @@ The runner reads/writes `board/tickets/*.md` exactly as `/daslab-cycle` does (C2
 
 ## Enforcement / acceptance
 
-- Ratified by the **CTO**; Security Lead consulted on secrets/isolation. `Proposed` until sign-off.
+- **Ratified by the CTO on 2026-07-24** (RACI 3.1/3.6 A); Security Lead consulted on secrets/isolation. SR-1…SR-5 judged sound against **ADR 0009** (SR-2: under the SDK the runner IS the admission layer becoming a real gateway — the LAW 8 ceiling is honored, not re-opened), the **`run_wave` boundary** (SR-3: the runner makes no mechanical routing/selection/re-tier decision — it calls `scripts/wave_runner.py:run_wave(plan, results)` with orchestrator-supplied data, so ADR 0025/0031 flag-on==flag-off holds at a function boundary, not a fork), and **C1/C2** (SR-1: the generated `.claude/agents/*` shims stay canonical, no `create_agent` port; SR-4: `board/tickets/*.md` stays the source of truth, Git law intact, the runner never merges its own PR). SR-5 keeps the runner additive and flag-OFF, so `/daslab-cycle` stays the default and merging changes no interactive-wave behaviour. No defect found. Status moves `Proposed` → `Accepted` on this sign-off.
 - Acceptance tests: a dispatch passes an explicit `model` (SR-2); the runner routes through `run_wave` and emits the standard attestation (SR-3, checked by `check_attestation`/`check_wave_reconciliation`); a headless wave produces the same board/event outcome as an interactive one (SR-4).
 - Feature key in `config/features.yaml` `DEFAULTS` **OFF**; runner code under `daslab_sdk/` (or `scripts/`).
 - Any future "how does DasLab run without a human in the loop / where is the SDK gateway?" question resolves here.

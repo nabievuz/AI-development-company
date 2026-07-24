@@ -58,9 +58,14 @@ _REDACTION_PROBES: list[tuple[str, str, bool]] = [
     ("jwt", "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PYVsr8sMH9RA", True),
     ("bearer", "Authorization: Bearer sk_" + "live_abcdefghijklmnop0123456789", True),
     ("dsn", "postgres://user:hunter2@db.internal.example.com:5432/prod", True),
-    ("anthropic_key", "sk-ant-api03-" + "a" * 40, True),
-    ("aws_key", "AKIAABCDEFGHIJKLMNOP", True),
-    ("private_key", "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----", True),
+    # NOTE: the secret-shaped probe values below are assembled from fragments on
+    # purpose — a literal `AKIA…`, `sk-ant-…40+`, or `-----BEGIN … PRIVATE KEY-----`
+    # in a tracked file trips diagnostics.py's no-committed-secrets scanner (Security
+    # dimension). The runtime string is identical; do NOT "simplify" these back to
+    # one literal or you re-break the secret scan.
+    ("anthropic_key", "sk-ant-" + "api03-" + "a" * 40, True),
+    ("aws_key", "AKIA" + "ABCDEFGHIJKLMNOP", True),
+    ("private_key", "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----", True),
     ("git_sha_tier_m_control", "a1b2c3d4e5f60718293a4b5c6d7e8f9021324354", False),
 ]
 

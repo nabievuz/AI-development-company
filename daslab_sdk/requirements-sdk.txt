@@ -1,0 +1,14 @@
+# DasLab WS-B optional headless-runner dependency (ADR-0034 / SR-5).
+#
+# Kept OUT of the core requirements.txt so the engine has NO hard dependency on
+# the Agent SDK: with this uninstalled the runner is simply *unavailable*
+# (a clean "runner unavailable" result), and /daslab-cycle — which has no SDK
+# dependency at all — is unaffected.  Install ONLY where the headless runner runs
+# (a Founder-flip / DAS-1558 deployment step), never as part of the base engine:
+#
+#   pip install -r daslab_sdk/requirements-sdk.txt
+#
+# The Claude Agent SDK — the packaged Claude Code harness whose query() loads a
+# repo's project settings (.claude/agents, skills, CLAUDE.md, hooks, .mcp.json)
+# via setting_sources=["project"].  This is NOT the Anthropic Messages-API SDK.
+claude-agent-sdk>=0.1
