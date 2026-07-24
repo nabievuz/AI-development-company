@@ -1,0 +1,11 @@
+# DasLab WS-A browser/computer-use tool — optional deps (DAS-1548).
+# Kept OUT of core requirements.txt so the engine stays server-free (ADR-0033
+# TB-1, check_no_dead_runtime) and the tool is absent-by-default: install only
+# where the browser sidecar actually runs.
+#   pip install -r tools/browser/requirements-browser.txt
+mcp>=1.2
+# Swap the reference stdlib navigate/read backend for a real browser driver by
+# adding ONE of the following (never both) and wiring it behind the C8 action
+# gate in browser_bridge.py — the gate does not change when the backend does:
+#   playwright>=1.45          # then `python -m playwright install --with-deps`
+#   browser-use>=0.1

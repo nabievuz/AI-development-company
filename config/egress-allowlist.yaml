@@ -1,0 +1,39 @@
+# DasLab WS-A egress allow-list (ADR-0033 TB-4 / Founder answer Q5).
+#
+# Deny-all is IMPLICIT: outbound network access is refused unless the invoking
+# role's `egress_profile` (declared in its overlay `## External tools` block and
+# compiled by scripts/gen_subagents.py) names a profile below AND the requested
+# host matches an entry in that profile on a LABEL BOUNDARY (C6), AND the host
+# RESOLVES to a public address (C5 — loopback / link-local / RFC-1918 are blocked
+# even if the host string looks external). Enforced in tools/mcp_bridges/egress_guard.py.
+#
+# Editing this file is a `security_sensitive` + `governance_or_policy` change
+# (never `approval: auto*`, QONUN-5) — the set of approved destinations is a
+# reviewed governance surface, which is why this file is TRACKED (unlike the
+# generated board/.tool-allowlist.json).
+#
+# NOTE (C5): no `localhost` / loopback entry ships by default. A profile that
+# needs to reach an internal host must list that exact host explicitly AND accept
+# the SSRF risk in a reviewed change — the egress guard only waives the internal-IP
+# block for a host the profile names verbatim. The browser profile is DAS-1548's
+# job and is intentionally NOT added here.
+
+profiles:
+  # An explicit deny-all profile: named so an overlay grant can reference "none"
+  # for a tool that must never reach the network. Empty list => every host denied.
+  none: []
+
+  # Sourced market/competitor/technical research over public, reputable sources.
+  # Every host below is public; each is matched on a label boundary (C6).
+  research-read:
+    - "*.wikipedia.org"
+    - api.crossref.org
+    - export.arxiv.org
+
+  # Browser / computer-use default egress profile (DAS-1548, ADR-0033 TB-4).
+  # DENY-ALL by design: the browser is the widest attack surface (prompt
+  # injection via fetched content), so no host ships here by default. A role
+  # that needs the browser to navigate real destinations gets a NEW, narrowly
+  # scoped profile added in a separate reviewed change (security_sensitive +
+  # governance_or_policy, QONUN-5) — this profile is never widened in place.
+  browser-deny-all: []

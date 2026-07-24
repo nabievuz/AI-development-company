@@ -14,6 +14,7 @@ Re-run after editing any overlay. Idempotent — output is fully regenerated.
 Runtime pilots tied to non-Claude runtimes are skipped (they were adapter
 experiments, not Claude roles).
 """
+import json
 import re
 
 import yaml
@@ -22,6 +23,18 @@ from _paths import ROOT
 OUT = ROOT / ".claude" / "agents"
 SKIP = set()  # (no external-runtime pilots)
 DEPTS = ["governance", "engineering", "product", "design", "marketing", "operations"]
+
+# WS-A (ADR-0033 TB-2): compile each overlay's `## External tools` YAML block into
+# board/.tool-allowlist.json — the compiled least-privilege grant map the PreToolUse
+# hook (tools/mcp_bridges/audit_external_tool.py) reads. TRACKED + generate-and-diff
+# (C1): a hand-edit of the JSON diverges from this compile and the drift test reddens.
+TOOL_ALLOWLIST_OUT = ROOT / "board" / ".tool-allowlist.json"
+# Capture the fenced YAML block that immediately follows a `## External tools`
+# heading (the section may carry an HTML comment before the fence).
+_EXTERNAL_TOOLS_RE = re.compile(
+    r"^##\s+External tools\b.*?\n```ya?ml\s*\n(.*?)\n```",
+    re.S | re.M | re.I,
+)
 
 # Communication fabric (ADR-0026): the closed set of allowed (sender -> receiver)
 # routes, authored/validated by DAS-1465. Each role's OUTBOUND routes are compiled
@@ -72,6 +85,88 @@ def load_alloc():
 def field(text, name):
     m = re.search(rf"^\-\s*\*\*{name}:\*\*\s*(.+)$", text, re.M)
     return m.group(1).strip() if m else ""
+
+
+def iter_overlays(depts=DEPTS):
+    """Yield ``(role_key, overlay_text)`` for every role overlay in the org tree.
+
+    Shared by the shim generator and the tool-allowlist compiler so both read the
+    exact same SSOT set (no drift between "who has a shim" and "who has a grant").
+    """
+    for dept in depts:
+        agents_dir = ROOT / dept / "agents"
+        if not agents_dir.is_dir():
+            continue
+        for d in sorted(agents_dir.iterdir()):
+            key = d.name
+            overlay = d / "AGENTS.md"
+            if key in SKIP or not overlay.exists():
+                continue
+            yield key, overlay.read_text()
+
+
+def parse_external_tools(overlay_text):
+    """Return the ``external_tools`` list from an overlay's `## External tools` block.
+
+    Absent section (the common case) → ``[]``. Malformed YAML → ``[]`` (the overlay
+    grants nothing rather than crashing the whole compile; a bad block simply grants
+    no reach — deny-by-default).
+    """
+    m = _EXTERNAL_TOOLS_RE.search(overlay_text)
+    if not m:
+        return []
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except yaml.YAMLError:
+        return []
+    grants = data.get("external_tools") if isinstance(data, dict) else None
+    return grants if isinstance(grants, list) else []
+
+
+def compile_tool_allowlist(overlays=None):
+    """Compile overlay `## External tools` grants → the TB-2 allow-list map.
+
+    Shape (exactly what ``audit_external_tool.decide()`` reads)::
+
+        { "mcp__<server>": ["role-a", "role-b"],           # server-level grant
+          "mcp__<server>__<tool>": ["role-c"] }             # tool-level grant
+
+    The value is ALWAYS a sorted list of EXPLICIT role keys — never ``"*"`` (C2):
+    a server-wide ``tools: ["*"]`` overlay grant compiles to the explicit list of
+    roles that declared it, so "any-role" is structurally unrepresentable in the
+    compiled map. A role appears under a key only if its overlay declared it
+    (union of declarations; no default entry, no wildcard role).
+    """
+    if overlays is None:
+        overlays = iter_overlays()
+    grant_map: dict[str, set[str]] = {}
+    for role_key, text in overlays:
+        for grant in parse_external_tools(text):
+            if not isinstance(grant, dict):
+                continue
+            server = str(grant.get("server", "")).strip()
+            if not server:
+                continue
+            tools = grant.get("tools") or []
+            if not isinstance(tools, list):
+                tools = [tools]
+            if any(str(t).strip() == "*" for t in tools):
+                # Server-wide grant → the SERVER key, mapped to the EXPLICIT role
+                # (never the literal "*"). C2: no "*" value is ever emitted.
+                grant_map.setdefault(server, set()).add(role_key)
+            else:
+                for t in tools:
+                    t = str(t).strip()
+                    if t:
+                        grant_map.setdefault(f"{server}__{t}", set()).add(role_key)
+    return {k: sorted(v) for k, v in sorted(grant_map.items())}
+
+
+def write_tool_allowlist():
+    """Write the compiled TB-2 allow-list to the tracked artifact (idempotent)."""
+    allow = compile_tool_allowlist()
+    TOOL_ALLOWLIST_OUT.write_text(json.dumps(allow, indent=2, sort_keys=True) + "\n")
+    return allow
 
 
 def load_template_alloc(templates_dir=TEMPLATES):
@@ -258,6 +353,11 @@ must be routed (reviews, escalations, new work discovered).
         routing.append(f"| `{key}` | {display} | {dept} | {reports or '—'} |")
     (ROOT / "board" / "ROUTING.md").write_text("\n".join(routing) + "\n")
     print(f"  ✓ board/ROUTING.md ({len(roles)} roles)")
+
+    # WS-A (ADR-0033 TB-2): compile the overlay `## External tools` grants into the
+    # tracked, reviewed allow-list the PreToolUse hook trusts (C1 generate-and-diff).
+    allow = write_tool_allowlist()
+    print(f"  ✓ board/.tool-allowlist.json ({len(allow)} tool grant(s))")
 
 
 if __name__ == "__main__":

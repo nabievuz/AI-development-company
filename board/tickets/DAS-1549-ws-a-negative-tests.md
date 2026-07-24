@@ -14,7 +14,7 @@ labels: [security]
 zone: tests
 depends_on: [DAS-1547, DAS-1548]
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-24
 ---
 
 ## Description
@@ -36,6 +36,28 @@ Cover:
 - [ ] `tests/test_ws_a_tool_bridge.py` folded in and green; overall pytest green in CI.
 - [ ] Security Engineer red-team review recorded. Merged PR, green CI.
 
+## Security conditions (GATE-2)
+
+Bound by the CTO at GATE-2 closure of DAS-1546 (Security Lead audit). **Beyond** the
+doc's §4 SC-001/SC-002, these five negative tests are **MUST-PASS** — GATE-4 for this
+ticket **cannot be signed** unless all pass. Each proves a binding condition on
+DAS-1547/1548 (C1–C8).
+
+- **T1 (C3):** a hook-exec failure (crash / non-zero exit / malformed stdout) ⇒ tool
+  **DENIED** (fail-closed on both CLI and Agent SDK).
+- **T2 (C4):** an allow-listed host that 302→a non-allow-listed host ⇒ **denied**, and
+  the redirect target is **never fetched**.
+- **T3 (C5):** a URL host / redirect resolving to 169.254.169.254 / 127.0.0.1 /
+  10.0.0.0-8 ⇒ **denied** unless a profile explicitly and narrowly scopes it.
+- **T4 (C2):** a `"*"` roles value in the compiled allow-list map does **NOT** grant
+  any-role.
+- **T5 (C1):** the drift guard **fails CI** on a tampered/stale compiled allow-list
+  (meaningful only once the file is tracked per C1).
+
 ## Log
 ### 2026-07-23 — CEO
 Created by /daslab-plan (WS-A Testing). SC-001/SC-002 negative tests; red-team consulted.
+
+### 2026-07-24 — CTO
+GATE-2 closed on DAS-1546. Attached binding negative-test conditions **T1–T5** (above)
+from the Security Lead audit — MUST-PASS for GATE-4, in addition to §4 SC-001/SC-002.

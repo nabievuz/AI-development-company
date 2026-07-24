@@ -20,13 +20,12 @@ def test_real_config_matches_live_flag_state():
     # consumer). DEFAULTS stay all-off (see the missing/empty-file tests below).
     # heartbeat_enabled was added by DAS-1475 (WS4 HEARTBEAT, ADR-0027 SI-7) and
     # ships default OFF — Founder flip-only after a >=3-day clean shadow window.
-    flags = ff.load()
-    assert flags == {
-        "dgox_emit": False,
-        "t4_t7_governors": False,
-        "organism_emit": True,
-        "heartbeat_enabled": False,
-    }
+    # Assert the live contract against DEFAULTS (the SSOT) so adding a new latent
+    # flag (e.g. the MUSTAQIL ws_* keys, DAS-1543) does not break this test: live
+    # config = all DEFAULTS OFF except organism_emit, which is ON.
+    expected = dict.fromkeys(ff.DEFAULTS, False)
+    expected["organism_emit"] = True
+    assert ff.load() == expected
 
 
 def test_enabled_reads_a_true_flag(tmp_path):
@@ -41,12 +40,9 @@ def test_enabled_reads_a_true_flag(tmp_path):
 
 
 def test_missing_file_falls_back_off(tmp_path):
-    assert ff.load(tmp_path / "nope.yaml") == {
-        "dgox_emit": False,
-        "t4_t7_governors": False,
-        "organism_emit": False,
-        "heartbeat_enabled": False,
-    }
+    # A missing file falls back to DEFAULTS (all OFF) — derive from the SSOT so new
+    # flags do not break this.
+    assert ff.load(tmp_path / "nope.yaml") == dict.fromkeys(ff.DEFAULTS, False)
 
 
 def test_unknown_keys_are_ignored(tmp_path):
@@ -59,9 +55,5 @@ def test_unknown_keys_are_ignored(tmp_path):
 def test_empty_file_falls_back_off(tmp_path):
     p = tmp_path / "f.yaml"
     p.write_text("", encoding="utf-8")
-    assert ff.load(p) == {
-        "dgox_emit": False,
-        "t4_t7_governors": False,
-        "organism_emit": False,
-        "heartbeat_enabled": False,
-    }
+    # An empty file falls back to DEFAULTS (all OFF) — derive from the SSOT.
+    assert ff.load(p) == dict.fromkeys(ff.DEFAULTS, False)

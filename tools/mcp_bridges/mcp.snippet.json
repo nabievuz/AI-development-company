@@ -1,5 +1,5 @@
 {
-  "_comment": "WS-A (ADR-0033) — MERGE these entries into the `mcpServers` object of the repo-root .mcp.json. Do not replace the file; add alongside ArcRift/obsidian. Feature-flagged: only agents whose role is in $DASLAB_TOOL_ALLOWLIST may use them (enforced by .claude/hooks/audit_external_tool.py).",
+  "_comment": "WS-A (ADR-0033) reference merge fragment for the repo-root .mcp.json `mcpServers` object (add alongside ArcRift/obsidian; never replace the file). STATE: `langchain-tools` is merged live by DAS-1547. `playwright` (browser) is DAS-1548's to wire (tools/browser + browser egress profile). Governance: the PreToolUse hook `tools/mcp_bridges/audit_external_tool.py` (wired in .claude/settings.json, matcher mcp__.*) allow/denies per the compiled board/.tool-allowlist.json; inert while feature flag `ws_a_tool_bridge` is OFF.",
   "mcpServers": {
     "playwright": {
       "type": "stdio",

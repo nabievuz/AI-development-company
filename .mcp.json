@@ -21,6 +21,22 @@
         "SQLITE_DB_PATH": "${HOME}/ArcRift/backend/ArcRift.db",
         "NODE_ENV": "production"
       }
+    },
+    "langchain-tools": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/mcp_bridges/langchain_tool_bridge.py"
+      ],
+      "env": {}
+    },
+    "browser": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/tools/browser/browser_bridge.py"
+      ],
+      "env": {}
     }
   }
 }
