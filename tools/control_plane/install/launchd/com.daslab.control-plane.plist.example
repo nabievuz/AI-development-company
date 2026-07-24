@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+DasLab WS-H control plane — OPTIONAL launchd unit EXAMPLE (ADR-0039 CP-5).
+
+Nothing in DasLab installs, copies, or loads this file. It ships as a
+`.plist.example` (not `.plist`) precisely so launchd's own directory scan
+never picks it up on its own. Standing it up is a deliberate Founder act:
+
+  cp com.daslab.control-plane.plist.example ~/Library/LaunchAgents/com.daslab.control-plane.plist
+  $EDITOR ~/Library/LaunchAgents/com.daslab.control-plane.plist   # fill in real paths + RBAC path
+  launchctl load ~/Library/LaunchAgents/com.daslab.control-plane.plist   # explicit opt-in, not automatic
+
+The process dispatches nothing on its own (CP-5) — it only serves requests on
+the loopback interface by default; see docs/runbooks/ws-h-control-plane.md.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.daslab.control-plane</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>tools.control_plane.app:app</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8899</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/daslab</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DASLAB_ROOT</key>
+        <string>/path/to/daslab</string>
+        <key>DASLAB_CP_RBAC</key>
+        <string>/secure/rbac.json</string>
+        <!-- Only needed on a no-network target using the vendored offline
+             bundle (tools/control_plane/install/build_offline_bundle.py). -->
+        <key>PYTHONPATH</key>
+        <string>/path/to/daslab/tools/control_plane/.vendor/site-packages</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

@@ -2,7 +2,14 @@
 
 - **Goal:** mustaqil-ws-h-control
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed  <!-- CTO review 2026-07-24 (DAS-1598, GATE-1): every functional requirement and success criterion coherent, testable, traceable to ADR-0039 CP-1…CP-6; no unresolved clarification marker. -->
+
+<!-- CTO GATE-1 review note (DAS-1598): the P2 write scenario is worded to the WS-E
+     RBAC SSOT (config/rbac.yaml / scripts/rbac.py) this control plane MUST reuse —
+     principal kinds founder/audit-team/agent/orchestrator, run.trigger Founder-only,
+     audit-team read-only — NOT the on-branch spike's ad-hoc viewer<operator<founder
+     tier. Binding on the Design/Development stage: bind writes to the SSOT model. -->
+
 
 > WHAT/WHY only. The HOW (FastAPI controller layer, the ADR-0028 `cockpit.py`
 > `render()`/`_render_panel`/`NODATA` render seam and `cockpit_html.py` wrapper, the
@@ -25,7 +32,7 @@
 - **P1 —** Given RBAC is not configured, when any data or action endpoint is called, then it fails closed (no anonymous access) and only a data-free HTML shell and a health probe answer; there is no default-open surface.
 - **P1 —** Given a Founder-role identity authenticated via RBAC, when they approve or deny a gate or interrupt-card from the browser, then the approval is honored and written to the audit trail — while a viewer or operator (any non-Founder role, an agent, or the dashboard itself) attempting the same approval is refused.
 - **P1 —** Given a deployment ticket whose GATE-5 is open, when anyone presses any button in the dashboard, then the deployment stays machine-blocked — no button overrides the gate.
-- **P2 —** Given an operator role, when they submit a goal proposal or trigger a run through the WS-B runner, then the action is RBAC-authorized, executed only through the canonical board/queue/runner entrypoints, and appended to the event-store audit trail, redacted per ADR-0012.
+- **P2 —** Given a principal that the WS-E RBAC authorizes for a write action, when they submit a goal proposal or trigger a run through the WS-B runner, then the action is authorized through that RBAC — in the near-term tenant, run-trigger authority is Founder-only and the team is read-only (Q6) — executed only through the canonical board/queue/runner entrypoints, and appended to the event-store audit trail, redacted per ADR-0012; a principal not granted the action is refused with an audited deny.
 - **P2 —** Given a tenant server with no internet access, when an operator installs the control plane from the vendored wheel bundle, then the app installs and boots offline (no network fetch) and answers its health probe.
 - **P2 —** Given the optional control-plane process is not running, when an operator opens DasLab, then the surface degrades cleanly to the static read-only cockpit — the control plane is an opt-in convenience, never a required daemon, and it dispatches nothing on its own.
 

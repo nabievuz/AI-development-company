@@ -508,6 +508,23 @@ def maintenance_schedule() -> dict:
                           "ALERT routed to a follow-up ticket, never silently retried or "
                           "auto-fixed",
             },
+            {
+                "name": "ws-h-control-health",
+                "kind": "ws-h-eval",
+                "command": ["python3", "scripts/ws_h_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-h-control-health.md",
+                "safety": "read-only RBAC-grant drift (gate.approve/run.trigger stay "
+                          "founder-only; agent:* still denied both) + audit-redaction "
+                          "drift (the ADR-0012 scrubber still redacts a secret-shaped "
+                          "probe) + degrade/flag drift (ws_h_control_plane defaults OFF; "
+                          "degrade-to-static holds flag-off and force-static) + "
+                          "token-compare drift (_match_token still uses "
+                          "hmac.compare_digest, no bare dict .get() regression) "
+                          "(ADR-0039/ADR-0033 GATE-6, DAS-1605); a non-zero exit is an "
+                          "ALERT routed to a follow-up ticket, never silently retried or "
+                          "auto-fixed",
+            },
         ],
     }
 

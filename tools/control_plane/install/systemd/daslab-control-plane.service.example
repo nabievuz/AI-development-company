@@ -1,0 +1,36 @@
+# DasLab WS-H control plane — OPTIONAL systemd unit EXAMPLE (ADR-0039 CP-5).
+#
+# Nothing in DasLab installs, copies, enables, or starts this file. It ships as
+# a `.service.example` (not `.service`) precisely so no unit scanner on a real
+# system will ever pick it up on its own. Standing it up is a deliberate
+# Founder act:
+#
+#   sudo cp daslab-control-plane.service.example /etc/systemd/system/daslab-control-plane.service
+#   sudo $EDITOR /etc/systemd/system/daslab-control-plane.service   # fill in real paths + RBAC path
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now daslab-control-plane   # explicit opt-in, not automatic
+#
+# The service dispatches nothing on its own (CP-5) — it only serves requests on
+# the loopback interface by default; a tenant-network bind is a separate
+# deliberate act (see docs/runbooks/ws-h-control-plane.md).
+
+[Unit]
+Description=DasLab WS-H control plane (OPTIONAL, Founder opt-in — not a daemon; serves requests only)
+After=network.target
+
+[Service]
+Type=simple
+# Fill in the real repo path and RBAC vault path before enabling.
+WorkingDirectory=/path/to/daslab
+Environment=DASLAB_ROOT=/path/to/daslab
+Environment=DASLAB_CP_RBAC=/secure/rbac.json
+# Only needed on a no-network target using the vendored offline bundle
+# (tools/control_plane/install/build_offline_bundle.py); omit if `pip install
+# -r tools/control_plane/requirements-control.txt` was run normally.
+Environment=PYTHONPATH=/path/to/daslab/tools/control_plane/.vendor/site-packages
+ExecStart=/usr/bin/python3 -m uvicorn tools.control_plane.app:app --host 127.0.0.1 --port 8899
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

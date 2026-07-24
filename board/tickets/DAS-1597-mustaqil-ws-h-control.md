@@ -1,7 +1,7 @@
 ---
 id: DAS-1597
 title: MUSTAQIL WS-H CONTROL — self-hosted web control plane over the cockpit (EPIC)
-status: backlog
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -91,3 +91,6 @@ Folds in the on-branch `tools/control_plane/app.py` spike (10 ruff B008 to clean
 Cross-referenced as the WS-G proof-project target. Org-engine epic — no `project:` field
 (board_lint R9). Depends on the program bootstrap DAS-1543 (feature-flag scaffold;
 `ws_h_control_plane: false` already present in config/features.yaml).
+
+### 2026-07-25 — Orchestrator (/daslab-cycle)
+**EPIC CLOSED — WS-H CONTROL complete.** All six AADL gates: GATE-1 (1598 ADR-0039) → GATE-2 (1599 design, RBAC-SSOT + not-a-daemon) → GATE-3 (1600 harden app + RBAC/audit [B008 spike debt cleaned], 1601 approve-gate/trigger-run [Founder-only event, GATE-5-open stays blocked], 1602 offline-install + degrade-static; security-eng red-team PASSED — QONUN-5 web approval boundary structurally sound; R1 constant-time token + R3 CI-theatre [endpoint tests now actually run in CI] fixed) → GATE-4 (1603 negatives + R1..R4, 0 xfailed) → GATE-5 (1604 offline-install runbook, flag OFF) → GATE-6 (1605 RBAC/audit/degrade/token drift health). Behind ws_h_control_plane OFF; degrades to the ADR-0028 static cockpit. LOCAL-ONLY. Unblocks A2A (1606, deferred until after proof per Q12) + WS-F TEMPO (1615, LAST).
