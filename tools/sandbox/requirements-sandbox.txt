@@ -1,0 +1,12 @@
+# DasLab WS-C optional LIVE sandbox deps (DAS-1566, blocked — not built here).
+# Kept OUT of core requirements.txt so the engine stays server-free (WS-A
+# pattern, ADR-0033 TB-1 / check_no_dead_runtime). Absent by default: the
+# LocalStubSandbox (tools/sandbox/local_stub.py) needs NONE of this and is
+# fully importable/testable with nothing installed.
+#
+# Install only where a real DockerSandbox (E2B / OpenHands, Docker-based per
+# Q2) is actually driven — that wiring is DAS-1566's job, not this file's:
+#   pip install -r tools/sandbox/requirements-sandbox.txt
+#
+# docker>=7.0          # local Docker Engine driver
+# e2b>=0.17             # E2B hosted sandbox SDK (alternative/managed backend)

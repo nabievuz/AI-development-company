@@ -1,0 +1,20 @@
+# WS-C LangGraph substrate — OPT-IN extra (ADR-0035 LG-5 / DAS-1564).
+#
+# LangGraph is deliberately NOT in the core requirements.txt: the DGO-X engine,
+# /daslab-cycle, and the WS-C governance functions (project / reconcile / route /
+# apply_channel / checkpointing in scripts/dgox/langgraph_loop.py) all run WITHOUT
+# it. LangGraph is required ONLY to compile and run the graph (build_graph).
+#
+# Absent  ⇒ scripts/dgox/langgraph_loop.py:langgraph_available() == False and
+#           build_graph() raises SubstrateUnavailableError — the substrate is
+#           UNAVAILABLE, not broken.
+# Present ⇒ build_graph() compiles the DGO-X loop onto a LangGraph StateGraph.
+#
+# Install only on a host that will actually DRIVE the substrate (behind the
+# Founder/board flip of ws_c_langgraph_loop — DAS-1568), never as a default dep:
+#
+#     python3 -m pip install -r scripts/dgox/requirements-langgraph.txt
+#
+# Unpinned here on purpose: the core release gate must not carry a langgraph
+# lock. DAS-1566/1568 pin the exact version on the tenant VM at deploy time.
+langgraph

@@ -2,7 +2,7 @@
 """check_import_ban.py — GATE-4 clean-room: fail on any banned donor library.
 
 Five banned donor agent-framework libraries (§2.3 clean-room):
-  1. langgraph
+  1. langgraph   — NARROWLY sanctioned in the DGO-X substrate zone (see below)
   2. agent-framework (Microsoft)
   3. crewai
   4. agency-swarm
@@ -12,6 +12,20 @@ Scans two surfaces:
   * Dependency manifests: requirements*.txt, requirements*.in, pyproject.toml
     ([project.dependencies] / [tool.poetry.dependencies])
   * Python source:        scripts/**/*.py and tests/**/*.py (recursive)
+
+ADR-0035 sanctioned-substrate carve-out (GATE-4, CTO-ratified 2026-07-24)
+-------------------------------------------------------------------------
+ADR-0035 (Accepted) adopts LangGraph as the DGO-X Phase-2/3 execution substrate
+**strictly under C1** — an opt-in extra, never in the core dependency set.  This
+policy therefore NARROWS the §2.3 ban for ``langgraph`` ONLY: a ``langgraph``
+import is permitted inside the sanctioned substrate zone ``scripts/dgox/`` (see
+SANCTIONED_IMPORT_PATHS), and the runtime is declared solely in the opt-in extra
+``scripts/dgox/requirements-langgraph.txt`` (which lives OUTSIDE the root-only
+manifest scan, so it is not — and must not be — added to the core
+``requirements.txt``).  ``langgraph`` stays BANNED in every other source path and
+in every scanned manifest; the other four donor libs have NO carve-out and stay
+fully banned everywhere.  This narrows the ban to state-as-fact what ADR-0035
+ratified — it does not remove it.
 
 Matching is word-boundary-safe (Python re with \\b — NOT git grep -E which
 silently ignores \\b), so a substring like ``my_crewai_plugin`` is NOT a hit.
@@ -46,6 +60,39 @@ BANNED: list[tuple[str, list[str]]] = [
     ("agency-swarm", ["agency_swarm"]),
     ("superagi", ["superagi"]),
 ]
+
+# ---------------------------------------------------------------------------
+# Sanctioned carve-outs: (banned-lib-name, source-path-prefix) pairs where a
+# ratified ADR NARROWS the ban for one lib in one zone only.  A banned import
+# is suppressed ONLY when BOTH the lib name AND the containing file's path
+# prefix match a pair here.  This is a scoped allow, not a global unban — every
+# lib/path outside these exact pairs stays fully banned.
+#
+# ADR-0035 (Accepted; CTO ratified — RACI 3.1/3.6 A — 2026-07-24) adopts
+# LangGraph as the DGO-X P2/P3 execution substrate under DGO-X C1.  It is an
+# opt-in extra declared only in scripts/dgox/requirements-langgraph.txt (NOT the
+# core requirements.txt), consumed only from the substrate zone scripts/dgox/.
+# So langgraph is allowed to be imported there and nowhere else; the other four
+# donor libs (agent-framework, crewai, agency-swarm, superagi) have NO carve-out.
+# Path prefixes are matched against the file's repo-relative POSIX path.
+# ---------------------------------------------------------------------------
+SANCTIONED_IMPORT_PATHS: list[tuple[str, str]] = [
+    ("langgraph", "scripts/dgox/"),
+]
+
+
+def _is_sanctioned_import(lib_name: str, rel_posix: str) -> bool:
+    """True when a (lib, path) import hit is explicitly sanctioned by a ratified ADR.
+
+    Suppresses a hit only when the banned lib AND the file's repo-relative POSIX
+    path prefix both match a ``SANCTIONED_IMPORT_PATHS`` pair.  Narrows the §2.3
+    clean-room ban to honour ADR-0035 (langgraph inside ``scripts/dgox/`` only);
+    it does not remove the ban for that lib elsewhere or for any other lib.
+    """
+    return any(
+        lib_name == sanctioned_lib and rel_posix.startswith(prefix)
+        for sanctioned_lib, prefix in SANCTIONED_IMPORT_PATHS
+    )
 
 
 def _dist_pattern(name: str) -> re.Pattern[str]:
@@ -214,8 +261,12 @@ def scan_imports(root: Path) -> list[str]:
             except OSError:
                 continue
             lines = text.splitlines()
-            rel = str(py_file.relative_to(root))
+            rel = py_file.relative_to(root).as_posix()
             for lib_name, pat in _IMPORT_PATS:
+                # Sanctioned-substrate carve-out (ADR-0035): a narrowly allowed
+                # (lib, path) pair is not a violation. Other libs/paths unaffected.
+                if _is_sanctioned_import(lib_name, rel):
+                    continue
                 for m in pat.finditer(text):
                     lineno = text[: m.start()].count("\n") + 1
                     # Skip lines that are comments (leading # after stripping).

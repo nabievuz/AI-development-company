@@ -2,7 +2,7 @@
 
 - **Goal:** mustaqil-ws-c-loop
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed
 
 > WHAT/WHY only. The HOW (the LangGraph state-channel mapping, `interrupt()` /
 > conditional-edge mechanics, the E2B/OpenHands sandbox provisioning, the checkpointer

@@ -196,12 +196,14 @@ def test_nested_scripts_subdir_banned_import_caught(tmp_path: Path) -> None:
     """A banned import inside a nested scripts/ subdirectory is detected.
 
     Previously scan_imports used glob("*.py") (top-level only); the fix uses
-    rglob("*.py") so scripts/dgox/, scripts/cache/, etc. are covered.
+    rglob("*.py") so scripts/dgox/, scripts/cache/, etc. are covered. Uses
+    crewai (a non-sanctioned lib) so the nested-scan assertion is independent of
+    the ADR-0035 langgraph carve-out for scripts/dgox/.
     """
-    _write(tmp_path / "scripts" / "dgox" / "pipeline.py", "import langgraph\n")
+    _write(tmp_path / "scripts" / "dgox" / "pipeline.py", "import crewai\n")
     hits = scan_imports(tmp_path)
     assert len(hits) == 1, f"Expected 1 hit, got {hits}"
-    assert "langgraph" in hits[0]
+    assert "crewai" in hits[0]
     assert "scripts/dgox/pipeline.py" in hits[0]
 
 
@@ -322,3 +324,62 @@ def test_real_repo_pyproject_clean(tmp_path: Path) -> None:
         "Banned donor lib(s) found in real pyproject.toml:\n"
         + "\n".join(pyproject_hits)
     )
+
+
+# ---------------------------------------------------------------------------
+# ADR-0035 sanctioned-substrate carve-out: langgraph is allowed ONLY inside the
+# DGO-X substrate zone scripts/dgox/, and only for langgraph — never elsewhere,
+# never for the other four donor libs. (GATE-4, CTO-ratified 2026-07-24.)
+# ---------------------------------------------------------------------------
+
+
+def test_carveout_langgraph_allowed_in_dgox_substrate_zone(tmp_path: Path) -> None:
+    """The natural idiomatic import in scripts/dgox/ is ALLOWED (ADR-0035)."""
+    _write(
+        tmp_path / "scripts" / "dgox" / "langgraph_loop.py",
+        "from langgraph.graph import StateGraph\n",
+    )
+    assert scan_imports(tmp_path) == []
+
+
+def test_carveout_langgraph_bare_and_submodule_allowed_in_dgox(tmp_path: Path) -> None:
+    """Both `import langgraph` and `import langgraph.graph` are allowed in scripts/dgox/."""
+    _write(tmp_path / "scripts" / "dgox" / "a.py", "import langgraph\n")
+    _write(tmp_path / "scripts" / "dgox" / "b.py", "import langgraph.graph\n")
+    assert scan_imports(tmp_path) == []
+
+
+def test_carveout_langgraph_still_banned_outside_dgox(tmp_path: Path) -> None:
+    """langgraph in any non-substrate path is STILL a violation (scoped, not global, unban)."""
+    _write(tmp_path / "scripts" / "other" / "smuggle.py", "from langgraph.graph import X\n")
+    hits = scan_imports(tmp_path)
+    assert len(hits) == 1, f"Expected 1 hit, got {hits}"
+    assert "langgraph" in hits[0]
+    assert "scripts/other/smuggle.py" in hits[0]
+
+
+def test_carveout_langgraph_still_banned_in_tests_tree(tmp_path: Path) -> None:
+    """The carve-out is scripts/dgox/ only — langgraph in tests/ still fails."""
+    _write(tmp_path / "tests" / "helpers" / "u.py", "import langgraph\n")
+    hits = scan_imports(tmp_path)
+    assert len(hits) == 1, f"Expected 1 hit, got {hits}"
+    assert "langgraph" in hits[0]
+
+
+def test_carveout_does_not_extend_to_other_donor_libs_in_dgox(tmp_path: Path) -> None:
+    """Only langgraph is carved out; the other four stay banned even inside scripts/dgox/."""
+    _write(tmp_path / "scripts" / "dgox" / "c.py", "import crewai\n")
+    _write(tmp_path / "scripts" / "dgox" / "d.py", "from agency_swarm import Agent\n")
+    _write(tmp_path / "scripts" / "dgox" / "e.py", "import superagi\n")
+    _write(tmp_path / "scripts" / "dgox" / "f.py", "import agent_framework\n")
+    hits = scan_imports(tmp_path)
+    assert len(hits) == 4, f"Expected 4 hits (langgraph excluded), got {hits}"
+    assert not any("langgraph" in h for h in hits)
+
+
+def test_carveout_core_requirements_langgraph_still_banned(tmp_path: Path) -> None:
+    """langgraph in the CORE root requirements.txt is STILL banned (opt-in extra only)."""
+    _write(tmp_path / "requirements.txt", "langgraph==0.1\n")
+    hits = scan_manifests(tmp_path)
+    assert hits, "langgraph in core requirements.txt must still fail"
+    assert any("langgraph" in h for h in hits)
