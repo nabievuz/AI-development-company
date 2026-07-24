@@ -47,3 +47,10 @@ board/runs/**
 
 # HTML cockpit snapshot (runtime state — ADR-0028 D-1; written by cockpit_html.py)
 board/.cockpit.html
+
+# Control-plane audit log (append-only runtime state — ADR-0039 CP-3)
+board/.control-plane-audit.jsonl
+
+# Control-plane vendored offline install bundle (machine-specific wheels +
+# unpacked packages for running WS-H without network access — never tracked)
+tools/control_plane/.vendor/

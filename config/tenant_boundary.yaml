@@ -1,0 +1,66 @@
+# config/tenant_boundary.yaml — TN-1 in-tenant boundary SSOT (DAS-1543)
+#
+# MUSTAQIL is an INTERNAL self-host program (discovery Q10, ADR-0038 boundary).
+# Everything that carries code or IP — the sandbox, the observability lens, the
+# audit store, the control plane, memory/retrieval — MUST run in-tenant (on the
+# tenant Linux VM per Q2, or localhost during dev). The ONE accepted proprietary
+# exception is the Claude model call: on a Claude subscription (Q9) the model call
+# goes to Anthropic. Code, sandbox, observability, and audit never leave the tenant.
+#
+# scripts/check_in_tenant.py reads this file and FAILS a run if any endpoint whose
+# role carries code/IP resolves to a hosted/external host. Only roles listed in
+# `accepted_external_roles` may point outside the tenant.
+#
+# "In-tenant" host = loopback (localhost / 127.0.0.0/8 / ::1), an RFC-1918 / ULA
+# private address (10/8, 172.16/12, 192.168/16, fc00::/7), a `.local` /
+# `.internal` / bare-hostname name, or a unix socket / file path. Anything that
+# resolves to a public hostname or public IP is EXTERNAL.
+
+version: 1
+updated: 2026-07-24
+
+# Roles permitted to reach an external service. The model call is the sole
+# accepted proprietary dependency (Q9). Add nothing here without a Founder ADR.
+accepted_external_roles:
+  - model            # Claude model call (Anthropic) — subscription Agent SDK (ADR-0034)
+
+# Endpoint inventory. `carries_code_ip: true` marks an endpoint that handles
+# code or intellectual property; those must be in-tenant unless their role is
+# in accepted_external_roles. Endpoints are declared here as the program's
+# workstreams land; today's set is the bootstrap baseline (all in-tenant).
+endpoints:
+  - name: claude_model
+    role: model
+    carries_code_ip: true            # prompts carry code/IP, but model is the accepted exception
+    url: https://api.anthropic.com   # subscription/account auth via the ADR-0034 runner
+    note: accepted external exception (Q9); keep behind the ADR-0009 admission layer.
+
+  - name: e2b_sandbox
+    role: sandbox
+    carries_code_ip: true
+    url: http://127.0.0.1:49982      # Docker E2B/OpenHands on the tenant VM (Q2)
+    note: code execution sandbox — must stay in-tenant.
+
+  - name: langfuse_observability
+    role: observability
+    carries_code_ip: true
+    url: http://127.0.0.1:3000       # self-host Langfuse (WS-D / ADR-0036)
+    note: traces/evals carry code/IP — self-hosted, in-tenant only.
+
+  - name: audit_store
+    role: audit
+    carries_code_ip: true
+    url: file:///var/lib/daslab/audit # local audit ledger on the tenant VM
+    note: audit trail stays in-tenant.
+
+  - name: arcrift_memory
+    role: memory
+    carries_code_ip: true
+    url: stdio://local               # ArcRift MCP over stdio, local SQLite (.mcp.json)
+    note: long-term memory is local; embeddings via local Ollama.
+
+  - name: ollama_embeddings
+    role: embeddings
+    carries_code_ip: true
+    url: http://127.0.0.1:11434      # local Ollama nomic-embed-text
+    note: embeddings run locally — Anthropic has no embeddings API.

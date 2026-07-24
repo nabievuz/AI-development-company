@@ -803,6 +803,24 @@ def check_security() -> list[CheckResult]:
             else "banned donor library detected (GATE-4 clean-room violation)",
         )
     )
+
+    # TN-1 (DAS-1543): every code/IP endpoint must resolve in-tenant; only the
+    # Claude model call is an accepted external exception. Inert when no
+    # config/tenant_boundary.yaml is declared (exit 0).
+    in_tenant = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "check_in_tenant.py")],
+        capture_output=True,
+        text=True,
+    )
+    results.append(
+        CheckResult(
+            "tn1-in-tenant-boundary",
+            in_tenant.returncode == 0,
+            "all code/IP endpoints in-tenant (model call excepted)"
+            if in_tenant.returncode == 0
+            else "a code/IP endpoint resolves to an external host (TN-1 breach)",
+        )
+    )
     return results
 
 

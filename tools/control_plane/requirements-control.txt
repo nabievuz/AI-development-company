@@ -1,0 +1,8 @@
+# DasLab WS-H control-plane deps (ADR-0039).
+# Kept OUT of core requirements.txt so the engine stays server-free — the
+# control plane is an OPTIONAL, Founder-enabled process (CP-5), not core runtime.
+#   pip install -r tools/control_plane/requirements-control.txt
+fastapi>=0.110
+uvicorn>=0.29
+# tests only:
+#   httpx>=0.27  (FastAPI TestClient)

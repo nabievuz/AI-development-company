@@ -1,0 +1,17 @@
+{
+  "_comment": "WS-A (ADR-0033) — MERGE these entries into the `mcpServers` object of the repo-root .mcp.json. Do not replace the file; add alongside ArcRift/obsidian. Feature-flagged: only agents whose role is in $DASLAB_TOOL_ALLOWLIST may use them (enforced by .claude/hooks/audit_external_tool.py).",
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated"],
+      "env": {}
+    },
+    "langchain-tools": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${workspaceFolder}/tools/mcp_bridges/langchain_tool_bridge.py"],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,495 @@
+<!DOCTYPE html><html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DasLab vs 21 Agent-Framework — Atomic Deep-Research (2026-07-05)</title>
+<style>
+:root{--ink:#1c2330;--mut:#5a6577;--line:#dde3ec;--bg:#f5f7fb;--card:#fff;--acc:#0f4c81;--self:#7c3aed;}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+header{background:linear-gradient(135deg,#101b33,#0f4c81 60%,#7c3aed);color:#fff;padding:38px 28px 30px}
+header h1{margin:0 0 6px;font-size:26px}
+header .sub{opacity:.85;font-size:14px;max-width:980px}
+.chips{margin-top:14px}
+.chip{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:3px 12px;font-size:12px;margin:2px 4px 2px 0}
+nav{position:sticky;top:0;z-index:50;background:#101b33;padding:8px 20px;white-space:nowrap;overflow-x:auto}
+nav a{color:#cdd7ea;text-decoration:none;font-size:12.5px;margin-right:16px}
+nav a:hover{color:#fff}
+main{max-width:1280px;margin:0 auto;padding:26px 20px 60px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:26px;box-shadow:0 1px 3px rgba(16,27,51,.06)}
+h2{margin:0 0 4px;font-size:20px;color:var(--acc)}
+h2 .mchip{font-size:11px;vertical-align:middle;background:#eef2fb;color:var(--acc);border:1px solid #c9d6ee;border-radius:12px;padding:2px 10px;margin-left:8px;font-weight:600}
+h3{font-size:15.5px;margin:18px 0 6px}
+p{margin:8px 0}
+.muted{color:var(--mut)} .small{font-size:12.5px}
+.lead{font-size:15px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:14px 0}
+.kpi{border:1px solid var(--line);border-radius:12px;padding:16px;background:#fbfcff}
+.kpi .big{font-size:30px;font-weight:800;color:var(--acc)}
+.kpi.self .big{color:var(--self)}
+.kpi .lbl{font-size:12.5px;color:var(--mut)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;max-height:78vh;overflow-y:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);border-right:1px solid #edf1f7;text-align:left;background:#fff}
+thead th{position:sticky;top:0;background:#101b33;color:#fff;font-size:11px;cursor:pointer;z-index:5;white-space:nowrap}
+thead th small{display:block;font-weight:400;opacity:.65;font-size:9.5px}
+td.sysname{position:sticky;left:0;min-width:210px;background:#fff;z-index:4;border-right:2px solid var(--line)}
+thead th.corner{position:sticky;left:0;z-index:8}
+.badge{display:block;font-size:10.5px;color:var(--mut);font-weight:400}
+.num{text-align:center;font-weight:700;min-width:34px}
+.tot{background:#f1f4fa!important;color:var(--acc)}
+tr.row-self td{background:#f6f0ff}
+tr.row-self td.sysname{background:#f0e6ff;border-left:4px solid var(--self)}
+tr.row-self td.tot{background:#e9dcff!important;color:var(--self)}
+tr.st-dead td.sysname b{color:#9aa3b5;text-decoration:line-through}
+.sc1,.sc2{background:#c0392b!important;color:#fff}
+.sc3{background:#e74c3c!important;color:#fff}
+.sc4{background:#ef7e2e!important;color:#fff}
+.sc5{background:#f5b731!important;color:#3a2c00}
+.sc6{background:#d7d94a!important;color:#33350a}
+.sc7{background:#9fce4e!important;color:#1f3305}
+.sc8{background:#5cb85a!important;color:#fff}
+.sc9{background:#2e8b46!important;color:#fff}
+.sc10{background:#1b5e20!important;color:#fff}
+.legend span{display:inline-block;width:30px;text-align:center;border-radius:4px;padding:2px 0;font-size:11px;font-weight:700;margin-right:3px}
+.profile{border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0;background:#fbfcff}
+.barrow{display:flex;align-items:center;gap:10px;margin:5px 0;font-size:12.5px}
+.barlabel{width:290px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bartrack{flex:1;background:#e8edf5;border-radius:6px;height:14px;overflow:hidden}
+.bartrack.sm{height:10px}
+.barfill{display:block;height:100%;background:linear-gradient(90deg,#0f4c81,#3b82c4);border-radius:6px}
+.barfill.bar-self,.bar-self{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+.barval{width:44px;text-align:right;font-weight:700}
+.atomrow{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12.5px;flex-wrap:wrap}
+.atomname{width:300px;flex:none}
+.atomval{width:30px;text-align:center;border-radius:4px;font-weight:700;flex:none}
+.atomnote{flex-basis:100%;color:var(--mut);font-size:11.5px;padding-left:310px;margin-top:-2px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+.card.st-self{border:2px solid var(--self);background:#faf7ff}
+.card.st-dead{opacity:.75}
+.cardhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.card p{font-size:12.5px;margin:6px 0 0}
+.pill{font-size:10.5px;border-radius:10px;padding:2px 9px;background:#eef2fb;color:var(--acc);font-weight:700}
+.pill-dead{background:#fdecea;color:#c0392b}
+.pill-warn{background:#fff6e0;color:#a06a00}
+.pill-alive{background:#e8f6ea;color:#2e7d32}
+.pill-exp{background:#e7f0ff;color:#1d5fb8}
+.pill-self{background:#f0e6ff;color:var(--self)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.two{grid-template-columns:1fr}.atomnote{padding-left:0}}
+.swot{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.swot>div{border-radius:10px;padding:14px;font-size:13px}
+.swot .s{background:#e8f6ea;border:1px solid #bfe3c5}
+.swot .w{background:#fdecea;border:1px solid #f2c4bf}
+.swot .o{background:#e7f0ff;border:1px solid #bfd6f2}
+.swot .t{background:#fff6e0;border:1px solid #eddcae}
+.swot h4{margin:0 0 8px}
+ul{margin:6px 0;padding-left:20px}
+li{margin:4px 0;font-size:13px}
+.callout{border-left:4px solid var(--acc);background:#f0f5fc;border-radius:0 10px 10px 0;padding:12px 16px;margin:12px 0;font-size:13.5px}
+.callout.v{border-color:var(--self);background:#f7f2ff}
+.callout.r{border-color:#c0392b;background:#fdf1f0}
+.ftable{width:100%;font-size:13px}
+.ftable td,.ftable th{padding:8px 10px}
+.score5{font-weight:800;color:#c0392b}
+footer{text-align:center;color:var(--mut);font-size:12px;padding:20px}
+.srcs li{font-size:12px}
+a{color:var(--acc)}
+</style></head><body>
+
+<header>
+<h1>DasLab vs 21 Agent-Framework — Atomic Deep-Research va VS Tahlil</h1>
+<div class="sub">2026-07-05 · Jonli web-research (2026-07-04/05 GitHub/vendor ma'lumotlari) + DasLab repo auditi (v2.0.0 "ORGANISM")
+· 22 tizim × 20 parametr × 10 ballik tizim · Maqsad: DasLab qanchalik raqobatbardosh, qanchalik enterprise-darajada ishlaydi va mukammallikda qanday bellashadi.</div>
+<div class="chips">
+<span class="chip">🎯 Six Hats (orchestrator)</span><span class="chip">🧱 First Principles</span><span class="chip">📐 SWOT</span>
+<span class="chip">📐 Porter's Five Forces</span><span class="chip">🛡️ Steelman</span><span class="chip">🛡️ Red/Blue Team</span>
+<span class="chip">🛡️ Second-Order</span><span class="chip">🛡️ Premortem</span><span class="chip">⚡ Cynefin</span>
+<span class="chip">⚡ Pareto 80/20</span><span class="chip">📊 Bayesian</span><span class="chip">🔄 Reflexive audit</span>
+</div>
+</header>
+<nav>
+<a href="#tldr">Xulosa</a><a href="#method">Metodologiya</a><a href="#firstp">First Principles</a>
+<a href="#vs">VS Jadval</a><a href="#profiles">Profil reytinglari</a><a href="#atom">DasLab atomi</a>
+<a href="#dossiers">Dossierlar</a><a href="#porter">Porter 5F</a><a href="#swot">SWOT</a>
+<a href="#stress">Steelman · Red/Blue</a><a href="#future">Second-Order · Premortem</a>
+<a href="#pareto">Pareto reja</a><a href="#rivals">Chin raqiblar</a><a href="#bayes">Bayes · Sifat</a><a href="#src">Manbalar</a>
+</nav>
+<main>
+
+
+<section id="tldr">
+<h2>0 · Yakuniy xulosa (Ko'k shlyapa) <span class="mchip">TL;DR</span></h2>
+<div class="grid3">
+<div class="kpi"><div class="big">12 / 22</div><div class="lbl">Umumiy reyting (teng vaznli 20 parametr): DasLab 5.95/10 — community (1/10) va adoption (2/10) o'rtachani pastga tortadi</div></div>
+<div class="kpi self"><div class="big">1-o'rin</div><div class="lbl">"Solo AI-org / mission-control" profili bo'yicha: 8.43/10 — LangGraph (7.14) va CrewAI (7.00) dan yuqori</div></div>
+<div class="kpi"><div class="big">4.43 / 10</div><div class="lbl">"Enterprise xarid mezoni" profili: SSO/multi-user/SaaS yo'qligi uni hozircha sotiladigan enterprise mahsulot qilmaydi</div></div>
+</div>
+<div class="callout v"><b>Bosh xulosa.</b> DasLab framework EMAS — u <b>org-OS</b> (tashkilot operatsion tizimi). Teng vaznli jadvalda o'rtada turishi tabiiy:
+u bozorga mahsulot sifatida chiqmagan. Lekin 20 parametrning 4 tasida — <b>rol/tashkilot modeli (10/10, bozorda eng chuquri)</b>,
+<b>governance-as-code (9/10, MAF bilan teng birinchi)</b>, <b>Akmal-fit (10/10)</b> va <b>xotira intizomi (8/10)</b> — u 137k★ LangChain'dan tortib
+126k★ The Agency'gacha hech kimda yo'q kombinatsiyani beradi. Gartner 2026-05: "yagona governance bilan agent tizimlar muvaffaqiyatsiz bo'ladi;
+2027 ga borib korxonalarning 40% agentlarini governance yetishmasligi tufayli qisqartiradi" — DasLab aynan shu tanqis qatlamda chuqur.</div>
+<p class="lead"><b>Enterprise savolga to'g'ridan-to'g'ri javob:</b> DasLab bugun "enterprise-<i>grade jarayon intizomi</i>"ga ega
+(hash-chain audit, 6 bosqichli gate, ~50 CI validator, 100/100 release-gate, golden-evals), lekin "enterprise-<i>mahsulot</i>" emas
+(multi-user, SSO, SLA, compliance sertifikatlari yo'q). Formula: <b>enterprise-DNA, indie-qobiq.</b> Ichki foydalanish uchun — ortiqcha ham;
+sotish uchun — 12–18 oylik mahsulotlashtirish kerak.</p>
+</section>
+
+
+<section id="method">
+<h2>1 · Metodologiya <span class="mchip">Oq shlyapa — faktlar</span></h2>
+<p><b>Ma'lumot manbalari:</b> (1) 2026-07-04/05 kunlari 3 parallel research-agent orqali jonli GitHub/vendor-sahifa tekshiruvi
+(stars, releases, litsenziya, pricing, case-study); (2) DasLab reposining bevosita auditi (fayl-darajada: 32 agent-charter, 5 policy,
+97 script / ~69 ming satr Python, 198 test-fayl, 99 ticket, CI, attestation); (3) 2026-06 dagi ichki "atom audit" (yakuni ≈8.0/10) prior sifatida.</p>
+<p><b>Ball tizimi:</b> 1–10 (10 = sinf ichida eng zo'r). Ballar — <i>faktlarga tayangan analitik ekspert baho</i>, o'lchov emas.
+1–2 = yo'q/o'lik · 3–4 = zaif · 5–6 = o'rtacha · 7–8 = kuchli · 9–10 = sinf yetakchisi.</p>
+<div class="legend">
+<span class="sc1">1</span><span class="sc2">2</span><span class="sc3">3</span><span class="sc4">4</span><span class="sc5">5</span>
+<span class="sc6">6</span><span class="sc7">7</span><span class="sc8">8</span><span class="sc9">9</span><span class="sc10">10</span>
+</div>
+<p class="muted small">Nega ba'zi tizimlar birlashtirildi/almashtirildi: 2026 reallik — SK core va SK Agent Framework endi bitta maintenance-yo'nalish;
+OpenAI Swarm rasman Agents SDK bilan almashtirilgan (ikkalasi ham alohida qatorda); "Llama-Agents" bugun llama_deploy;
+so'ralgan ro'yxatga The Agency (agency-agents, 126k★) va Claude Code Agent Teams (native) qo'shildi — DasLab'ning haqiqiy raqobat maydoni shular.</p>
+</section>
+
+
+<section id="firstp">
+<h2>2 · Cynefin klassifikatsiyasi va First Principles <span class="mchip">Muammo turi + ildiz</span></h2>
+<h3>Cynefin: bu COMPLEX domen</h3>
+<p>Bozor 24 oyda shuncha o'zgardi: SuperAGI o'ldi, Swarm almashtirildi, AutoGen+SK maintenance'ga o'tib MAF tug'ildi, Letta pivot qildi,
+LangGraph Platform nomi o'zgardi, OpenAI AgentKit'ni chiqarib 4 oydan keyin Frontier bilan yopa boshladi. Sabab-oqibat faqat retrospektiv ko'rinadi →
+<b>probe–sense–respond</b>: kichik tajribalar, katta qaytarilmas garovlardan qochish. DasLab'ning fayl+git asosidagi arxitekturasi aynan shunga mos —
+har qanday qatlamni almashtirish mumkin.</p>
+<h3>First Principles: DasLab fundamental jihatdan nima?</h3>
+<p>Frameworklar — <i>"agent qurish uchun kutubxona"</i> (LangGraph: graf-runtime; CrewAI: rol-pipeline; MAF: enterprise SDK).
+DasLab — <i>"agentlardan qurilgan tashkilot"</i>: kutubxonani emas, <b>kompaniyaning o'zini</b> kodga aylantiradi
+(board, C-suite, qonunlar, gate'lar, xotira, audit). Shu sababli to'g'ridan-to'g'ri "LangGraph vs DasLab" taqqosi kategoriya xatosi:
+DasLab ichidagi loyihalar LangGraph'ni <i>ishlatishi</i> mumkin. Haqiqiy taqqos uch tekislikda bo'ladi:</p>
+<ul>
+<li><b>Tekislik A — umumiy frameworklar</b> (ushbu VS jadval): DasLab bu bozorga mahsulot sifatida chiqmagan, o'rtada turadi.</li>
+<li><b>Tekislik B — Claude Code orkestratorlari</b> (12-bo'lim): DasLab'ning jang maydoni shu — va bu yerda kombinatsiyasi yagona.</li>
+<li><b>Tekislik C — Anthropic native (Agent Teams)</b>: substrate'ning o'zi; DasLab u yutolmaydigan qatlamni (governance) egallashi kerak.</li>
+</ul>
+</section>
+
+
+<section id="vs">
+<h2>3 · VS Jadval — 22 tizim × 20 parametr, 10 ballik <span class="mchip">Atom daraja</span></h2>
+<p class="muted small">Ustun sarlavhasini bosib saralang. Binafsha qator — DasLab. O'chirilgan nom — o'lik/tark etilgan loyiha.
+Har bir parametrning to'liq nomi sarlavha ustiga kursor olib borilganda ko'rinadi.</p>
+<div class="tablewrap"><table id="vsTable"><thead><tr><th class="corner" data-col="0">Tizim<small>saralash uchun bosing</small></th><th data-col="1" title="Yetuklik va barqarorlik — Versiya siyosati, API barqarorligi, release intizomi">P1<small>Yetuklik va ba</small></th><th data-col="2" title="Hamjamiyat va ekotizim — Stars, contributors, kontent, yollash mumkin bo'lgan devlar">P2<small>Hamjamiyat va </small></th><th data-col="3" title="Hujjatlar va DX — Docs sifati, onboarding, misollar">P3<small>Hujjatlar va D</small></th><th data-col="4" title="Multi-agent orkestratsiya — Graf/rol/jamoa semantikasi, parallel dispatch, HITL">P4<small>Multi-agent or</small></th><th data-col="5" title="Stateful xotira / long-running — Doimiy xotira, checkpointlar, uzoq sessiyalar">P5<small>Stateful xotir</small></th><th data-col="6" title="Observability va debugging — Tracing, spans, cost, dashboardlar">P6<small>Observability </small></th><th data-col="7" title="Tool va integratsiyalar — MCP/tool katalogi, tashqi tizimlar">P7<small>Tool va integr</small></th><th data-col="8" title="Til/platforma qamrovi — Python/JS/.NET/Java/harness qamrovi">P8<small>Til/platforma </small></th><th data-col="9" title="Governance va auditlanuvchanlik — Policy-as-code, gates, audit trail, RACI">P9<small>Governance va </small></th><th data-col="10" title="Self-hosting qulayligi — O'z serveringda ko'tarish oson-qiyinligi">P10<small>Self-hosting q</small></th><th data-col="11" title="Managed cloud / enterprise platforma — SaaS, SSO, multi-tenant RBAC, compliance">P11<small>Managed cloud </small></th><th data-col="12" title="Ishonchlilik mexanikasi — Durable execution, retry, resume/fork">P12<small>Ishonchlilik m</small></th><th data-col="13" title="Moslashuvchanlik va kompozitsiya — Low-level primitivlar, kengaytirish">P13<small>Moslashuvchanl</small></th><th data-col="14" title="Rol/tashkilot abstraksiyalari — Org modeli, ierarxiya, charterlar">P14<small>Rol/tashkilot </small></th><th data-col="15" title="Kod-markazli fit — Software engineering use-case'lariga mosligi">P15<small>Kod-markazli f</small></th><th data-col="16" title="RAG/data-markazli fit — Hujjat/data workflow'lariga mosligi">P16<small>RAG/data-marka</small></th><th data-col="17" title="Vendor lock-in'dan erkinlik — Yuqori ball = kam bog'liqlik">P17<small>Vendor lock-in</small></th><th data-col="18" title="Akmal stack'iga moslik — Claude Code, solo-founder, mission-control">P18<small>Akmal stack'ig</small></th><th data-col="19" title="Litsenziya — MIT/Apache ochiqligi">P19<small>Litsenziya</small></th><th data-col="20" title="Production adoption dalili — Nomlangan mijozlar, case study'lar">P20<small>Production ado</small></th><th data-col="21">Jami<small>/200</small></th><th data-col="22">O‘rtacha<small>/10</small></th><th data-col="23">O‘rin<small>umumiy</small></th></tr></thead><tbody>
+<tr class="st-self row-self"><td class="sysname"><b>DasLab v2.0 “ORGANISM”</b><span class="badge">v2.0.0 · Apache-2.0 · ~0★ · solo</span></td><td class="num sc5">5</td><td class="num sc1">1</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc3">3</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc1">1</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc10">10</td><td class="num sc8">8</td><td class="num sc3">3</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc9">9</td><td class="num sc2">2</td><td class="num tot">119</td><td class="num tot">5.95</td><td class="num tot">#12</td></tr>
+<tr class="st-alive"><td class="sysname"><b>LangGraph (+LangSmith)</b><span class="badge">v1.2.7 · MIT · ~36.4k★</span></td><td class="num sc9">9</td><td class="num sc9">9</td><td class="num sc9">9</td><td class="num sc9">9</td><td class="num sc9">9</td><td class="num sc10">10</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc10">10</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc10">10</td><td class="num sc10">10</td><td class="num tot">165</td><td class="num tot">8.25</td><td class="num tot">#1</td></tr>
+<tr class="st-alive"><td class="sysname"><b>LangChain Agents 1.0</b><span class="badge">v1.x GA · MIT · ~137k★</span></td><td class="num sc9">9</td><td class="num sc10">10</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc10">10</td><td class="num sc10">10</td><td class="num tot">159</td><td class="num tot">7.95</td><td class="num tot">#2</td></tr>
+<tr class="st-alive"><td class="sysname"><b>CrewAI (+AMP/Factory)</b><span class="badge">1.15.x · MIT · ~54.9k★</span></td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc4">4</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc9">9</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc10">10</td><td class="num sc8">8</td><td class="num tot">147</td><td class="num tot">7.35</td><td class="num tot">#3</td></tr>
+<tr class="st-alive"><td class="sysname"><b>Microsoft Agent Framework</b><span class="badge">1.0 GA (2026-04) · MIT · ~11.8k★</span></td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc9">9</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num tot">144</td><td class="num tot">7.20</td><td class="num tot">#4</td></tr>
+<tr class="st-alive"><td class="sysname"><b>OpenHands</b><span class="badge">cloud-1.40 · MIT open-core · ~79.4k★</span></td><td class="num sc8">8</td><td class="num sc9">9</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc3">3</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num tot">140</td><td class="num tot">7.00</td><td class="num tot">#5</td></tr>
+<tr class="st-alive"><td class="sysname"><b>LlamaIndex Agents/Workflows</b><span class="badge">0.14.x · MIT · ~50.6k★</span></td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc10">10</td><td class="num sc8">8</td><td class="num tot">139</td><td class="num tot">6.95</td><td class="num tot">#6</td></tr>
+<tr class="st-alive"><td class="sysname"><b>AgentScope 2.0 (Alibaba)</b><span class="badge">2.0.3 · Apache · ~27.3k★</span></td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc3">3</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc8">8</td><td class="num sc5">5</td><td class="num sc9">9</td><td class="num sc5">5</td><td class="num tot">134</td><td class="num tot">6.70</td><td class="num tot">#7</td></tr>
+<tr class="st-alive"><td class="sysname"><b>OpenAI Agents SDK</b><span class="badge">0.17.x · MIT · ~27.6k★</span></td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num tot">134</td><td class="num tot">6.70</td><td class="num tot">#8</td></tr>
+<tr class="st-warn"><td class="sysname"><b>Semantic Kernel (core+agents)</b><span class="badge">maintenance · MIT · ~28k★</span></td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num tot">125</td><td class="num tot">6.25</td><td class="num tot">#9</td></tr>
+<tr class="st-warn"><td class="sysname"><b>Letta (MemGPT)</b><span class="badge">pivot: letta-code · Apache · ~22.9k★</span></td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc10">10</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc3">3</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num tot">124</td><td class="num tot">6.20</td><td class="num tot">#10</td></tr>
+<tr class="st-exp"><td class="sysname"><b>Claude Code Agent Teams</b><span class="badge">eksperimental (2026-02) · Anthropic</span></td><td class="num sc5">5</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc9">9</td><td class="num sc5">5</td><td class="num sc5">5</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc9">9</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc9">9</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num tot">124</td><td class="num tot">6.20</td><td class="num tot">#11</td></tr>
+<tr class="st-warn"><td class="sysname"><b>Microsoft AutoGen</b><span class="badge">maintenance · ~59.5k★</span></td><td class="num sc6">6</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc2">2</td><td class="num sc7">7</td><td class="num sc1">1</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc9">9</td><td class="num sc6">6</td><td class="num tot">112</td><td class="num tot">5.60</td><td class="num tot">#13</td></tr>
+<tr class="st-alive"><td class="sysname"><b>The Agency (agency-agents)</b><span class="badge">MIT · ~126k★ · rol-kutubxona</span></td><td class="num sc6">6</td><td class="num sc10">10</td><td class="num sc7">7</td><td class="num sc3">3</td><td class="num sc1">1</td><td class="num sc1">1</td><td class="num sc8">8</td><td class="num sc8">8</td><td class="num sc1">1</td><td class="num sc9">9</td><td class="num sc1">1</td><td class="num sc1">1</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc6">6</td><td class="num sc2">2</td><td class="num sc9">9</td><td class="num sc7">7</td><td class="num sc10">10</td><td class="num sc6">6</td><td class="num tot">110</td><td class="num tot">5.50</td><td class="num tot">#14</td></tr>
+<tr class="st-alive"><td class="sysname"><b>CAMEL (+Eigent)</b><span class="badge">0.2.x · Apache · ~17.1k★</span></td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc7">7</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc7">7</td><td class="num sc3">3</td><td class="num sc5">5</td><td class="num sc7">7</td><td class="num sc7">7</td><td class="num sc4">4</td><td class="num sc5">5</td><td class="num sc8">8</td><td class="num sc5">5</td><td class="num sc9">9</td><td class="num sc4">4</td><td class="num tot">109</td><td class="num tot">5.45</td><td class="num tot">#15</td></tr>
+<tr class="st-warn"><td class="sysname"><b>llama_deploy (eski llama-agents)</b><span class="badge">0.9.2 · MIT · ~2.1k★</span></td><td class="num sc5">5</td><td class="num sc3">3</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc8">8</td><td class="num sc7">7</td><td class="num sc4">4</td><td class="num sc10">10</td><td class="num sc4">4</td><td class="num tot">103</td><td class="num tot">5.15</td><td class="num tot">#16</td></tr>
+<tr class="st-alive"><td class="sysname"><b>Agent Zero</b><span class="badge">v2.2 · MIT · ~18.3k★</span></td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc3">3</td><td class="num sc7">7</td><td class="num sc4">4</td><td class="num sc1">1</td><td class="num sc8">8</td><td class="num sc1">1</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num sc3">3</td><td class="num sc8">8</td><td class="num sc5">5</td><td class="num sc9">9</td><td class="num sc2">2</td><td class="num tot">100</td><td class="num tot">5.00</td><td class="num tot">#17</td></tr>
+<tr class="st-alive"><td class="sysname"><b>Agency Swarm (VRSEN)</b><span class="badge">1.9 · MIT · ~4.4k★</span></td><td class="num sc5">5</td><td class="num sc4">4</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc5">5</td><td class="num sc6">6</td><td class="num sc7">7</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc10">10</td><td class="num sc4">4</td><td class="num tot">99</td><td class="num tot">4.95</td><td class="num tot">#18</td></tr>
+<tr class="st-dead"><td class="sysname"><b>SuperAGI</b><span class="badge">O'LIK (2024-01 dan) · ~17.5k★</span></td><td class="num sc3">3</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc1">1</td><td class="num sc4">4</td><td class="num sc1">1</td><td class="num sc2">2</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc5">5</td><td class="num sc3">3</td><td class="num sc6">6</td><td class="num sc2">2</td><td class="num sc10">10</td><td class="num sc2">2</td><td class="num tot">74</td><td class="num tot">3.70</td><td class="num tot">#19</td></tr>
+<tr class="st-dead"><td class="sysname"><b>OpenAI Swarm</b><span class="badge">O'LIK → Agents SDK · ~21.7k★</span></td><td class="num sc2">2</td><td class="num sc6">6</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc1">1</td><td class="num sc5">5</td><td class="num sc1">1</td><td class="num sc2">2</td><td class="num sc4">4</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num sc2">2</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num sc10">10</td><td class="num sc2">2</td><td class="num tot">65</td><td class="num tot">3.25</td><td class="num tot">#20</td></tr>
+<tr class="st-dead"><td class="sysname"><b>OpenLegion</b><span class="badge">marketing-platforma</span></td><td class="num sc2">2</td><td class="num sc1">1</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc4">4</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num tot">52</td><td class="num tot">2.60</td><td class="num tot">#21</td></tr>
+<tr class="st-dead"><td class="sysname"><b>HAAS / Agent Swarm loyihalari</b><span class="badge">O'LIK · eksperiment</span></td><td class="num sc1">1</td><td class="num sc3">3</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc1">1</td><td class="num sc1">1</td><td class="num sc2">2</td><td class="num sc2">2</td><td class="num sc1">1</td><td class="num sc3">3</td><td class="num sc1">1</td><td class="num sc2">2</td><td class="num sc3">3</td><td class="num sc4">4</td><td class="num sc2">2</td><td class="num sc1">1</td><td class="num sc5">5</td><td class="num sc2">2</td><td class="num sc10">10</td><td class="num sc1">1</td><td class="num tot">50</td><td class="num tot">2.50</td><td class="num tot">#22</td></tr>
+</tbody></table></div>
+<div class="callout"><b>Jadvaldan 5 ta atom-fakt:</b> (1) LangGraph 8.25 bilan yetakchi — durable execution + LangSmith + 400 kompaniya production dalili.
+(2) DasLab P14 (tashkilot modeli) bo'yicha yagona 10 — hattoki CrewAI (9) crews'ni ierarxiya, charter va qonunsiz beradi.
+(3) P9 governance'da DasLab (9) va MAF (9) teng birinchi — biri qonun-as-code bilan, ikkinchisi Entra/Azure bilan.
+(4) The Agency 126k★ bilan P2 da mutlaq yetakchi, lekin P5/P6/P9/P11/P12 da 1/10 — ommaboplik ≠ tizim chuqurligi.
+(5) 22 tizimdan 6 tasi (27%) o'lik yoki maintenance — bu bozorda "hozir tirik" degani "2 yildan keyin tirik" degani emas.</div>
+</section>
+
+
+<section id="profiles">
+<h2>4 · Profil-asosidagi reytinglar <span class="mchip">Vazn = kontekst</span></h2>
+<p>Teng vaznli o'rtacha — eng adolatli, lekin eng ma'nosiz ko'rsatkich: hech kim frameworkni "o'rtacha" uchun tanlamaydi.
+Uch real profil bo'yicha qayta hisob (top-12 ko'rsatilgan):</p>
+
+<div class="profile"><h3>A · Umumiy baho — teng vazn (barcha 20 parametr)</h3><p class="muted">Neytral ko'rsatkich: bozorni umumiy holatda kim yaxshi qamrab olgan.</p>
+<div class="barrow"><span class="barlabel">1. LangGraph (+LangSmith)</span><span class="bartrack"><span class="barfill" style="width:82%"></span></span><span class="barval">8.25</span></div>
+<div class="barrow"><span class="barlabel">2. LangChain Agents 1.0</span><span class="bartrack"><span class="barfill" style="width:80%"></span></span><span class="barval">7.95</span></div>
+<div class="barrow"><span class="barlabel">3. CrewAI (+AMP/Factory)</span><span class="bartrack"><span class="barfill" style="width:74%"></span></span><span class="barval">7.35</span></div>
+<div class="barrow"><span class="barlabel">4. Microsoft Agent Framework</span><span class="bartrack"><span class="barfill" style="width:72%"></span></span><span class="barval">7.20</span></div>
+<div class="barrow"><span class="barlabel">5. OpenHands</span><span class="bartrack"><span class="barfill" style="width:70%"></span></span><span class="barval">7.00</span></div>
+<div class="barrow"><span class="barlabel">6. LlamaIndex Agents/Workflows</span><span class="bartrack"><span class="barfill" style="width:70%"></span></span><span class="barval">6.95</span></div>
+<div class="barrow"><span class="barlabel">7. AgentScope 2.0 (Alibaba)</span><span class="bartrack"><span class="barfill" style="width:67%"></span></span><span class="barval">6.70</span></div>
+<div class="barrow"><span class="barlabel">8. OpenAI Agents SDK</span><span class="bartrack"><span class="barfill" style="width:67%"></span></span><span class="barval">6.70</span></div>
+<div class="barrow"><span class="barlabel">9. Semantic Kernel (core+agents)</span><span class="bartrack"><span class="barfill" style="width:62%"></span></span><span class="barval">6.25</span></div>
+<div class="barrow"><span class="barlabel">10. Letta (MemGPT)</span><span class="bartrack"><span class="barfill" style="width:62%"></span></span><span class="barval">6.20</span></div>
+<div class="barrow"><span class="barlabel">11. Claude Code Agent Teams</span><span class="bartrack"><span class="barfill" style="width:62%"></span></span><span class="barval">6.20</span></div>
+<div class="barrow"><span class="barlabel">12. DasLab v2.0 “ORGANISM”</span><span class="bartrack"><span class="barfill bar-self" style="width:60%"></span></span><span class="barval">5.95</span></div>
+</div>
+<div class="profile"><h3>B · Enterprise xarid mezoni (P1, P2, P6, P9, P11, P12, P20)</h3><p class="muted">CIO/procurement nuqtai nazari: yetuklik, hamjamiyat, observability, governance, managed platforma, ishonchlilik, adoption dalili.</p>
+<div class="barrow"><span class="barlabel">1. LangGraph (+LangSmith)</span><span class="bartrack"><span class="barfill" style="width:87%"></span></span><span class="barval">8.71</span></div>
+<div class="barrow"><span class="barlabel">2. LangChain Agents 1.0</span><span class="bartrack"><span class="barfill" style="width:86%"></span></span><span class="barval">8.57</span></div>
+<div class="barrow"><span class="barlabel">3. OpenHands</span><span class="bartrack"><span class="barfill" style="width:80%"></span></span><span class="barval">8.00</span></div>
+<div class="barrow"><span class="barlabel">4. Microsoft Agent Framework</span><span class="bartrack"><span class="barfill" style="width:79%"></span></span><span class="barval">7.86</span></div>
+<div class="barrow"><span class="barlabel">5. CrewAI (+AMP/Factory)</span><span class="bartrack"><span class="barfill" style="width:77%"></span></span><span class="barval">7.71</span></div>
+<div class="barrow"><span class="barlabel">6. LlamaIndex Agents/Workflows</span><span class="bartrack"><span class="barfill" style="width:69%"></span></span><span class="barval">6.86</span></div>
+<div class="barrow"><span class="barlabel">7. OpenAI Agents SDK</span><span class="bartrack"><span class="barfill" style="width:69%"></span></span><span class="barval">6.86</span></div>
+<div class="barrow"><span class="barlabel">8. Semantic Kernel (core+agents)</span><span class="bartrack"><span class="barfill" style="width:67%"></span></span><span class="barval">6.71</span></div>
+<div class="barrow"><span class="barlabel">9. Claude Code Agent Teams</span><span class="bartrack"><span class="barfill" style="width:63%"></span></span><span class="barval">6.29</span></div>
+<div class="barrow"><span class="barlabel">10. AgentScope 2.0 (Alibaba)</span><span class="bartrack"><span class="barfill" style="width:61%"></span></span><span class="barval">6.14</span></div>
+<div class="barrow"><span class="barlabel">11. Letta (MemGPT)</span><span class="bartrack"><span class="barfill" style="width:60%"></span></span><span class="barval">6.00</span></div>
+<div class="barrow"><span class="barlabel">12. Microsoft AutoGen</span><span class="bartrack"><span class="barfill" style="width:49%"></span></span><span class="barval">4.86</span></div>
+</div>
+<div class="profile"><h3>C · Solo AI-org / mission-control — Akmal use-case (P4, P5, P9, P12, P14, P15, P18)</h3><p class="muted">Bitta odam Claude Code ustida doimiy ishlaydigan, o'zini boshqaradigan dasturiy tashkilot yuritishi: orkestratsiya, xotira, governance, ishonchlilik, org-modeli, kod-fit, stack-moslik.</p>
+<div class="barrow"><span class="barlabel">1. DasLab v2.0 “ORGANISM”</span><span class="bartrack"><span class="barfill bar-self" style="width:84%"></span></span><span class="barval">8.43</span></div>
+<div class="barrow"><span class="barlabel">2. LangGraph (+LangSmith)</span><span class="bartrack"><span class="barfill" style="width:71%"></span></span><span class="barval">7.14</span></div>
+<div class="barrow"><span class="barlabel">3. CrewAI (+AMP/Factory)</span><span class="bartrack"><span class="barfill" style="width:70%"></span></span><span class="barval">7.00</span></div>
+<div class="barrow"><span class="barlabel">4. Microsoft Agent Framework</span><span class="bartrack"><span class="barfill" style="width:69%"></span></span><span class="barval">6.86</span></div>
+<div class="barrow"><span class="barlabel">5. OpenHands</span><span class="bartrack"><span class="barfill" style="width:67%"></span></span><span class="barval">6.71</span></div>
+<div class="barrow"><span class="barlabel">6. LangChain Agents 1.0</span><span class="bartrack"><span class="barfill" style="width:64%"></span></span><span class="barval">6.43</span></div>
+<div class="barrow"><span class="barlabel">7. Claude Code Agent Teams</span><span class="bartrack"><span class="barfill" style="width:64%"></span></span><span class="barval">6.43</span></div>
+<div class="barrow"><span class="barlabel">8. AgentScope 2.0 (Alibaba)</span><span class="bartrack"><span class="barfill" style="width:63%"></span></span><span class="barval">6.29</span></div>
+<div class="barrow"><span class="barlabel">9. OpenAI Agents SDK</span><span class="bartrack"><span class="barfill" style="width:59%"></span></span><span class="barval">5.86</span></div>
+<div class="barrow"><span class="barlabel">10. LlamaIndex Agents/Workflows</span><span class="bartrack"><span class="barfill" style="width:56%"></span></span><span class="barval">5.57</span></div>
+<div class="barrow"><span class="barlabel">11. Letta (MemGPT)</span><span class="bartrack"><span class="barfill" style="width:56%"></span></span><span class="barval">5.57</span></div>
+<div class="barrow"><span class="barlabel">12. Semantic Kernel (core+agents)</span><span class="bartrack"><span class="barfill" style="width:54%"></span></span><span class="barval">5.43</span></div>
+</div>
+
+<div class="callout v"><b>Talqin.</b> B-profil "DasLab'ni sotib bo'ladimi?" savoliga javob: hozircha yo'q (4.43, ~14-o'rin).
+C-profil "DasLab o'z vazifasini dunyodagi eng yaxshi vositalardan ko'ra yaxshiroq bajaradimi?" savoliga javob: ha (8.43, 1-o'rin) —
+chunki bu use-case uchun LangGraph'da org-modeli, CrewAI'da governance, Agent Teams'da esa board/gate/xotira yo'q.</div>
+</section>
+
+
+<section id="atom">
+<h2>5 · DasLab atom profili — 20 parametr, har biriga dalil <span class="mchip">Atomic</span></h2>
+<div class="atomrow"><span class="atomname">P1 <b>Yetuklik va barqarorlik</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:50%"></span></span><span class="atomval sc5">5</span><span class="atomnote">v2.0.0 + CI + 198 test-fayl bor; lekin yosh, tashqi foydalanuvchisiz</span></div>
+<div class="atomrow"><span class="atomname">P2 <b>Hamjamiyat va ekotizim</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:10%"></span></span><span class="atomval sc1">1</span><span class="atomnote">~0★, bitta maintainer — eng katta zaiflik</span></div>
+<div class="atomrow"><span class="atomname">P3 <b>Hujjatlar va DX</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:60%"></span></span><span class="atomval sc6">6</span><span class="atomnote">Docs-OS chuqur (runbooks, charters); auditoriya hozircha ichki</span></div>
+<div class="atomrow"><span class="atomname">P4 <b>Multi-agent orkestratsiya</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:70%"></span></span><span class="atomval sc7">7</span><span class="atomnote">32-agent org, wave dispatch, DGO-X (shadow); operator-invoked, streaming-graf runtime emas</span></div>
+<div class="atomrow"><span class="atomname">P5 <b>Stateful xotira / long-running</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:80%"></span></span><span class="atomval sc8">8</span><span class="atomnote">ArcRift majburiy recall/store intizomi + durable runs — noyob kombinatsiya</span></div>
+<div class="atomrow"><span class="atomname">P6 <b>Observability va debugging</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:60%"></span></span><span class="atomval sc6">6</span><span class="atomnote">OTel-shaped spans, cost-ledger, git-audit KPI; dashboard UI yo'q</span></div>
+<div class="atomrow"><span class="atomname">P7 <b>Tool va integratsiyalar</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:70%"></span></span><span class="atomval sc7">7</span><span class="atomnote">Butun Claude Code / MCP ekotizimi meros bo'lib o'tadi</span></div>
+<div class="atomrow"><span class="atomname">P8 <b>Til/platforma qamrovi</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:30%"></span></span><span class="atomval sc3">3</span><span class="atomnote">Runtime faqat Claude Code — bitta harness</span></div>
+<div class="atomrow"><span class="atomname">P9 <b>Governance va auditlanuvchanlik</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:90%"></span></span><span class="atomval sc9">9</span><span class="atomnote">QONUN + AADL 6 gate + RACI + hash-chain attestation + ~50 CI validator: bozorda eng chuqurlardan</span></div>
+<div class="atomrow"><span class="atomname">P10 <b>Self-hosting qulayligi</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:70%"></span></span><span class="atomval sc7">7</span><span class="atomnote">git clone → org ishga tushadi; macOS-path va Ollama bog'liqliklari bor</span></div>
+<div class="atomrow"><span class="atomname">P11 <b>Managed cloud / enterprise platforma</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:10%"></span></span><span class="atomval sc1">1</span><span class="atomnote">SSO, multi-user, SaaS — yo'q. Enterprise mahsulot emas</span></div>
+<div class="atomrow"><span class="atomname">P12 <b>Ishonchlilik mexanikasi</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:70%"></span></span><span class="atomval sc7">7</span><span class="atomnote">Run-id, checkpoint, resume/fork, kill-drill (hozircha sintetik dispatcherda)</span></div>
+<div class="atomrow"><span class="atomname">P13 <b>Moslashuvchanlik va kompozitsiya</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:60%"></span></span><span class="atomval sc6">6</span><span class="atomnote">Org-as-code markdown'da kengayadi; kutubxona-API sifatida emas</span></div>
+<div class="atomrow"><span class="atomname">P14 <b>Rol/tashkilot abstraksiyalari</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:100%"></span></span><span class="atomval sc10">10</span><span class="atomnote">To'liq tashkilot modeli (Board→CEO→C-suite→leads→ICs) — tekshirilgan 22 tizim ichida eng chuquri</span></div>
+<div class="atomrow"><span class="atomname">P15 <b>Kod-markazli fit</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:80%"></span></span><span class="atomval sc8">8</span><span class="atomnote">Claude Code ustida, AADL software-lifecycle; GATEWAY spec→build</span></div>
+<div class="atomrow"><span class="atomname">P16 <b>RAG/data-markazli fit</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:30%"></span></span><span class="atomval sc3">3</span><span class="atomnote">RAG uning domeni emas (ArcRift faqat xotira uchun)</span></div>
+<div class="atomrow"><span class="atomname">P17 <b>Vendor lock-in'dan erkinlik</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:40%"></span></span><span class="atomval sc4">4</span><span class="atomnote">Anthropic'ga qattiq bog'liq; fayllar portativ markdown — qisman ko'chiriladi</span></div>
+<div class="atomrow"><span class="atomname">P18 <b>Akmal stack'iga moslik</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:100%"></span></span><span class="atomval sc10">10</span><span class="atomnote">Aynan shu use-case uchun qurilgan</span></div>
+<div class="atomrow"><span class="atomname">P19 <b>Litsenziya</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:90%"></span></span><span class="atomval sc9">9</span><span class="atomnote">Apache-2.0, public repo (github.com/nabievuz/daslab)</span></div>
+<div class="atomrow"><span class="atomname">P20 <b>Production adoption dalili</b></span><span class="bartrack sm"><span class="barfill bar-self" style="width:20%"></span></span><span class="atomval sc2">2</span><span class="atomnote">Ichki foydalanish; tashqi production dalili hali yo'q</span></div>
+</section>
+
+
+<section id="dossiers">
+<h2>6 · 22 tizim dossierlari — 2026-07 holati</h2>
+<div class="cards"><div class="card st-self"><div class="cardhead"><b>DasLab v2.0 “ORGANISM”</b><span class="pill pill-self">BIZNIKI</span><span class="pill">5.95/10</span></div><div class="muted small">v2.0.0 · Apache-2.0 · ~0★ · solo</div><p>Framework emas — org-OS: 32 agent, QONUN, AADL gates, attestation. Distribution nolga teng, governance chuqurligi bozorda eng yuqorilardan.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>LangGraph (+LangSmith)</b><span class="pill pill-alive">FAOL</span><span class="pill">8.25/10</span></div><div class="muted small">v1.2.7 · MIT · ~36.4k★</div><p>Stateful agent-orkestratsiyaning de-fakto enterprise standarti: Klarna, Uber, LinkedIn, JPMorgan productionda.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>LangChain Agents 1.0</b><span class="pill pill-alive">FAOL</span><span class="pill">7.95/10</span></div><div class="muted small">v1.x GA · MIT · ~137k★</div><p>1.0 bilan LangGraph runtime ustidagi yupqa, production agent-qatlamiga aylandi. Eng katta ekotizim.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>CrewAI (+AMP/Factory)</b><span class="pill pill-alive">FAOL</span><span class="pill">7.35/10</span></div><div class="muted small">1.15.x · MIT · ~54.9k★</div><p>Rol-asosidagi crews+flows; AMP platformada RBAC/audit/SOC2/SSO. Marketing raqamlariga ehtiyot bo'ling.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>Microsoft Agent Framework</b><span class="pill pill-alive">FAOL</span><span class="pill">7.20/10</span></div><div class="muted small">1.0 GA (2026-04) · MIT · ~11.8k★</div><p>AutoGen+SK birlashmasi; Entra Agent ID, OTel, Foundry — Azure olamida yagona yo'l.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>OpenHands</b><span class="pill pill-alive">FAOL</span><span class="pill">7.00/10</span></div><div class="muted small">cloud-1.40 · MIT open-core · ~79.4k★</div><p>Coding-agent platformalar lideri (SWE-bench ~77.6%); to'liq enterprise to'plam, lekin domen — faqat kod.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>LlamaIndex Agents/Workflows</b><span class="pill pill-alive">FAOL</span><span class="pill">6.95/10</span></div><div class="muted small">0.14.x · MIT · ~50.6k★</div><p>Kompaniya “document agents + OCR” ga toraydi; hujjat/RAG workflow'larda №1, umumiy platforma sifatida emas.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>AgentScope 2.0 (Alibaba)</b><span class="pill pill-alive">FAOL</span><span class="pill">6.70/10</span></div><div class="muted small">2.0.3 · Apache · ~27.3k★</div><p>Bepul/self-host ichida texnik eng to'liq: permissions, multi-tenant, OTel, Java 2.0. Managed cloud yo'q.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>OpenAI Agents SDK</b><span class="pill pill-alive">FAOL</span><span class="pill">6.70/10</span></div><div class="muted small">0.17.x · MIT · ~27.6k★</div><p>Swarm vorisi; sog'lom, lekin hali 0.x va ustidagi platforma qatlami (AgentKit→Frontier) almashib turadi.</p></div>
+<div class="card st-warn"><div class="cardhead"><b>Semantic Kernel (core+agents)</b><span class="pill pill-warn">OGOHLANTIRISH</span><span class="pill">6.25/10</span></div><div class="muted small">maintenance · MIT · ~28k★</div><p>2025-10 dan maintenance mode; ~2027-04 gacha critical fix. Yangi ish uchun tanlamang — MAF'ga ko'ching.</p></div>
+<div class="card st-warn"><div class="cardhead"><b>Letta (MemGPT)</b><span class="pill pill-warn">OGOHLANTIRISH</span><span class="pill">6.20/10</span></div><div class="muted small">pivot: letta-code · Apache · ~22.9k★</div><p>Xotira texnologiyasida eng zo'r (Bilt: 1M+ agent prod), lekin 2026-03 pivot — eski server API deprecation tegirmonida.</p></div>
+<div class="card st-exp"><div class="cardhead"><b>Claude Code Agent Teams</b><span class="pill pill-exp">EKSPERIMENTAL</span><span class="pill">6.20/10</span></div><div class="muted small">eksperimental (2026-02) · Anthropic</div><p>Anthropic'ning native jamoa qatlami: lead+teammates, mailboxes, routines. DasLab substrate'ining o'zi shu tomon siljimoqda.</p></div>
+<div class="card st-warn"><div class="cardhead"><b>Microsoft AutoGen</b><span class="pill pill-warn">OGOHLANTIRISH</span><span class="pill">5.60/10</span></div><div class="muted small">maintenance · ~59.5k★</div><p>Rasmiy maintenance mode (2025-10): eng katta yulduz soni + o'lik roadmap. 2026 da yangi loyiha boshlamang.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>The Agency (agency-agents)</b><span class="pill pill-alive">FAOL</span><span class="pill">5.50/10</span></div><div class="muted small">MIT · ~126k★ · rol-kutubxona</div><p>126k★ — bozordagi eng katta rol-persona kutubxonasi + desktop app, 12+ harness. Lekin runtime, xotira, governance nol.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>CAMEL (+Eigent)</b><span class="pill pill-alive">FAOL</span><span class="pill">5.45/10</span></div><div class="muted small">0.2.x · Apache · ~17.1k★</div><p>Faol, lekin abadiy pre-1.0 research-grade; enterprise yo'li CAMEL emas — Eigent mahsuloti orqali.</p></div>
+<div class="card st-warn"><div class="cardhead"><b>llama_deploy (eski llama-agents)</b><span class="pill pill-warn">OGOHLANTIRISH</span><span class="pill">5.15/10</span></div><div class="muted small">0.9.2 · MIT · ~2.1k★</div><p>Distributed runtime g'oyasi yaxshi, sur'at sekinlashgan; LlamaCloud yo'nalishi ustuvor.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>Agent Zero</b><span class="pill pill-alive">FAOL</span><span class="pill">5.00/10</span></div><div class="muted small">v2.2 · MIT · ~18.3k★</div><p>Jonli prosumer/hacker workbench (to'liq Linux konteyner, lokal modellar); enterprise uchun mo'ljallanmagan.</p></div>
+<div class="card st-alive"><div class="cardhead"><b>Agency Swarm (VRSEN)</b><span class="pill pill-alive">FAOL</span><span class="pill">4.95/10</span></div><div class="muted small">1.9 · MIT · ~4.4k★</div><p>OpenAI-markaziy kichik, pragmatik agentlik-qatlami; SMB uchun yaxshi, enterprise platforma emas.</p></div>
+<div class="card st-dead"><div class="cardhead"><b>SuperAGI</b><span class="pill pill-dead">O'LIK/TARK ETILGAN</span><span class="pill">3.70/10</span></div><div class="muted small">O'LIK (2024-01 dan) · ~17.5k★</div><p>2,5 yildan beri release yo'q, yamalmagan zaifliklar; kompaniya CRM'ga pivot qildi. Tanlamang.</p></div>
+<div class="card st-dead"><div class="cardhead"><b>OpenAI Swarm</b><span class="pill pill-dead">O'LIK/TARK ETILGAN</span><span class="pill">3.25/10</span></div><div class="muted small">O'LIK → Agents SDK · ~21.7k★</div><p>2025-03 da rasman almashtirilgan o'quv artefakti. Tarix uchun.</p></div>
+<div class="card st-dead"><div class="cardhead"><b>OpenLegion</b><span class="pill pill-dead">O'LIK/TARK ETILGAN</span><span class="pill">2.60/10</span></div><div class="muted small">marketing-platforma</div><p>Asosan kontent/agregator sayt; jiddiy OSS iz yoki adoption dalili topilmadi.</p></div>
+<div class="card st-dead"><div class="cardhead"><b>HAAS / Agent Swarm loyihalari</b><span class="pill pill-dead">O'LIK/TARK ETILGAN</span><span class="pill">2.50/10</span></div><div class="muted small">O'LIK · eksperiment</div><p>2023-24 gacha bo'lgan ierarxik swarm eksperimentlari; qarovsiz qolgan.</p></div></div>
+</section>
+
+
+<section id="porter">
+<h2>7 · Porter's Five Forces — agent-framework industriyasi <span class="mchip">Strategik tahlil</span></h2>
+<table class="ftable"><tr><th>Kuch</th><th>Ball</th><th>Dalil</th></tr>
+<tr><td><b>Raqobat intensivligi</b></td><td class="score5">5/5</td><td>137k★ LangChain'dan 358★ SupaConductor'gacha har segment to'lgan; 2025-10 dan beri 4 ta yirik v1.0 GA.</td></tr>
+<tr><td><b>Yangi kiruvchilar xavfi</b></td><td class="score5">5/5</td><td>Kirish to'sig'i deyarli nol — awesome-claude-code 500+ loyihani kataloglaydi; har hafta yangi orkestrator.</td></tr>
+<tr><td><b>O'rinbosarlar xavfi</b></td><td class="score5">5/5</td><td>Eng katta xavf provider-native: Claude Code Agent Teams (2026-02), OpenAI Frontier (2026-02), MS Foundry — platformalar orkestratsiya qatlamini yutmoqda.</td></tr>
+<tr><td><b>Yetkazuvchilar kuchi</b></td><td class="score5">5/5</td><td>Model providerlar narx/limit/feature'ni belgilaydi. DasLab 100% Anthropic'ga bog'liq — eng yuqori ta'sirlanish.</td></tr>
+<tr><td><b>Xaridorlar kuchi</b></td><td><b>4/5</b></td><td>OSS bepul, switching-cost past; faqat platforma qatlamida (LangSmith, AMP) yopishqoqlik bor.</td></tr></table>
+<div class="callout"><b>Strukturaviy xulosa:</b> industriya jozibadorligi past (o'rtacha 4.8/5 bosim) — "yana bitta framework" bo'lish yutqazuvchi strategiya.
+Himoyalanadigan qatlamlar: <b>(1) governance/audit</b> (Gartner aynan shuni tanqis deydi), <b>(2) vertical mahsulotlar</b>, <b>(3) production dalili</b>.
+DasLab 1-qatlamda turibdi — pozitsiya strategik to'g'ri, monetizatsiya esa ochiq savol.</div>
+</section>
+
+
+<section id="swot">
+<h2>8 · SWOT — DasLab v2.0, 2026-07 holati</h2>
+<div class="swot">
+<div class="s"><h4>💪 Strengths</h4><ul>
+<li><b>Org-as-code yagona kombinatsiya:</b> 32 agent (4 daraja, charterlar) + QONUN qonunlari + AADL 6-gate + RACI + hash-chain attestation — 22 tizimning birortasida to'liq to'plam yo'q.</li>
+<li><b>Bu hujjat-teatr emas:</b> ~69k satr ishlaydigan Python, 97 script, 198 test-fayl, ~50 CI validator, 100/100 all-or-nothing release-gate.</li>
+<li><b>Xotira intizomi:</b> ArcRift majburiy recall/store + loyiha izolyatsiyasi + durable runs (checkpoint, resume/fork).</li>
+<li><b>Golden-evals:</b> 32 rolning har biriga ≥3 deterministik vazifa (≥0.80) + anti-gaming probe — agent sifatini o'lchaydigan kamdan-kam tizim.</li>
+<li><b>Claude Code ekotizimi tekin meros:</b> MCP, skills, plugins — o'z tool-katalogi kerak emas.</li></ul></div>
+<div class="w"><h4>⚠️ Weaknesses</h4><ul>
+<li><b>Distribution = 0:</b> ~0★, bitta foydalanuvchi, bus-factor 1.</li>
+<li><b>Anthropic lock-in:</b> runtime faqat Claude Code; narx/limit/breaking-change to'liq tashqarida hal bo'ladi.</li>
+<li><b>Enterprise-qobiq yo'q:</b> SSO, multi-user, UI, SLA, compliance sertifikat — hech biri yo'q.</li>
+<li><b>Jangda sinalmagan qismlar:</b> HEARTBEAT va DGO-X shadow'da; kill-drill sintetik dispatcherda; founder-gate'da audit topgan regex xato.</li>
+<li><b>Eval chuqurligi minimal:</b> 3 task/rol — statistik jihatdan yupqa.</li></ul></div>
+<div class="o"><h4>🚀 Opportunities</h4><ul>
+<li><b>Governance bo'shlig'i:</b> Gartner — 2027 ga borib korxonalarning 40% agentlarni governance kamligidan qisqartiradi; "guardian agents" 2028 talab. Policy-as-code sotiladigan qatlamga aylanmoqda.</li>
+<li><b>Agent Teams ustiga "governance plugin":</b> Anthropic orkestratsiyani yutgani sari DasLab'ning gate/board/audit qatlami native'ga qo'shimcha sifatida qiymatliroq bo'ladi.</li>
+<li><b>Org-as-code niche bo'shab qoldi:</b> ChatDev kompaniya-metaforadan voz kechdi (v2 generic DAG), MetaGPT commercial pivot — doimiy-tashkilot pattern'ida raqobat kam.</li>
+<li><b>Plugin/marketplace kanali:</b> Claude Code plugins + Cowork orqali distribution muammosini hal qilish yo'li ochiq.</li></ul></div>
+<div class="t"><h4>🌪️ Threats</h4><ul>
+<li><b>Anthropic absorption:</b> Agent Teams + routines + managed agents DasLab dispatch qatlamini bosqichma-bosqich yeydi (eng katta xavf).</li>
+<li><b>Model iqtisodiyoti:</b> opus×10 allokatsiya narx oshsa og'irlashadi.</li>
+<li><b>Solo-maintainer charchashi:</b> 69k satr + 5 policy + 32 charter'ni bir kishi ko'taradi.</li>
+<li><b>Katta o'yinchining governance'ga kirishi:</b> LangChain/CrewAI policy-qatlam chiqarsa, farq torayadi.</li></ul></div>
+</div>
+</section>
+
+
+<section id="stress">
+<h2>9 · Steelman va Red/Blue Team stress-testi</h2>
+<h3>Steelman: "DasLab'ni tashla, tayyorini ol" pozitsiyasining ENG KUCHLI versiyasi</h3>
+<div class="callout r">"LangGraph + LangSmith ol: 400 kompaniya productionda, durable execution isbotlangan, bozor devlari bor, 1.0 API kafolati.
+Rol kutubxonasi kerakmi — 126k★ The Agency'ni o'rnat. Jamoa kerakmi — Agent Teams native keladi. Sen 69k satr shaxsiy infratuzilmani
+bir o'zing ko'tarasan — bu vaqtni mahsulot yozishga sarfla. Eng yaxshi kod — yozilmagan kod."</div>
+<p><b>Halol javob:</b> bu argument "mahsulot backendini nimada quraman?" savoli uchun to'g'ri — u yerda LangGraph yutadi va DasLab
+loyihalari ichida uni bemalol ishlatishi kerak. Lekin u "ishlab chiqarish tashkilotimni nima boshqaradi?" savoliga javob bermaydi:
+LangGraph'da board, qonunlar, gate'lar, org-xotira, model-allokatsiya yo'q — bularni baribir kimdir yozishi kerak edi. DasLab aynan shu yozilgan qism.
+Xavf steelman'da to'g'ri ko'rsatilgan joy — <i>vaqt byudjeti</i>: infra-ustunlik loyiha shipping'iga aylanmasa, u xarajat bo'lib qoladi.</p>
+<h3>Red/Blue: "DasLab enterprise darajada ishlaydi" da'vosi</h3>
+<div class="two">
+<div><div class="callout"><b>🔵 Blue (himoya):</b> har wave hash-chain attestation bilan git'da — o'zgartirib bo'lmas audit trail;
+~50 validator CI'da majburiy; RACI + ROUTING eskalatsiya; model-allocation xarajat nazorati; kill-drill crash-safe resume isboti;
+100/100 gate hech qanday "shartli o'tish"ga yo'l qo'ymaydi. Ko'p Fortune-500 dev-jarayonidan qattiqroq intizom.</div></div>
+<div><div class="callout r"><b>🔴 Red (hujum):</b> enterprise = ko'p foydalanuvchi + IAM + SLA + SOC2 + support shartnoma — nol tasi bor;
+kill-drill sintetik dispatcherda o'tgan — real yuk emas; founder-gate regex xatosi bitta bug butun governance'ni chetlab o'tishi mumkinligini ko'rsatdi;
+bus-factor 1 da "SLA" so'zi ma'nosiz; ArcRift lokal SQLite — HA/backup strategiyasisiz "korporativ xotira" deb bo'lmaydi.</div></div>
+</div>
+<p><b>Hakam:</b> ikkala tomon ham to'g'ri, chunki ular ikki xil ta'rif ustida bahslashyapti. Aniq hukm:
+<b>jarayon-intizomi bo'yicha enterprise-grade (9/10), mahsulot-qobiq bo'yicha emas (1/10).</b>
+V2 pozitsiya: ichki tizim uchun bugungi holat yetarli va ortig'i bilan; tashqi mijoz uchun P11 bo'shlig'i (SSO/multi-user/SLA) hal qiluvchi to'siq.</p>
+</section>
+
+
+<section id="future">
+<h2>10 · Second-Order Thinking va Premortem</h2>
+<h3>Second-Order: "Anthropic Agent Teams GA bo'ldi" stsenariysi</h3>
+<ul>
+<li><b>1-tartib (0–3 oy):</b> DasLab'ning dispatch/parallelizm qatlami qisman ortiqcha bo'ladi — native teams tezroq va qo'llab-quvvatlanadi.</li>
+<li><b>2-tartib (3–12 oy):</b> qiymat yuqoriga siljiydi: native'da board, AADL gate, QONUN, org-xotira, golden-evals YO'Q. DasLab "Teams ustidagi governance-OS" ga aylansa, mavqei kuchayadi — raqobatchi emas, to'ldiruvchi.</li>
+<li><b>3-tartib (12–24 oy):</b> agar Anthropic governance'ni ham yutsa (Gartner "guardian agents" 2028 trendi), DasLab'ning OSS-qatlam qiymati torayadi — qiymat vertical loyihalar va metodologiyaga (org-as-code kitobi/mahsuloti) ko'chadi.</li>
+</ul>
+<h3>Premortem: 2027-07 — "DasLab o'ldi". Nega?</h3>
+<table class="ftable"><tr><th>Sabab</th><th>Ehtimol</th><th>Erta signal</th><th>Qarshi chora</th></tr>
+<tr><td>Anthropic native features uni keraksiz qildi</td><td>35%</td><td>Agent Teams GA + routines + boards roadmap'da</td><td>Governance/gate qatlamini native API ustiga ko'chirish; substrate-agnostik dizayn (ACP)</td></tr>
+<tr><td>Solo-maintainer vaqti/motivatsiyasi tugadi</td><td>25%</td><td>Wave chastotasi pasayishi, ticketlar qarishi</td><td>Scope'ni muzlatish; faqat shipping'ga xizmat qiladigan qatlamlarni saqlash</td></tr>
+<tr><td>Model narx/limitlari opus-og'ir org'ni sindirdi</td><td>15%</td><td>Oylik xarajat trendi, limit siqilishi</td><td>Model-allocation qonuni allaqachon bor — haiku/sonnet ulushini oshirish rejasi</td></tr>
+<tr><td>Governance teatr bo'lib chiqdi — shipping o'smadi</td><td>15%</td><td>Gate'lar o'tadi, lekin real loyiha chiqmaydi</td><td>Muvaffaqiyat metrikasi = tashqi foydalanuvchili shipping; kvartalda ≥1 public loyiha</td></tr>
+<tr><td>Claude Code breaking change org'ni sindirdi</td><td>10%</td><td>Changelog'da subagent API o'zgarishlari</td><td>Pin + smoke-test wave har release'da (validator bor)</td></tr></table>
+</section>
+
+
+<section id="pareto">
+<h2>11 · Pareto 80/20 — qaysi 20% ish 80% farqni yopadi <span class="mchip">Action plan</span></h2>
+<table class="ftable"><tr><th>#</th><th>Harakat</th><th>Nega aynan shu</th><th>Muddat</th></tr>
+<tr><td>1</td><td><b>Bitta loyihani 0→100 AADL orqali public shipping qilish</b> (P20: 2→6)</td><td>Eng katta ishonch bo'shlig'i — "org ishlaydi" degan tashqi dalil yo'q. Bitta case-study butun hikoyani o'zgartiradi.</td><td>30 kun</td></tr>
+<tr><td>2</td><td><b>HEARTBEAT'ni evidence-gate orqali live qilish</b> (tempo: busy 0.11 → maqsad 0.70)</td><td>2026-06 OODA tahlili: eng katta ichki gap orientatsiya emas — loop tempi. Readiness-script allaqachon yozilgan.</td><td>7 kun</td></tr>
+<tr><td>3</td><td><b>Founder-gate regex xatosini tuzatish + real-dispatcher kill-drill</b> (P12: 7→8)</td><td>Red-team topgan ikkala haqiqiy zaiflik shu yerda — governance'ning o'zi buglarga chidamli bo'lishi shart.</td><td>7 kun</td></tr>
+<tr><td>4</td><td><b>Eval chuqurligi 3→10 task/rol (kamida top-8 rol uchun)</b> (P1 ishonchi)</td><td>3 task — signal emas; 10 task rol regressiyasini ushlaydi.</td><td>30 kun</td></tr>
+<tr><td>5</td><td><b>The Agency/wshobson'dan eng zo'r 10–15 rolni DasLab charteriga adaptatsiya qilish</b></td><td>126k★ kutubxona — raqib emas, bepul donor. Rol sifati tekin ko'tariladi.</td><td>14 kun</td></tr>
+<tr><td>6</td><td><b>Qaror: mahsulotmi yo'qmi.</b> Agar ha — "governance-plugin for Agent Teams" sifatida package (P2/P11 yo'li); agar yo'q — P11 ni ongli ravishda 1 da qoldirish</td><td>Ikki orada turish eng qimmat strategiya: enterprise-qobiq faqat sotish niyatida ma'noga ega.</td><td>90 kun</td></tr></table>
+</section>
+
+
+<section id="rivals">
+<h2>12 · Chin raqobat maydoni — Claude Code ekotizimi <span class="mchip">Tekislik B</span></h2>
+<p>DasLab'ning real jang maydoni LangGraph emas — Claude Code ustidagi orkestrator/org qatlami. 2026-07 holati:</p>
+<div class="tablewrap"><table class="ftable"><thead><tr><th>Loyiha</th><th>★</th><th>Turi</th><th>Org-modeli</th><th>Governance</th><th>Xotira</th><th>Sifat-dalil</th><th>Xulosa</th></tr></thead><tbody>
+<tr class="row-self"><td>DasLab</td><td>~0</td><td>Org-OS</td><td>4-daraja ierarxiya, charterlar</td><td>QONUN + AADL gates + RACI</td><td>ArcRift (majburiy)</td><td>~50 validator + 32 rol golden-eval + attestation</td><td>Kombinatsiya bo'yicha yagona; distribution bo'yicha oxirgi</td></tr>
+<tr><td>The Agency (agency-agents)</td><td>126k</td><td>Rol-kutubxona + app</td><td>Flat personalar (16 bo'lim)</td><td>—</td><td>—</td><td>—</td><td>Eng katta tarqalish; tizim chuqurligi nol — DasLab'ga raqib emas, donor</td></tr>
+<tr><td>wshobson/agents</td><td>37.4k</td><td>Rol-kutubxona</td><td>194 agent, flat</td><td>—</td><td>—</td><td>—</td><td>Multi-harness katalog; org qatlami yo'q</td></tr>
+<tr><td>Ruflo (eks claude-flow)</td><td>31.1k</td><td>Orkestrator</td><td>Queen/worker hive-mind</td><td>—</td><td>bor (da'vo)</td><td>Mustaqil audit: 314 tool'dan ~10 tasi ishlaydi</td><td>Shishirilgan da'volar — ehtiyot bo'ling</td></tr>
+<tr><td>vibe-kanban</td><td>27k</td><td>Parallel UI</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Kanban ko'rinishda parallel agent runlar</td></tr>
+<tr><td>SuperClaude</td><td>23.4k</td><td>Framework</td><td>Personalar/rejimlar</td><td>—</td><td>—</td><td>—</td><td>Slash-command workflow framework</td></tr>
+<tr><td>VoltAgent subagents</td><td>22.7k</td><td>Katalog</td><td>154 subagent</td><td>—</td><td>—</td><td>—</td><td>Toza katalog</td></tr>
+<tr><td>claude-squad</td><td>8k</td><td>Parallel runner</td><td>—</td><td>—</td><td>—</td><td>—</td><td>tmux + worktrees</td></tr>
+<tr><td>ccpm</td><td>7.9k</td><td>PM-qatlam</td><td>Ticket-driven</td><td>qisman</td><td>—</td><td>—</td><td>G'oyaviy DasLab board'iga yaqin</td></tr>
+<tr><td>SupaConductor</td><td>358</td><td>Org-OS mini</td><td>15 agent + “Board of Directors”</td><td>sifat gates</td><td>—</td><td>opus/sonnet allocation</td><td>Dizayn jihatdan eng yaqin analog — lekin juda kichik</td></tr>
+<tr><td>Claude Code Agent Teams</td><td>native</td><td>Native qatlam</td><td>Lead + teammates, mailboxes</td><td>—</td><td>sessiya darajasida</td><td>—</td><td>Anthropic orkestratsiyani yutmoqda; governance esa hali bo'sh</td></tr>
+</tbody></table></div>
+<div class="callout v"><b>Xulosa:</b> rol-kutubxonalar (126k★, 37k★) va parallel-runnerlar (27k★, 8k★) to'liq commoditized;
+Anthropic native qatlam (Agent Teams, routines) orkestratsiyani yutmoqda. <b>Hech kim</b> org+governance+xotira+dalil kombinatsiyasini
+bitta tizimda bermaydi — eng yaqin urinish (SupaConductor) 358★ va DasLab chuqurligining ~20% ida. DasLab bu maydonda dizayn bo'yicha №1,
+distribution bo'yicha oxirgi o'rinda.</div>
+</section>
+
+
+<section id="bayes">
+<h2>13 · Bayesian yangilash, Reflexive audit va Quality Booster</h2>
+<h3>Bayesian: ishonchni yangilash</h3>
+<ul>
+<li><b>Prior (2026-06 atom-audit):</b> DasLab ichki sifati ≈8.0/10.</li>
+<li><b>Yangi dalillar:</b> (+) governance-qatlam tanqisligi analitiklar tomonidan tasdiqlandi; (+) org-as-code niche bo'shab qoldi (ChatDev/MetaGPT chiqib ketdi); (+) repo auditi "hujjat-teatr emas" degan xulosani tasdiqladi; (–) orkestratsiya commoditization kutilganidan tez; (–) Anthropic absorption tezlashdi (Agent Teams 2026-02); (–) 27% bozor o'ligi kategoriya xavfini ko'rsatadi.</li>
+<li><b>Posterior:</b> "Ichki vosita sifatida davom ettirishga arziydi" — <b>~85% ishonch</b> (prior ~75%). "Bozor mahsuloti sifatida hozirgi holatda raqobatbardosh" — <b>~30–40% ishonch</b>, faqat №6-qarordan (11-bo'lim) keyin ko'tariladi.</li>
+</ul>
+<h3>Reflexive audit (o'z tahlilimni tekshirish)</h3>
+<ul>
+<li><b>Confirmation bias xavfi:</b> DasLab ballarini o'z repo'si asosida beryapman — qarshi chora: P2=1, P11=1, P20=2 kabi shafqatsiz ballar berildi; umumiy o'rin 12/22 — xushomad emas.</li>
+<li><b>Anchoring:</b> Perplexity'ning eski 1–5 jadvalidan qochish uchun barcha ballar 2026-07 yangi ma'lumotlardan qayta chiqarildi (masalan SuperAGI u yerda 3/5 "maturity" edi — aslida 2,5 yil o'lik).</li>
+<li><b>Noaniqlik:</b> yulduz sonlari ±kunlik aniqlikda; vendor adoption da'volari (CrewAI "Fortune 500ning 63%") chegirma bilan olindi.</li>
+<li><b>Eng kuchli qarshi-argument</b> (Steelman, 9-bo'lim) alohida ko'rib chiqildi va qisman qabul qilindi (vaqt-byudjet xavfi).</li>
+</ul>
+<h3>Quality Booster</h3>
+<ul>
+<li><b>Taxminlar:</b> (a) Claude Code 12+ oy asosiy harness bo'lib qoladi — ⚠️ taxminiy; (b) golden-eval natijalari repo da'vosiga mos — ✅ CI'da majburiy; (c) Gartner prognozlari yo'nalish sifatida to'g'ri — ⚠️ taxminiy.</li>
+<li><b>Bilmaymiz:</b> Agent Teams GA sanasi; Anthropic'ning governance-roadmap'i; DasLab'ning real oylik model-xarajati trendda qanday o'zgaradi.</li>
+<li><b>Validatsiya KPI'lari:</b> kvartalda shipping qilingan loyiha soni; wave/hafta tempi; eval o'rtacha balli; tashqi foydalanuvchi soni (agar mahsulot yo'li tanlansa).</li>
+<li><b>Umumiy ishonch:</b> faktlar qatlami ~90%, ballar qatlami ~75% (analitik baho), strategik xulosalar ~70%.</li>
+</ul>
+</section>
+
+
+<section id="src">
+<h2>14 · Asosiy manbalar</h2>
+<ul class="srcs">
+<li>Frameworklar: github.com/langchain-ai/langgraph · langchain.com/blog/langchain-langgraph-1dot0 · github.com/crewAIInc/crewAI · blog.crewai.com/crewai-amp-the-agent-management-platform · github.com/microsoft/agent-framework · devblogs.microsoft.com/agent-framework/microsoft-agent-framework-version-1-0 · github.com/microsoft/autogen (discussion #7066, maintenance) · github.com/microsoft/semantic-kernel (discussion #13215) · github.com/OpenHands/OpenHands · openhands.dev/pricing · github.com/agentscope-ai/agentscope · github.com/letta-ai/letta · letta.com/blog/our-next-phase · letta.com/case-studies/bilt · github.com/camel-ai/camel · eigent.ai/pricing · github.com/agent0ai/agent-zero · github.com/TransformerOptimus/SuperAGI (soʼnggi release 2024-01) · github.com/VRSEN/agency-swarm · github.com/openai/swarm · github.com/openai/openai-agents-python · openai.com/index/introducing-openai-frontier · github.com/run-llama/llama_index · github.com/run-llama/llama_deploy</li>
+<li>Claude Code ekotizimi: github.com/msitarzewski/agency-agents (126k★) · github.com/wshobson/agents · github.com/ruvnet/ruflo (+2026-04 mustaqil tool-audit) · github.com/SuperClaude-Org/SuperClaude_Framework · github.com/VoltAgent/awesome-claude-code-subagents · github.com/smtg-ai/claude-squad · github.com/Ibrahim-3d/orchestrator-supaconductor · code.claude.com/docs/en/agent-teams · infoq.com/news/2026/05/code-with-claude</li>
+<li>Bozor/tahlil: Gartner press-relizlari (2025-08-26 "40% enterprise apps"; 2026-05-26 "uniform governance fails"; Hype Cycle for Agentic AI 2026) · fortune.com 2026-05-18 (solo founders) · github.com/openbmb/ChatDev (v2.0 DevAll) · github.com/FoundationAgents/MetaGPT</li>
+<li>DasLab: lokal repo auditi 2026-07-05 (README, AGENTS.md, governance/policies/, scripts/, tests/, evals/, board/, docs/research/ — jumladan 2026-06 atom-audit va ORGANISM verification)</li>
+</ul>
+<p class="muted small">Eslatma: ballar — manbalarga tayangan analitik ekspert baho (o'lchov emas); yulduz/versiya raqamlari 2026-07-04/05 holatiga.</p>
+</section>
+
+
+</main>
+<footer>DasLab research · 2026-07-05 · Atomic deep-research v2 (avvalgi 2026-07-03 SWOT tahlilining to'liq yangilanishi) · 22 tizim × 20 parametr × 10 ball</footer>
+<script>
+document.querySelectorAll('#vsTable thead th[data-col]').forEach(function(th){
+  th.addEventListener('click',function(){
+    var col=parseInt(th.dataset.col),tb=document.querySelector('#vsTable tbody');
+    var rows=Array.prototype.slice.call(tb.querySelectorAll('tr'));
+    var dir=th.dataset.dir==='asc'?'desc':'asc';th.dataset.dir=dir;
+    rows.sort(function(a,b){
+      var av,bv;
+      if(col===0){av=a.cells[0].textContent.trim().toLowerCase();bv=b.cells[0].textContent.trim().toLowerCase();
+        return dir==='asc'?av.localeCompare(bv):bv.localeCompare(av);}
+      av=parseFloat(a.cells[col].textContent.replace('#',''))||0;
+      bv=parseFloat(b.cells[col].textContent.replace('#',''))||0;
+      return dir==='asc'?av-bv:bv-av;});
+    rows.forEach(function(r){tb.appendChild(r);});
+  });
+});
+</script>
+</body></html>

@@ -1,0 +1,11 @@
+# DasLab WS-A optional tool-bridge deps.
+# Kept OUT of core requirements.txt so the engine stays server-free (ADR-0033 TB-1,
+# ADR check_no_dead_runtime). Install only where the tool bridges run:
+#   pip install -r tools/mcp_bridges/requirements-tools.txt
+mcp>=1.2
+# The browser tool is the ready-made Playwright MCP server, run via Node:
+#   npx @playwright/mcp@latest   (no Python dependency)
+# To back the FastMCP sidecar with the LangChain catalog instead of the stdlib
+# web_fetch demo, add the specific integration you need, e.g.:
+#   langchain-community>=0.3
+#   langchain-tavily>=0.1        # requires TAVILY_API_KEY

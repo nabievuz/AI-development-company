@@ -10,3 +10,18 @@ dgox_emit: false        # /daslab-cycle step 5d routing_decision shadow emission
 t4_t7_governors: false  # T4 cost/model-mix + T7 quality governor invocations during a wave
 organism_emit: true     # ACTIVATED 2026-07-03 (Founder-authorized): consumers now live (dispatch_emitter, cost_ledger, check_spans, snapshot_evidence). /daslab-cycle ORGANISM WS1 "pulse" run-model: run-open + wave checkpoints (pulse_checkpoint) + run_start/run_end/span emission (dispatch_emitter) at steps 0/5/6; SEPARATE channel from dgox_emit; post-decision, failure-isolated (flag-on == flag-off dispatch)
 heartbeat_enabled: false  # WS4 HEARTBEAT (ADR-0027 SI-7): default OFF. Flip to true ONLY after a >=3-day clean shadow window; Founder-only act (QONUN-5). Consumed by scripts/loop_controller.py --tick.
+
+# ---------------------------------------------------------------------------
+# MUSTAQIL workstream flags (DAS-1543 / ADR-0019, all DEFAULT OFF).
+# Each stays false until its workstream's consumer is live AND its AADL gate is
+# closed; flipping is a Founder-only act once the flip condition is met. WS-F
+# (HEARTBEAT) reuses the existing `heartbeat_enabled` above — NOT duplicated here.
+# ---------------------------------------------------------------------------
+ws_a_tool_bridge: false      # WS-A ecosystem tool/MCP bridge (ADR-0033). Consumer: tools/ bridge + scripts/check_in_tenant TN-1 boundary. Flip when the bridge lands with deny-all + allow-list egress (Q5) live.
+ws_b_agent_sdk_runner: false # WS-B headless Agent SDK runner (ADR-0034, daslab_sdk). Consumer: the subscription-Claude dispatch path. Flip when the runner authenticates via Claude account/OAuth and the ADR-0009 admission layer wraps it.
+ws_c_langgraph_loop: false   # WS-C LangGraph/DGO-X execution substrate (ADR-0035). Consumer: the finisher loop. Flip when the loop runs a real 0->100 slice under supervision (Q4).
+ws_d_langfuse_lens: false    # WS-D self-host Langfuse observability lens (ADR-0036). Consumer: in-tenant trace/eval viewer. Flip when self-host Langfuse is up on the tenant VM (Q2) and in-tenant (TN-1).
+ws_e_tenant_hardening: false # WS-E internal self-host hardening (ADR-0038). Consumer: tenant-VM hardening + open-weight eject-path. Flip when the internal-only boundary (Q10) is enforced end-to-end.
+ws_g_proof: false            # WS-G end-to-end proof / attestation (ADR-0037). Consumer: the shipped-proof gate (merged + CI + deployed to VM, Q7). Flip when the first WS-H proof slice is demonstrably shipped.
+ws_h_control_plane: false    # WS-H self-hosted web control plane (ADR-0039). Consumer: the control-plane dashboard (first proof, Q1). Flip when the dashboard slice is deployed to the tenant VM with Founder-only RBAC (Q6).
+ws_f_heartbeat: false        # WS-F HEARTBEAT alias — PLACEHOLDER ONLY. The live flag is `heartbeat_enabled` above (ADR-0027 SI-7); this key is never the flip point. Do NOT flip; flip `heartbeat_enabled` instead.

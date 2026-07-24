@@ -49,3 +49,58 @@ caps:
     max_input_tokens: 100_000_000     # 100M input tokens per calendar day
     max_output_tokens: 20_000_000     # 20M output tokens per calendar day
     max_cost_usd: 500.00              # $500 estimated cost per calendar day
+
+# ---------------------------------------------------------------------------
+# MUSTAQIL program budget (DAS-1543 / discovery Q3 + Q9)
+# ---------------------------------------------------------------------------
+# The MUSTAQIL autonomous finisher runs on a **Claude subscription** via the
+# ADR-0034 Agent SDK runner (account auth, not a metered API key), so its budget
+# stance is stricter and different from the org-wide informational `caps:` above.
+#
+# Discovery answers (docs/research/2026-07-23-daslab-mustaqil-discovery-answers.md):
+#   Q3 = "Conservative defaults" — low per-run / per-day caps; a wave that would
+#        breach a cap evaluates to **idle + alert** (ADR-0027 SI-5), dispatching
+#        nothing (breach -> scripts/alerting.py).
+#   Q9 = "Must work on a Claude subscription" — Agent SDK usage draws from the
+#        plan's **monthly credit** first; that monthly credit is the **outer
+#        ceiling** (ADR-0027 SI-5 hard dispatch ceiling for the substrate).
+#
+# Semantics the MUSTAQIL runner MUST honor:
+#   - per_run / per_day caps below are the runner's HARD dispatch ceiling
+#     (self-imposed autonomy budget, stricter than the shared gate — SI-5).
+#     A `--tick` that would breach either evaluates to idle + alert, never a
+#     partial/degraded dispatch and never a false-green.
+#   - monthly_credit_ceiling is the OUTER ceiling: when the subscription's
+#     monthly credit depletes, further Agent SDK requests stop until the credit
+#     refreshes. This halt is a **sanctioned pause, not a failure** — treat a
+#     credit-refresh wait like a gate (an expected idle), never a crash/false-green.
+#   - metered_overflow: OFF. Usage credits (standard API-rate overflow) stay
+#     DISABLED so spend can never exceed the subscription — the "subscription-only,
+#     no metered $" intent. Flipping this ON is a Founder-only budget decision.
+#   - Size waves to fit the monthly credit; do not assume overflow exists.
+mustaqil:
+  # Runner is on a subscription, so cost is bounded by credit, not a metered bill;
+  # these caps are the conservative self-imposed per-run/per-day dispatch ceiling.
+  caps:
+    per_run:
+      max_input_tokens: 2_000_000     # 2M input tokens per wave (conservative)
+      max_output_tokens: 400_000      # 400K output tokens per wave
+      max_cost_usd: 5.00              # ~$5 estimated equivalent per wave
+    per_day:
+      max_input_tokens: 20_000_000    # 20M input tokens per calendar day
+      max_output_tokens: 4_000_000    # 4M output tokens per calendar day
+      max_cost_usd: 15.00             # ~$15 estimated equivalent per day
+  # breach of a cap above -> the runner idles and alerts (does not dispatch).
+  on_breach: idle_and_alert           # ADR-0027 SI-5; wired via scripts/alerting.py
+  # The subscription monthly credit is the OUTER ceiling (Q9). Values are the
+  # per-plan monthly credit; the active plan's figure is the real ceiling.
+  monthly_credit_ceiling:
+    plan_credit_usd:
+      pro: 20                         # Claude Pro   ($20/mo credit)
+      max_5x: 100                     # Claude Max 5x ($100/mo credit)
+      max_20x: 200                    # Claude Max 20x ($200/mo credit)
+    on_exhaustion: sanctioned_pause   # credit depleted -> expected halt, NOT a failure
+    metered_overflow: false           # usage-credit / API-rate overflow stays OFF
+  # [NEEDS VERIFICATION at WS-B go-live] the credit-based subscription model was
+  # announced 2026-06-15 then paused; confirm the live plan's Agent-SDK terms,
+  # per-plan credit, and headless-use policy before the runner goes live.
