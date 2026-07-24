@@ -2,7 +2,7 @@
 
 - **Goal:** mustaqil-ws-g-proof
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed (CTO — 2026-07-24, WS-G GATE-1; all functional requirements and success criteria judged coherent, testable, and traceable to ADR-0037 ED-1…ED-5; no open clarification markers)
 
 > WHAT/WHY only. The HOW (harness module layout, scorecard schema fields, the
 > attestation hash-chain wiring, the project-skeleton generator) lives in ADR-0037

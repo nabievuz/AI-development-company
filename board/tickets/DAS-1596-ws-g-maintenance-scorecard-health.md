@@ -1,7 +1,7 @@
 ---
 id: DAS-1596
 title: WS-G Maintenance — scheduled scorecard and evidence health checks
-status: todo
+status: blocked
 assignee: product-analyst
 author: ceo
 dept: engineering
@@ -41,3 +41,6 @@ honest over time so evidence-drift is caught. COO accountable; Support Lead cons
 Created by /daslab-plan (WS-G Maintenance, GATE-6). Scheduled scorecard/evidence-gate
 health on the eval cadence; SC-005 validators; learnings to daslab-learn (Founder-reviewed).
 </content>
+
+### 2026-07-25 — Orchestrator (/daslab-cycle)
+BLOCKED — AADL gate-order: Maintenance (GATE-6) cannot open while Deployment (GATE-5, DAS-1595) is blocked on a real tenant VM + the live 0→100 proof run. Buildable only after the proof is delivered.

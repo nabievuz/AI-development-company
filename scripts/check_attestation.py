@@ -239,7 +239,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    files = sorted(args.attest_dir.glob("*.json")) if args.attest_dir.is_dir() else []
+    # Wave attestations only — a `<run_id>.delivery.json` in the same store is a
+    # WS-G evidence-gate receipt (schema daslab.delivery_attestation.v1, verified
+    # by check_evidence_gate.py), NOT a wave attestation. Excluding it keeps this
+    # glob symmetric with check_evidence_gate.corroborate()'s own wave-file glob so
+    # the first real receipt DAS-1595 commits is not mis-read here as a malformed
+    # wave attestation (a false FAIL). Fail-closed already, but this removes the
+    # forward-looking footgun (DAS-1592 GATE-3 glob-collision follow-up).
+    files = (
+        sorted(p for p in args.attest_dir.glob("*.json") if not p.name.endswith(".delivery.json"))
+        if args.attest_dir.is_dir()
+        else []
+    )
     if not files:
         print(
             "check_attestation: no committed attestations — gate inert (exit 0). "

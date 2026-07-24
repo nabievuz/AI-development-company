@@ -1,6 +1,6 @@
 # ADR 0037 — End-to-end autonomous delivery target (the MUSTAQIL completion contract)
 
-- **Status:** Proposed (Backend EM authors; **CTO ratifies — RACI 3.1/3.6**; CEO + Founder consulted — this fixes the org's completion contract)
+- **Status:** Accepted (Backend EM authors; **CTO ratified 2026-07-24 — RACI 3.1/3.6 A**; CEO + Founder consulted — this fixes the org's completion contract)
 - **Date:** 2026-07-22
 - **Scope:** Platform / org-engine — the binding definition of "end-to-end autonomous delivery" and of "finished"
 - **Deciders:** Backend EM (author), **CTO (accountable)**; CEO consulted (program owner); Founder consulted (the gate authority the contract preserves)
@@ -42,6 +42,7 @@ The target is **scoped, well-specified** goals from the Founder-approved queue. 
 
 ## Enforcement / acceptance
 
-- Ratified by the **CTO**; CEO + Founder consulted. `Proposed` until sign-off.
+- **Ratified by the CTO on 2026-07-24** (RACI 3.1/3.6 A); CEO consulted (program owner), Founder consulted (the gate authority the contract preserves). Judged sound against ADR 0020 (no false-green — ED-1 makes "finished" evidence-only and treats every unmeasured dimension as SKIPPED, never green), ADR 0031/0032 (a lapse breaks a committed hash-chained attestation and fails CI, not a silent self-report), ADR 0014 (an unknown is `[NEEDS CLARIFICATION]` + escalated, never invented — ED-3), and Founder answers Q1 (proof scope = the WS-H control-plane dashboard slice, e.g. the CP-3b trigger-run) + Q7 (shipped = merged + green CI + deployed to the tenant VM). Two failure modes explicitly foreclosed: (a) a **false-green** — ED-1 + ADR-0020 + the SPEC-007 evidence gate (FR-004) and anti-gaming probe (FR-003) reject a "done" with a missing or unmeasured artifact; (b) an **empty-work "delivery"** — ED-5 + FR-001 fix the proof to one Founder-scoped, immutable deliverable with no self-scoping and no narrowing-to-what-is-easy, so scope cannot be gamed down to nothing. Status moves `Proposed` → `Accepted` on this sign-off.
 - The ED-1 completion contract **is** the release gate for the MUSTAQIL program: each workstream (ADR 0033–0038) closes its AADL gate against it; the program is 100% only when ED-1 holds and the PROOF project (G6) is delivered 0→100.
+- **Proof scope fixed (Q1, immutable):** the PROOF project = the **WS-H control-plane dashboard slice**. It lives entirely under `projects/<proof-name>/` (Project Placement Law; skeleton bootstrapped later by DAS-1593), runs its **own six AADL gates**, and its work tickets live on its own board — never the org `board/tickets/`. "Shipped" = merged + green CI + **deployed to the tenant VM** (Q7); the deploy-to-VM step (DAS-1595) and the live 0→100 run are genuinely infra-gated (need a provisioned tenant VM) and, absent it, are carried as `blocked` with a precise reason — never faked or skipped. The org-engine WS-G machinery this contract governs (golden-eval/scorecard, evidence/attestation gate, project skeleton) is buildable now.
 - Any future "is this actually finished / can it run past the Founder / did it verify this?" question resolves here.

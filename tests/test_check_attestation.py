@@ -131,6 +131,28 @@ def test_fresh_receipt_passes(tmp_path: Path) -> None:
     assert rc == 0
 
 
+def test_delivery_receipt_is_not_read_as_a_wave_attestation(tmp_path: Path) -> None:
+    """A `<run_id>.delivery.json` in the store is ignored, not mis-read (DAS-1592).
+
+    check_evidence_gate.py commits a WS-G delivery receipt
+    (schema daslab.delivery_attestation.v1) alongside the wave attestations. Its
+    glob must exclude `*.delivery.json` so the first real receipt DAS-1595 writes
+    does not trip a false wave-attestation FAIL. Regression for the GATE-3
+    glob-collision follow-up (CTO, option a).
+    """
+    _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
+    attest = tmp_path / "attest"
+    # A perfectly valid delivery receipt — but the WRONG schema for a wave
+    # attestation. If the glob still matched it, check_attestation would FAIL it.
+    (attest / "01JWAVE0000000000000000001.delivery.json").write_text(
+        json.dumps({"schema": "daslab.delivery_attestation.v1", "verdict": "complete"}),
+        encoding="utf-8",
+    )
+    rc = ca.main(["--attest-dir", str(attest),
+                  "--evidence-dir", str(tmp_path / "evidence")])
+    assert rc == 0
+
+
 # --------------------------------------------------------------------------- #
 # TAMPER: mutating any field breaks the self-hash => FAIL
 # --------------------------------------------------------------------------- #

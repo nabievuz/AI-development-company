@@ -1,0 +1,14 @@
+{
+  "schema": "daslab.delivery_scorecard.v1",
+  "proof": "ws-g-evidence-gate-fixture",
+  "run_id": "__RUN_ID__",
+  "passed": false,
+  "dimensions": [
+    { "dimension": "aadl_gates_closed", "status": "pass", "evidence_ref": "fixture:stage-board" },
+    { "dimension": "merged_pr_green_ci", "status": "pass", "evidence_ref": "fixture:counted-evidence" },
+    { "dimension": "wave_attestation", "status": "pass", "evidence_ref": "fixture:attestation" },
+    { "dimension": "diagnostics_100", "status": "fail", "evidence_ref": "fixture:diagnostics-99", "detail": "diagnostics 99/100 or an unclean tree" },
+    { "dimension": "golden_eval", "status": "pass", "evidence_ref": "fixture:golden-eval" },
+    { "dimension": "anti_gaming_probe", "status": "pass", "evidence_ref": "fixture:anti-gaming" }
+  ]
+}

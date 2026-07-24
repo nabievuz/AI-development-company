@@ -83,3 +83,6 @@ provisioned tenant VM (external, Q7). Escalation to CPO noted in report: the pro
 scope fix (Q1) is confirmed by the Founder discovery record but its ADR ratification
 is a CTO act (DAS-1589), above PM authority.
 </content>
+
+### 2026-07-25 — Orchestrator (/daslab-cycle)
+**WS-G PROOF — machinery COMPLETE (GATE-1..4), delivery BLOCKED.** GATE-1 (1589 ADR-0037) → GATE-2 (1590 scorecard/evidence design) → GATE-3 (1591 scorecard + 1592 evidence-gate + 1593 proof skeleton; security-eng red-team + QA found TWO distinct false-green forges [self-report trust, fabricated fixtures] — BOTH fixed, gate now provably no-false-green, fail-closed until D1/D4/D5 evidence is attested) → GATE-4 (1594 false-green negatives, both forges rejected). The org-engine completion-contract MACHINERY is built + hardened + tested. But the actual PROOF — one project delivered 0→100 on a real tenant VM (DAS-1595) — is genuinely BLOCKED on Founder infra + a live autonomous run + the true-green attestation follow-up bound to 1595. DAS-1596 (Maintenance) gate-blocked behind it. Epic stays OPEN: cannot close without the real proof. Behind ws_g_proof OFF.

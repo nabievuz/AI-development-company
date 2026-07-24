@@ -1,0 +1,7 @@
+{
+  "schema": "daslab.delivery_scorecard.v1",
+  "proof": "ws-g-evidence-gate-fixture",
+  "run_id": "01JEMPTYDELIVERY000000000001",
+  "passed": false,
+  "dimensions": []
+}

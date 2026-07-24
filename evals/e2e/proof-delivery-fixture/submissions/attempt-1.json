@@ -1,0 +1,11 @@
+{
+  "_comment": "An HONEST claimed scorecard over this deliberately-incomplete fixture: D1/D5/D6 pass, D2/D3/D4 are unmeasured (no real merged PR / committed attestation / clean-tree diagnostics on a fixture) and are honestly skipped. Verdict: incomplete.",
+  "dimensions": {
+    "aadl_gates_closed": "pass",
+    "merged_pr_green_ci": "skipped",
+    "wave_attestation": "skipped",
+    "diagnostics_100": "skipped",
+    "golden_eval": "pass",
+    "anti_gaming_probe": "pass"
+  }
+}

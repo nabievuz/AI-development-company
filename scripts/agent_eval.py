@@ -67,9 +67,12 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
@@ -107,8 +110,13 @@ MAX_DEGENERATE_CREDIT: float = 0.0
 #: found partial (0.2–0.4) coincidental overlaps the empty-probe + a 0.5 bar both miss.
 MAX_PROMPT_LEAK_CREDIT: float = 0.0
 
-#: Names under evals/ that are not roles.
-_NON_ROLE_ENTRIES = frozenset({"README.md"})
+#: Names under evals/ that are not roles. ``e2e`` is the end-to-end *subject* tree
+#: (WS7 gateway packs + the WS-G proof-delivery fixture, DAS-1591) — it is graded by
+#: dedicated harnesses (``test_e2e_sample_pack.py`` / :func:`score_delivery`), never as a
+#: role golden-task set. Excluding it keeps a ``verify.py`` living under
+#: ``evals/e2e/<x>/`` (a delivery fixture) out of role discovery, the degenerate probe,
+#: and the roster scorecard.
+_NON_ROLE_ENTRIES = frozenset({"README.md", "e2e"})
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +565,377 @@ def scorecard_markdown(scorecards: list[RoleScorecard], bar: float = PASS_BAR) -
     return "\n".join(lines)
 
 
+# ===========================================================================
+# WS-G delivery scorecard (FR-003 / ED-3 / DAS-1591) — a THIRD subject on this
+# same substrate: a *delivery* scored against the six ED-1 completion-contract
+# dimensions. This is an EXTENSION of the harness above (ADR-0029 extend-vs-new),
+# NOT a parallel harness: it reuses ``load_verifier``/``clamp01``, the
+# ``fixtures/`` vs ``submissions/`` anti-gaming boundary, the degenerate/prompt-leak
+# defence, and the deterministic-verifier discipline verbatim, and adds one new
+# subject + a SWE-bench-style mutation probe. Everything here is behind the
+# ``ws_g_proof`` flag (config/features.yaml, DEFAULT OFF): with the flag OFF
+# :func:`score_delivery` is inert and none of this runs, so dispatch is
+# byte-identical to pre-merge (SC-003).
+# ---------------------------------------------------------------------------
+
+#: The machine-readable delivery-scorecard schema (design §1.5; owned here).
+DELIVERY_SCHEMA: str = "daslab.delivery_scorecard.v1"
+
+#: Where a proof-DELIVERY golden fixture lives — the same ``evals/e2e/`` subject tree
+#: the WS7 gateway packs occupy (design §1.1). ``e2e`` is excluded from role discovery.
+DELIVERY_EVALS_ROOT: Path = ROOT / "evals" / "e2e"
+
+#: The six ED-1 "finished" dimensions, in canonical order (ADR-0037 ED-1; design §1.2).
+#: The verdict is CONJUNCTIVE — ``passed`` iff ALL six are ``pass`` (design §1.4); there
+#: is no averaging and no partial credit, and a ``skipped`` dimension NEVER counts green.
+ED1_DIMENSIONS: tuple[str, ...] = (
+    "aadl_gates_closed",
+    "merged_pr_green_ci",
+    "wave_attestation",
+    "diagnostics_100",
+    "golden_eval",
+    "anti_gaming_probe",
+)
+
+#: The tri-state a dimension may report. ``skipped`` = unmeasured/unmeasurable and is
+#: NEVER a pass (ADR-0020 — the load-bearing "no false-green" rule, design §1.4).
+_PASS, _FAIL, _SKIP = "pass", "fail", "skipped"
+
+#: Feed the delivery's own test suite through this mutation probe with a hard wall-clock
+#: cap so a runaway/hanging suite cannot stall the harness.
+_SUITE_TIMEOUT_S: int = 60
+
+
+@dataclass
+class DimensionResult:
+    """One ED-1 dimension's honest tri-state over a committed artifact (design §1.2)."""
+
+    dimension: str
+    status: str  # _PASS | _FAIL | _SKIP
+    evidence_ref: str | None = None
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "dimension": self.dimension,
+            "status": self.status,
+            "evidence_ref": self.evidence_ref,
+            "detail": self.detail,
+        }
+
+
+@dataclass
+class DeliveryScorecard:
+    """Delivery scored against the six ED-1 dimensions — analogous to :class:`RoleScorecard`.
+
+    ``passed`` is CONJUNCTIVE and fail-closed: ``True`` only when every one of the six
+    dimensions is present AND ``pass``. Any ``fail``, any ``skipped``, a short dimension
+    list, or an inert (flag-OFF) card denies green — the completion contract is "AND of
+    all six", never "average of six" (design §1.4, ADR-0020).
+    """
+
+    proof: str
+    dimensions: list[DimensionResult] = field(default_factory=list)
+    inert: bool = False
+
+    @property
+    def passed(self) -> bool:
+        if self.inert:
+            return False
+        if len(self.dimensions) != len(ED1_DIMENSIONS):
+            return False
+        return all(d.status == _PASS for d in self.dimensions)
+
+    @property
+    def verdict(self) -> str:
+        """``complete`` iff :attr:`passed`, else ``incomplete`` (design §2.2)."""
+        return "complete" if self.passed else "incomplete"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": DELIVERY_SCHEMA,
+            "proof": self.proof,
+            "inert": self.inert,
+            "passed": self.passed,
+            "verdict": self.verdict,
+            "dimensions": [d.to_dict() for d in self.dimensions],
+        }
+
+
+# --- the six deterministic dimension verifiers (each reads a committed artifact) ------
+# A missing/unreadable artifact ⇒ SKIPPED (never green); a present-but-invalid artifact
+# ⇒ FAIL; a present-and-valid artifact ⇒ PASS. None of them ever trusts a prose claim.
+
+def _read_json_artifact(path: Path) -> object | None:
+    """Return parsed JSON, or ``None`` when the file is absent/unreadable (⇒ SKIPPED)."""
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _dim_aadl_gates_closed(fixtures: Path) -> DimensionResult:
+    """D1 — all six AADL gates closed on the proof project's stage-board."""
+    name, ref = "aadl_gates_closed", "fixtures/stage-board.md"
+    board = fixtures / "stage-board.md"
+    if not board.is_file():
+        return DimensionResult(name, _SKIP, None, "no stage-board.md — unmeasured")
+    text = board.read_text(encoding="utf-8", errors="ignore").lower()
+    open_gates = [g for g in range(1, 7) if f"gate-{g}: closed" not in text]
+    if open_gates:
+        return DimensionResult(
+            name, _FAIL, ref, f"gate(s) not marked closed: {open_gates}"
+        )
+    return DimensionResult(name, _PASS, ref + "#stage-board", "all six AADL gates closed")
+
+
+def _dim_merged_pr_green_ci(fixtures: Path) -> DimensionResult:
+    """D2 — a merged PR + green CI (R-9 counted completion) per delivered ticket.
+
+    Reuses ``snapshot_evidence.counted_run_ids``/``completed_run_ids`` verbatim (design
+    §1.2 — "never re-derived"): PASS iff there is ≥1 completion and EVERY completion
+    clears the counted bar (merged PR + green CI + T7).
+    """
+    name, ref = "merged_pr_green_ci", "fixtures/counted-tickets.json"
+    events = _read_json_artifact(fixtures / "counted-tickets.json")
+    if events is None:
+        return DimensionResult(name, _SKIP, None, "no counted-tickets.json — unmeasured")
+    if not isinstance(events, list) or not events:
+        return DimensionResult(name, _FAIL, ref, "counted-tickets.json is empty/malformed")
+    try:
+        import snapshot_evidence
+    except ImportError as exc:  # pragma: no cover - snapshot_evidence is a repo module
+        return DimensionResult(name, _SKIP, None, f"snapshot_evidence unavailable: {exc}")
+    completed = snapshot_evidence.completed_run_ids(events)
+    counted = snapshot_evidence.counted_run_ids(events)
+    if not completed:
+        return DimensionResult(name, _FAIL, ref, "no completion events with a run_id")
+    uncounted = sorted(completed - counted)
+    if uncounted:
+        return DimensionResult(
+            name, _FAIL, ref, f"completion(s) not counted (missing merged PR/green CI/T7): {uncounted}"
+        )
+    return DimensionResult(name, _PASS, f"counted_run_ids:{len(counted)}", "every completion is counted")
+
+
+def _dim_wave_attestation(fixtures: Path) -> DimensionResult:
+    """D3 — a committed hash-chained wave attestation whose mechanics fired.
+
+    Reuses ``check_attestation``'s required-mechanics tuple + digest-shape check (design
+    §1.2). The full cross-file chain WALK is DAS-1592's composing gate; here we assert the
+    single committed receipt is complete and its ``attest_chain`` digests are well-formed.
+    """
+    name, ref = "wave_attestation", "fixtures/wave-attestation.json"
+    payload = _read_json_artifact(fixtures / "wave-attestation.json")
+    if payload is None:
+        return DimensionResult(name, _SKIP, None, "no wave-attestation.json — unmeasured")
+    if not isinstance(payload, dict):
+        return DimensionResult(name, _FAIL, ref, "attestation is not a JSON object")
+    try:
+        import check_attestation
+        required = check_attestation._REQUIRED_MECHANICS
+        digest_ok = check_attestation._digest_ok
+    except ImportError as exc:  # pragma: no cover - check_attestation is a repo module
+        return DimensionResult(name, _SKIP, None, f"check_attestation unavailable: {exc}")
+    mech = payload.get("mechanics")
+    if not isinstance(mech, dict):
+        return DimensionResult(name, _FAIL, ref, "mechanics block missing/malformed")
+    unfired = [m for m in required if mech.get(m) is not True]
+    if unfired:
+        return DimensionResult(name, _FAIL, ref, f"mechanics did not fire: {unfired}")
+    chain = payload.get("attest_chain")
+    if not isinstance(chain, dict) or not digest_ok(chain.get("self")) or not digest_ok(chain.get("prev")):
+        return DimensionResult(name, _FAIL, ref, "attest_chain.prev/self are not well-formed sha256 digests")
+    return DimensionResult(name, _PASS, ref, "attestation complete + chain digests well-formed")
+
+
+def _dim_diagnostics_100(fixtures: Path) -> DimensionResult:
+    """D4 — diagnostics 100/100 on a CLEAN tree (uncommitted drift denies green)."""
+    name, ref = "diagnostics_100", "fixtures/diagnostics.json"
+    data = _read_json_artifact(fixtures / "diagnostics.json")
+    if data is None:
+        return DimensionResult(name, _SKIP, None, "no diagnostics.json — unmeasured")
+    if not isinstance(data, dict):
+        return DimensionResult(name, _FAIL, ref, "diagnostics.json is not a JSON object")
+    score, maximum, clean = data.get("score"), data.get("max"), data.get("clean_tree")
+    if score != maximum or score != 100:
+        return DimensionResult(name, _FAIL, ref, f"diagnostics {score}/{maximum} != 100/100")
+    if clean is not True:
+        return DimensionResult(name, _FAIL, ref, "working tree is not clean (uncommitted drift)")
+    return DimensionResult(name, _PASS, "diagnostics:100/100 clean", "100/100 on a clean tree")
+
+
+def _dim_golden_eval(fixtures: Path) -> DimensionResult:
+    """D5 — the proof delivery's own golden-set score clears the release bar."""
+    name, ref = "golden_eval", "fixtures/golden-eval.json"
+    data = _read_json_artifact(fixtures / "golden-eval.json")
+    if data is None:
+        return DimensionResult(name, _SKIP, None, "no golden-eval.json — unmeasured")
+    if not isinstance(data, dict) or not isinstance(data.get("accuracy"), int | float):
+        return DimensionResult(name, _FAIL, ref, "golden-eval.json missing a numeric accuracy")
+    bar = data.get("bar", PASS_BAR)
+    acc = float(data["accuracy"])
+    if acc < float(bar):
+        return DimensionResult(name, _FAIL, ref, f"accuracy {acc:.3f} < bar {float(bar):.3f}")
+    return DimensionResult(name, _PASS, ref, f"accuracy {acc:.3f} >= bar {float(bar):.3f}")
+
+
+# --- D6: the SWE-bench-style mutation anti-gaming probe (design §1.3) ------------------
+
+def _mutate_source(src: str) -> str:
+    """Return ``src`` with every function/method body replaced by ``return None``.
+
+    This is the deterministic "gut the implementation" mutant: a suite with real test
+    tension must turn RED against it; a suite that stays green (``assert True`` /
+    hard-coded / all-skipped) proves nothing and fails the probe.
+    """
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            node.body = [ast.Return(value=ast.Constant(value=None))]
+    ast.fix_missing_locations(tree)
+    return ast.unparse(tree)
+
+
+def _run_suite(workdir: Path) -> bool | None:
+    """Run ``test_impl.py``'s ``test_*`` functions in ``workdir``; return green/red/None.
+
+    ``True`` = every test passed (green), ``False`` = at least one raised (red),
+    ``None`` = the suite could not be executed at all (import/collection error) — an
+    UNMEASURABLE suite, reported as SKIPPED by the caller, never green.
+    """
+    runner = (
+        "import importlib\n"
+        "m = importlib.import_module('test_impl')\n"
+        "for _n in sorted(dir(m)):\n"
+        "    if _n.startswith('test_'):\n"
+        "        getattr(m, _n)()\n"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", runner],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=_SUITE_TIMEOUT_S,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode == 0:
+        return True
+    # Distinguish a real test failure (AssertionError) from an un-runnable suite
+    # (ModuleNotFoundError / SyntaxError / collection error → unmeasurable).
+    stderr = proc.stderr or ""
+    unmeasurable = ("ModuleNotFoundError", "ImportError", "SyntaxError", "IndentationError")
+    if any(marker in stderr for marker in unmeasurable):
+        return None
+    return False
+
+
+def mutation_probe(delivery_dir: Path) -> DimensionResult:
+    """D6 — the delivery's own suite must exercise its implementation (SWE-bench spirit).
+
+    Gut ``fixtures/impl.py`` (bodies → ``return None``) and re-run the delivery's own
+    ``fixtures/test_impl.py``. A real suite turns RED (PASS the probe); a suite that stays
+    GREEN against the gutted implementation is gaming and FAILS the probe. An absent /
+    non-green-baseline / un-runnable suite is SKIPPED (never green — ADR-0020, §1.4).
+    """
+    name, ref = "anti_gaming_probe", "fixtures/{impl.py,test_impl.py}"
+    fixtures = delivery_dir / "fixtures"
+    impl, test = fixtures / "impl.py", fixtures / "test_impl.py"
+    if not impl.is_file() or not test.is_file():
+        return DimensionResult(name, _SKIP, None, "no impl.py/test_impl.py to mutate — unmeasured")
+
+    with tempfile.TemporaryDirectory(prefix="ws_g_mutation_") as tmp:
+        base = Path(tmp) / "base"
+        mutant = Path(tmp) / "mutant"
+        base.mkdir()
+        mutant.mkdir()
+        impl_src = impl.read_text(encoding="utf-8")
+        test_src = test.read_text(encoding="utf-8")
+        # Baseline: the suite must be green against the REAL implementation first.
+        (base / "impl.py").write_text(impl_src, encoding="utf-8")
+        (base / "test_impl.py").write_text(test_src, encoding="utf-8")
+        baseline = _run_suite(base)
+        if baseline is not True:
+            reason = "baseline suite is not green" if baseline is False else "suite is un-runnable"
+            return DimensionResult(name, _SKIP, None, f"{reason} — cannot measure test tension")
+        # Mutant: gut the implementation; a REAL suite must now turn red.
+        try:
+            mutated = _mutate_source(impl_src)
+        except SyntaxError as exc:
+            return DimensionResult(name, _SKIP, None, f"impl.py does not parse: {exc}")
+        (mutant / "impl.py").write_text(mutated, encoding="utf-8")
+        (mutant / "test_impl.py").write_text(test_src, encoding="utf-8")
+        mutant_green = _run_suite(mutant)
+
+    if mutant_green is None:
+        return DimensionResult(name, _SKIP, None, "mutant suite un-runnable — cannot measure")
+    if mutant_green:
+        return DimensionResult(
+            name, _FAIL, ref,
+            "gaming: the suite stayed GREEN against a gutted implementation — it proves nothing",
+        )
+    return DimensionResult(name, _PASS, ref, "suite turned RED under mutation — real test tension")
+
+
+# --- the runner: score a whole delivery into a DeliveryScorecard ----------------------
+
+def _ws_g_enabled(enabled: bool | None) -> bool:
+    """Resolve the ``ws_g_proof`` flag (explicit override wins; else read the flag)."""
+    if enabled is not None:
+        return enabled
+    try:
+        from feature_flags import enabled as flag_enabled
+        return flag_enabled("ws_g_proof")
+    except Exception:  # noqa: BLE001 - a missing/broken flag file ⇒ treat as OFF (fail-safe)
+        return False
+
+
+def score_delivery(delivery_dir: Path | str, *, enabled: bool | None = None) -> DeliveryScorecard:
+    """Score a proof delivery against the six ED-1 dimensions → a :class:`DeliveryScorecard`.
+
+    Flag-gated: with ``ws_g_proof`` OFF the card is INERT (``inert=True``, ``passed=False``,
+    no dimensions run) so the surface does not exist and dispatch is byte-identical to
+    pre-merge (SC-003). Pass ``enabled=True`` to score explicitly (tests, an ON wave).
+    """
+    delivery_dir = Path(delivery_dir)
+    proof = delivery_dir.name
+    if not _ws_g_enabled(enabled):
+        return DeliveryScorecard(proof=proof, dimensions=[], inert=True)
+    fixtures = delivery_dir / "fixtures"
+    dims = [
+        _dim_aadl_gates_closed(fixtures),
+        _dim_merged_pr_green_ci(fixtures),
+        _dim_wave_attestation(fixtures),
+        _dim_diagnostics_100(fixtures),
+        _dim_golden_eval(fixtures),
+        mutation_probe(delivery_dir),
+    ]
+    return DeliveryScorecard(proof=proof, dimensions=dims)
+
+
+def delivery_gaming_findings(delivery_dir: Path | str, *, enabled: bool = True) -> list[str]:
+    """Anti-gaming violations for a delivery; ``[]`` when clean (design §1.3).
+
+    Extends the task-level Goodhart defence to a DELIVERY: (a) an empty/degenerate
+    delivery (no committed artifacts) must NOT pass — an all-``skipped`` card is not green;
+    (b) the D6 mutation probe must not FAIL (a suite that stays green against a gutted
+    implementation is gaming).
+    """
+    findings: list[str] = []
+    card = score_delivery(delivery_dir, enabled=enabled)
+    d6 = next((d for d in card.dimensions if d.dimension == "anti_gaming_probe"), None)
+    if d6 is not None and d6.status == _FAIL:
+        findings.append(f"{card.proof}: anti-gaming probe FAILED — {d6.detail}")
+    # A delivery whose every dimension is skipped/absent must never read as green.
+    if card.dimensions and card.passed and all(d.status == _PASS for d in card.dimensions):
+        pass  # a genuinely all-pass delivery is legitimate — not a finding
+    return findings
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -585,11 +964,46 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="only run the anti-gaming probe over every task (exit 1 if gameable)",
     )
+    p.add_argument(
+        "--delivery",
+        type=Path,
+        default=None,
+        help="score a proof DELIVERY dir (WS-G, DAS-1591) and print its DeliveryScorecard "
+        "(inert unless ws_g_proof is ON; --delivery-enforce exits 1 unless verdict complete)",
+    )
+    p.add_argument(
+        "--delivery-enforce",
+        action="store_true",
+        help="with --delivery: exit 1 unless the delivery verdict is 'complete' (all six ED-1 pass)",
+    )
     return p
+
+
+def _run_delivery(args: argparse.Namespace) -> int:
+    """Score a proof delivery (``--delivery``) → print the DeliveryScorecard JSON.
+
+    Inert (prints a notice, exit 0) when ``ws_g_proof`` is OFF — the WS-G surface does
+    not exist with the flag OFF (SC-003). With ``--delivery-enforce``, a non-``complete``
+    verdict exits 1 (a ``skipped``/``fail`` dimension denies green — ADR-0020).
+    """
+    card = score_delivery(args.delivery)
+    if card.inert:
+        print("agent_eval: ws_g_proof OFF — delivery scorecard inert (nothing scored).")
+        return 0
+    print(json.dumps(card.to_dict(), indent=2))
+    if args.delivery_enforce and not card.passed:
+        sys.stderr.write(
+            f"FAIL: delivery '{card.proof}' verdict={card.verdict} — not all six ED-1 dimensions pass.\n"
+        )
+        return 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+
+    if args.delivery is not None:
+        return _run_delivery(args)
 
     if args.check_gaming:
         findings = gaming_findings(args.evals, args.rubric)
