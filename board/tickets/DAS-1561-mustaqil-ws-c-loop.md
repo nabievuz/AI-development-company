@@ -1,7 +1,7 @@
 ---
 id: DAS-1561
 title: MUSTAQIL WS-C LOOP — durable graph loop and per-task sandbox under DGO-X (EPIC)
-status: backlog
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -86,3 +86,6 @@ constraint, not a `depends_on` edge (a dangling dep would fail check_dependency_
 DAS-1566 created `blocked` — actually running a live Docker/E2B sandbox needs a host an
 agent does not have; the adapter/substrate code + tests stay buildable `todo`.
 </content>
+
+### 2026-07-24 — Orchestrator (/daslab-cycle)
+**EPIC CLOSED — WS-C LOOP complete.** All six AADL gates closed: GATE-1 (1562 ADR-0035, LangGraph=projection of graph_state, board canonical) → GATE-2 (1563 loop+sandbox design) → GATE-3 (1564 substrate + 1565 sandbox stub; security-eng red-team PASSED no escape; clean-room import-ban reconciled to ADR-0035 via scoped scripts/dgox carve-out) → GATE-4 (1567 SC-001..005 + NUL-byte hardening, 0 xfailed) → GATE-5 (1568 runbook, flag OFF) → GATE-6 (1569 board-canonical/sandbox-wall/import-ban-drift health check). Behind ws_c_langgraph_loop OFF. LOCAL-ONLY. DAS-1566 live DockerSandbox stays BLOCKED (real Docker/E2B host). Unblocks WS-E (overlaps C) + WS-G (after B) + WS-H (after B+D+E).

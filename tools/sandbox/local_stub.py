@@ -73,16 +73,19 @@ def _resolve_within(mount_root: Path, rel: str) -> Path | None:
     """
     if not rel:
         return None
-    candidate_raw = Path(rel)
-    if candidate_raw.is_absolute():
-        return None
-    if ".." in candidate_raw.parts:
-        return None
-    root = mount_root.resolve()
-    candidate = (mount_root / candidate_raw).resolve()
     try:
+        candidate_raw = Path(rel)
+        if candidate_raw.is_absolute():
+            return None
+        if ".." in candidate_raw.parts:
+            return None
+        root = mount_root.resolve()
+        candidate = (mount_root / candidate_raw).resolve()
         candidate.relative_to(root)
-    except ValueError:
+    except (OSError, ValueError):
+        # Fail CLOSED on any path-resolution error (e.g. an embedded NUL byte
+        # raises ValueError from Path()/.resolve()) — same denial as a '..'
+        # or absolute-path escape, never an uncaught exception.
         return None
     return candidate
 

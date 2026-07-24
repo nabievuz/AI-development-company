@@ -300,6 +300,64 @@ def test_resource_limit_denies_oversized_write(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# GATE-3 red-team residuals (DAS-1564/1565 logs) — routed to DAS-1567 (here).
+# ---------------------------------------------------------------------------
+
+
+def test_host_wall_nul_byte_path_denies_cleanly_not_a_raised_valueerror(tmp_path):
+    """SC-005 residual (a): the contract-desired shape for a NUL-byte path is a
+    clean `ExecResult(ok=False)`, exactly like every other host-wall escape —
+    never an exception escaping `exec()`. Today it raises; this asserts the
+    DESIRED contract and is expected to fail until local_stub.py is patched."""
+    backend = LocalStubSandbox()
+    scope = _scope("task-nul1", tmp_path)
+    handle = backend.open(task_id="task-nul1", scope=scope)
+    nul_path = "foo" + "\x00" + "bar"
+
+    try:
+        result = backend.exec(handle, ["read", nul_path])
+    except ValueError:
+        # Fail-closed baseline holds REGARDLESS of the denial shape: no path
+        # was ever read/written for the NUL-byte candidate.
+        assert not any(p.name.startswith("foo") for p in tmp_path.iterdir())
+        raise
+
+    # Desired contract shape (contract.py's ExecResult docstring): a denial is
+    # a RETURNED ExecResult(ok=False), never a raised exception.
+    assert result.ok is False
+    assert not any(p.name.startswith("foo") for p in tmp_path.iterdir())
+
+
+def test_credential_exec_result_stdout_is_not_serialized_into_an_event_by_a_correct_caller(tmp_path):
+    """SC-005 residual (b) — caller-side raw-stdout Tier-M assertion: `cred`
+    returns the secret VALUE in `ExecResult.stdout` BY DESIGN (the in-sandbox
+    task is the intended consumer; see local_stub.py's `_exec_cred` comment).
+    The Tier-M guarantee therefore rests entirely on CALLERS: an event MUST be
+    built from `ScopedSecret.to_event_fields()`, and raw `stdout` must never be
+    serialized into one. This test proves both the leak path a naive caller
+    would hit AND that the safe projection never carries the secret."""
+    secret_value = "sk-fake" + "-caller" + "-stdout" + "-501"
+    cred = ScopedSecret(name="svc-token", value=secret_value, scope="task-tm1", ttl_seconds=120)
+    backend = LocalStubSandbox()
+    scope = _scope("task-tm1", tmp_path, credentials=[cred])
+    handle = backend.open(task_id="task-tm1", scope=scope)
+
+    result = backend.exec(handle, ["cred", "svc-token"])
+    assert result.ok is True
+    assert result.stdout == secret_value  # intended in-sandbox-consumer path
+
+    # A NAIVE caller that serializes raw stdout into an event WOULD leak it —
+    # this is exactly the mistake the design flags callers to avoid.
+    naive_event = {"exec_stdout": result.stdout}
+    assert secret_value in repr(naive_event)
+
+    # The Tier-M-SAFE caller path never touches raw stdout for the event.
+    safe_event = {"credential_grant": cred.to_event_fields()}
+    assert secret_value not in repr(safe_event)
+    assert "value" not in cred.to_event_fields()
+
+
+# ---------------------------------------------------------------------------
 # Flag-off inert
 # ---------------------------------------------------------------------------
 

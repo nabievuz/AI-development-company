@@ -230,4 +230,36 @@ caller-side raw-`stdout` Tier-M assertion (`cred` returns the value by design fo
 consumer; the guarantee rests on callers using `to_event_fields()`); (3) live-host `DockerSandbox`
 isolation smoke is DAS-1566 (external dependency). All behind `ws_c_langgraph_loop` OFF (inert).
 ⛔ LOCAL-ONLY: no commit/branch/push/PR. WS-C impl (`tools/sandbox/*`) untouched this run.
+
+### 2026-07-24 — Backend Engineer 1
+**Bound-residual remediation: NUL-byte fail-closed fix (item 1 above, found by DAS-1567/WS-C
+Testing GATE-4, LOW, fails-closed, not an escape).** Wrapped `_resolve_within()`'s body
+(`tools/sandbox/local_stub.py`, ~line 67) in a single `try/except (OSError, ValueError)`
+spanning the absolute/`..`-component checks through `candidate.relative_to(root)`, returning
+`None` on any of those exceptions — identical denial shape to every other host-wall escape.
+An embedded-NUL path (e.g. `"foo\x00bar"`) now returns a clean `ExecResult(ok=False)` from
+`exec()` instead of propagating an uncaught `ValueError`. No change to the success path or
+any other wall (repo/other-task/credential/escape-prevention untouched).
+
+Removed the `@pytest.mark.xfail(strict=True)` marker from
+`test_host_wall_nul_byte_path_denies_cleanly_not_a_raised_valueerror` in
+`tests/test_ws_c_sandbox_adapter.py` (~line 307) — no assertions weakened, test now runs
+as a normal (non-xfail) test and PASSES.
+
+**Verify (STAGED, `git add -A`):**
+- `python3 -m pytest tests/test_ws_c_sandbox_adapter.py -q` → **26 passed** (was 24 + 1
+  xfail; NUL-byte test now a real pass, plus 1 more collected — 0 xfail/xpass).
+- `python3 -m pytest -q` (full suite) → **2129 passed, 4 skipped**, 0 xfailed.
+- `python3 scripts/diagnostics.py` → **SCORE = 100/100**.
+- `ruff check tools/sandbox/local_stub.py tests/test_ws_c_sandbox_adapter.py` → clean.
+- `python3 scripts/board_lint.py` → exit 0 (180 tickets, 0 violations; lone pre-existing
+  DAS-1507 body-status WARN, unrelated).
+
+Confirmed no other sandbox wall/behaviour changed — full `test_ws_c_sandbox_adapter.py`
+suite green, only the NUL-byte denial shape and the marker changed.
+
+⛔ LOCAL-ONLY: no git push/commit/branch/PR. Footprint: `tools/sandbox/local_stub.py`,
+`tests/test_ws_c_sandbox_adapter.py`, and this ticket log only. Left `status: done`
+(bound-residual remediation on an already-ratified ticket, logged here per dispatch;
+DAS-1567 status untouched — qa-lead closes GATE-4 next).
 </content>

@@ -480,6 +480,19 @@ def maintenance_schedule() -> dict:
                           "exit is an ALERT routed to a follow-up ticket, never silently "
                           "retried or auto-fixed",
             },
+            {
+                "name": "ws-c-loop-health",
+                "kind": "ws-c-eval",
+                "command": ["python3", "scripts/ws_c_loop_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-c-loop-health.md",
+                "safety": "read-only board-canonical reconcile drift (checkpoint never a "
+                          "tiebreaker) + sandbox fail-closed-wall drift (host/cross-task/"
+                          "unscoped-credential/egress) + import-ban carve-out drift "
+                          "(ADR-0035 langgraph confined to scripts/dgox/) (ADR-0035 GATE-6, "
+                          "DAS-1569); a non-zero exit is an ALERT routed to a follow-up "
+                          "ticket, never silently retried or auto-fixed",
+            },
         ],
     }
 
