@@ -456,6 +456,18 @@ def maintenance_schedule() -> dict:
                           "DAS-1551); a non-zero exit is an ALERT routed to a follow-up "
                           "ticket, never silently retried or auto-fixed",
             },
+            {
+                "name": "ws-b-runner-health",
+                "kind": "ws-b-eval",
+                "command": ["python3", "scripts/ws_b_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-b-runner-health.md",
+                "safety": "read-only dispatch-equivalence drift (single run_wave() caller + "
+                          "ledger reconciliation) + budget-ceiling drift (mustaqil: SI-5 caps "
+                          "and metered_overflow: false intact) (ADR-0034 GATE-6, DAS-1559); a "
+                          "non-zero exit is an ALERT routed to a follow-up ticket, never "
+                          "silently retried or auto-fixed",
+            },
         ],
     }
 

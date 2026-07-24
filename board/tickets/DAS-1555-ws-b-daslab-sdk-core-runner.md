@@ -1,7 +1,7 @@
 ---
 id: DAS-1555
 title: WS-B Development — daslab_sdk core runner, loads the repo charter, calls run_wave
-status: in_review
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -83,3 +83,77 @@ Notes routed to reviewer/orchestrator (not decided here):
 3. **Live dispatch** is not exercised (needs subscription auth + flag ON) — bound on DAS-1558; the SDK boundary is injected (`query_fn`) and the SDK is an opt-in extra.
 
 Handing to **CTO** (GATE-3 accountable) for review. Not self-merging (SR-4 / role DoD).
+
+### 2026-07-24 — CTO
+**AADL Stage-3 / GATE-3 (WS-B RUNNER) — CLOSED for the core runner unit. `status: done`. LOCAL-ONLY disposition, accepted on local green (CEO-authorized).**
+
+Reviewed the `daslab_sdk/` package (`contracts.py`, `runner.py`) against ADR-0034
+SR-1/3/4/5, the DAS-1554 design, and the ADR-0009 admission boundary. Unit is
+complete and holds every invariant it owns:
+
+- **SR-1 / FR-001** — `build_agent_options` pins `cwd=REPO_ROOT` +
+  `setting_sources=["project"]`; no `create_agent`/ported-role constructor
+  exists (structural unreachability). Verified.
+- **SR-3 / FR-003** — `dispatch_wave` is a NEW CALLER of
+  `scripts/wave_runner.py:run_wave`; it never re-implements dispatch/selection
+  and never writes the event/attestation surface directly (single producer; the
+  `organism_emit` gate is inherited, not shadowed). Verified.
+- **SR-4 / FR-004** — `results_from_dispatches` sets `merged_pr=None` and closes
+  to the plan routing target, never a merge-`done`; no `gh pr merge`/`git
+  push`/`--admin`/`git commit`/`gh pr create` path in the runner source. Verified.
+- **SR-5 / FR-005** — flag gate is first in both entrypoints; `sdk_available()`
+  uses `find_spec` (never imports); `isolate_env` constructs the child env
+  (empty floor, never `os.environ` passthrough) and drops the metered-key vars.
+  Verified.
+- **FR-002 fail-closed model** — `build_agent_options` raises on empty model;
+  `dispatch_ticket` refuses (`REFUSED_NO_MODEL`) before any model call. Verified.
+
+**Security-consulted (Security Lead consulted-only; CTO carried the check).**
+`isolate_env` drops `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` entirely (by key,
+so a present-but-empty `""` is dropped, not blanked); env floor is an empty map
+⇒ no host-state / metered-key leak. Admission is fail-closed on a missing
+explicit model AND on a missing admitter (`REFUSED_NO_ADMITTER` — the runner
+never self-admits). Auth posture sound: the runner never carries a metered key
+into the child env, so the subscription OAuth profile resolves. **Verdict: sound.**
+
+**Integration-seam decision → Option B (injection is complete; adapter is
+integration-tier, bound downstream).** Rationale recorded once, here, for the
+epic:
+- The `Admitter` protocol + injection is the deliberate ADR-0034 SR-2/SR-3
+  decoupling ("depends on admission by injection, never re-implements"). This
+  unit is complete against the design's §9 task split, as is DAS-1556's gateway.
+- I confirmed the two halves are NOT directly composable: `runner.py` gates on
+  `contracts.AdmissionOutcome.ADMIT`, while `ws_b_admission.admit()` returns a
+  RICHER `ws_b_admission.AdmissionOutcome` (5 sanctioned outcomes) — a different
+  enum object, so naive direct injection would score every real ADMIT as
+  `ADMISSION_HOLD`. Reconciling a richer producer to a narrower consumer
+  protocol (5→2 outcome map + dataclass-shape translation) is textbook
+  boundary/adapter work, not core development of either unit — and it is a
+  design REFINEMENT (DAS-1556 expanded the design's binary "HOLD" into 4 named
+  sanctioned outcomes), not a defect.
+- Nothing composes the two halves today: the flag is OFF and no caller wires
+  `ws_b_admission.admit` into `dispatch_ticket`. So the enum-identity trap is a
+  fact about a wiring that does not yet exist — there is no shipping bug to fix
+  at GATE-3. Pulling the adapter + its integration test into GATE-3 would smear
+  AADL Stage-4 (Testing) work under Stage-3, which the lifecycle QONUN forbids
+  as much as the reverse.
+- **Where the adapter is bound:** the adapter (5→2 outcome mapping) + the
+  end-to-end integration test that proves a real ADMIT composes through
+  `adapter → dispatch_ticket → query_fn` (spy invoked) and every non-ADMIT →
+  `ADMISSION_HOLD` (no dispatch) is bound as an explicit prerequisite on
+  **DAS-1557** (Testing / GATE-4, SC-001 dispatch-equivalence). The **production**
+  adapter used by the live drive lands with **DAS-1558**'s flip-time wiring. Both
+  bindings are recorded so the seam cannot be silently skipped.
+
+**Verification (exact, this run):**
+- `python3 -m pytest tests/test_ws_b_daslab_sdk_runner.py tests/test_ws_b_admission.py -q` → **42 passed**.
+- `python3 -m pytest -q` → **1992 passed, 4 skipped**.
+- `python3 scripts/diagnostics.py` → **SCORE = 100/100**.
+- `python3 scripts/board_lint.py` → exit **0** (180 tickets, 0 violations; the DAS-1507 body-`status` WARN is pre-existing/unrelated, non-fatal).
+
+**Disposition.** LOCAL-ONLY per the dispatch constraint (no commit/branch/PR/push
+this run). Accepted on local green as the CEO-authorized GATE-3 closure. The
+git-law step (worktree/branch/PR + `scripts/gen_codeowners.py` re-run for the new
+`daslab_sdk/` dir — Backend EM's note 2) and the live drive (note 3) remain bound
+to the branch/commit step and DAS-1558 respectively; they do not reopen GATE-3.
+GATE-3 closes for BOTH Development units → unblocks DAS-1557 (Testing).

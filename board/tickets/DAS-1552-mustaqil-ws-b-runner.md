@@ -1,7 +1,7 @@
 ---
 id: DAS-1552
 title: MUSTAQIL WS-B RUNNER — headless Claude Agent SDK dispatch (EPIC)
-status: backlog
+status: done
 assignee: cto
 author: ceo
 dept: engineering
@@ -79,3 +79,6 @@ zone collision). Org-engine epic — no `project:` field (board_lint R9). `depen
 [DAS-1544]` encodes the master-prompt sequencing rule "A → B": WS-B may not open its
 Planning gate ahead of WS-A. No code/ADR/config touched by this planning pass; only
 this ticket file, its seven children, and the SPEC-003 directory were created.
+
+### 2026-07-24 — Orchestrator (/daslab-cycle)
+**EPIC CLOSED — WS-B RUNNER complete.** All six AADL gates closed: GATE-1 Planning (DAS-1553, ADR-0034 ratified + 2 clarification markers resolved as a DAS-1558 flip-time precondition) → GATE-2 Design (DAS-1554, run_wave boundary + subscription-auth design) → GATE-3 Development (DAS-1555 daslab_sdk core + DAS-1556 admission gateway; CTO Option-B on the 5→2 admission adapter seam, ANTHROPIC_API_KEY-drop verified) → GATE-4 Testing (DAS-1557, integration adapter proves the enum-trap fix + negative suite) → GATE-5 Deployment (DAS-1558, flip runbook; live-terms precondition honestly UNRESOLVED = flip held OFF by design) → GATE-6 Maintenance (DAS-1559, dispatch-equivalence + budget-drift health check). Behind `ws_b_agent_sdk_runner` OFF — no live headless drive. LOCAL-ONLY (nothing pushed). Unblocks WS-C (DAS-1561, after B) — WS-D (DAS-1570) was already unblocked (parallel from A).

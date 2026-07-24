@@ -1,7 +1,7 @@
 ---
 id: DAS-1556
 title: WS-B Development — admission gateway, Claude subscription auth, budget and credit ceiling
-status: in_review
+status: done
 assignee: backend-em
 author: ceo
 dept: engineering
@@ -156,3 +156,66 @@ escalation needed at this time.
 CTO ratification to follow per AADL). DAS-1555 (`daslab_sdk` zone) proceeds in
 parallel — no shared-file collision. DAS-1557 (Testing) can build against
 `admit`/`gated_admit`/`build_subscription_env` directly once DAS-1555 lands.
+
+### 2026-07-24 — CTO
+**AADL Stage-3 / GATE-3 (WS-B RUNNER) — CLOSED for the admission/auth/budget unit. `status: done`. LOCAL-ONLY disposition, accepted on local green (CEO-authorized).**
+
+Reviewed `scripts/ws_b_admission.py` against ADR-0034 SR-2, ADR-0009 (admission
+layer, not raw transport), ADR-0027 SI-5, and Q9. Unit is complete and holds
+its invariants:
+
+- **SR-2 / FR-002 (explicit model, LAW 3; ADR-0009 gateway)** — `admit()`
+  precondition #1 rejects an absent/empty/whitespace/non-string model
+  (`REJECTED`) before any side effect; the frontmatter hint is never consulted
+  as a fallback. `admit()` makes no routing/selection/re-tier decision — it is a
+  yes/hold on an already-made `(role, model)`. Verified.
+- **FR-006 / Q9 (subscription auth, not a metered key)** —
+  `build_subscription_env()` DROPS `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`
+  entirely (by key, so `ANTHROPIC_API_KEY=""` is removed, not blanked), and
+  `extra` is re-filtered so a caller cannot reintroduce a key var. Auth stays
+  behind the single `admit()` seam ⇒ swappable. Verified.
+- **FR-007 (SI-5 cap breach → idle+alert; metered overflow OFF)** —
+  `check_budget()` reuses `alerting.budget_governor` for cost (REUSE, not
+  re-implement) plus a local token-cap check; breach → `IDLE_AND_ALERT`, zero
+  dispatch, alert carried. No `metered_overflow` parameter exists on `admit()`
+  (structurally OFF, not merely defaulted). Verified.
+- **FR-008 (credit exhaustion → sanctioned pause, resumes on refresh)** —
+  `check_credit_exhaustion()` → `SANCTIONED_PAUSE`, distinct from a crash and
+  from a false-green; idempotent re-entry on refresh (DAS-1447). Verified.
+- **SR-5 (shared flag OFF)** — `gated_admit()` short-circuits to `UNAVAILABLE`
+  before any `admit()` logic when `ws_b_agent_sdk_runner` is OFF (repo default).
+  Verified.
+
+**Security-consulted (Security Lead consulted-only; CTO carried the check).**
+Confirmed `build_subscription_env` drops `ANTHROPIC_API_KEY` entirely including
+the empty-string case (test `test_build_subscription_env_drops_even_an_empty_api_key`);
+no metered-key leak path; admission fail-closed on a missing explicit model
+(precondition #1, before any model call). **Verdict: sound.**
+
+**Integration-seam decision → Option B.** Full rationale recorded on DAS-1555's
+GATE-3 closure log (single source of truth for the epic). Summary: the runner's
+injected `Admitter` seam and this richer 5-outcome gateway are each complete
+against the design's §9 split; they are intentionally different-altitude
+contracts, and a naive direct injection is broken by enum identity
+(`ws_b_admission.AdmissionOutcome.ADMIT is not contracts.AdmissionOutcome.ADMIT`).
+The 5→2 outcome adapter + its end-to-end integration test is integration-tier
+(AADL Stage-4) work, bound explicitly on **DAS-1557** (integration test) and
+**DAS-1558** (production adapter for the live drive). Nothing composes the two
+halves today (flag OFF, no live caller) ⇒ no shipping bug to fix at GATE-3.
+
+**Note on the earlier `90/100` in this ticket's Backend log:** that finding was
+the WS-A `no-committed-secrets` false-positive on `scripts/ws_a_health_check.py`
+(outside this ticket's footprint). It is resolved on the current checkout — I ran
+`python3 scripts/diagnostics.py` this session and got **SCORE = 100/100** (Security
+10/10). This unit was never the cause.
+
+**Verification (exact, this run):**
+- `python3 -m pytest tests/test_ws_b_daslab_sdk_runner.py tests/test_ws_b_admission.py -q` → **42 passed**.
+- `python3 -m pytest -q` → **1992 passed, 4 skipped**.
+- `python3 scripts/diagnostics.py` → **SCORE = 100/100**.
+- `python3 scripts/board_lint.py` → exit **0** (180 tickets, 0 violations; DAS-1507 body-`status` WARN pre-existing/unrelated, non-fatal).
+
+**Disposition.** LOCAL-ONLY per the dispatch constraint (no commit/branch/PR/push
+this run). Accepted on local green as the CEO-authorized GATE-3 closure; the
+git-law worktree/branch/PR step remains bound to the branch/commit step (does not
+reopen GATE-3). GATE-3 closes for BOTH Development units → unblocks DAS-1557.
