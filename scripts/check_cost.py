@@ -172,6 +172,12 @@ def main(argv: list[str] | None = None) -> int:
             f"  Unknown tiers (no price): {sorted(ledger.unknown_tiers)} "
             f"(tokens counted, cost = $0.00)"
         )
+    if ledger.dropped_undated:
+        print(
+            f"  Dropped (undated) spans: {ledger.dropped_undated} span(s) with a "
+            f"missing/non-conforming created_at (DAS-1633) — excluded from any "
+            f"windowed (--since) total; visible here instead of silently vanishing"
+        )
 
     _print_axis("Per ticket", ledger.by_ticket)
     _print_axis("Per agent", ledger.by_agent)

@@ -53,6 +53,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dgox.created_at import CREATED_AT_FORMAT, is_valid_created_at
+
 # ---------------------------------------------------------------------------
 # Self-locating root (LAW A — never a hardcoded path).
 # When imported from within the scripts/ namespace the regular sys.path
@@ -97,7 +99,7 @@ def utcnow() -> str:
     Pure builder/validator helpers receive ``created_at`` as an argument so
     they remain deterministic and easy to test without monkeypatching.
     """
-    return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(tz=UTC).strftime(CREATED_AT_FORMAT)
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +143,20 @@ def validate_envelope(event: dict[str, Any]) -> list[str]:
     Envelope rules (ADR 0011 §2):
     - ``event_type`` present and a known type string.
     - ``ticket_id`` present and a non-empty string starting with ``DAS-``.
-    - ``created_at`` present as a non-empty ISO-8601 string (basic check).
+    - ``created_at`` present and matching the write-seam contract EXACTLY:
+      ``dgox.created_at.CREATED_AT_FORMAT`` (``%Y-%m-%dT%H:%M:%SZ``) — REJECTED
+      (DAS-1633), not normalised, when it does not. Every downstream consumer
+      (``cost_ledger``, ``metrics_history_feeder``, ``wave_kpi``, ``metrics_lib``,
+      ``trends``) requires exactly this shape and silently excludes anything
+      else from its window; a caller emitting e.g.
+      ``datetime.now(UTC).isoformat()`` (``+00:00``, possibly with
+      microseconds) used to validate cleanly here and then vanish downstream
+      with no error, under-counting the budget ceiling and the clean-day
+      evidence window. Reject-not-normalise is deliberate: every real producer
+      in this module already emits the canonical shape via :func:`utcnow`
+      (verified — see ``tests/test_created_at_contract.py``), so a reject is
+      loud without breaking a single real caller, and a silent rewrite here
+      would have hidden the exact clock-format drift this defect is about.
     - ``run_id``, if present, must be a non-empty string.
     """
     errors: list[str] = []
@@ -159,8 +174,11 @@ def validate_envelope(event: dict[str, Any]) -> list[str]:
             f"ticket_id must be a string starting with 'DAS-'; got {tid!r}"
         )
     ca = event.get("created_at")
-    if ca is not None and (not isinstance(ca, str) or not ca):
-        errors.append(f"created_at must be a non-empty string; got {ca!r}")
+    if ca is not None and not is_valid_created_at(ca):
+        errors.append(
+            f"created_at must match the write-seam contract "
+            f"{CREATED_AT_FORMAT!r} exactly (DAS-1633); got {ca!r}"
+        )
     rid = event.get("run_id")
     if rid is not None and (not isinstance(rid, str) or not rid):
         errors.append(f"run_id must be a non-empty string when present; got {rid!r}")

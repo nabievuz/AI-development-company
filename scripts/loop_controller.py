@@ -240,16 +240,100 @@ def _in_quiet_hours(schedule: dict, now: datetime) -> bool:
     return cur >= s or cur < e
 
 
-def _per_day_budget_exceeded(budgets_path: Path, events_path: Path) -> bool:
-    """True if today's estimated spend already meets or exceeds the per-day cap (SI-5).
+def _window_start(now: datetime, *, unit: str) -> datetime:
+    """Return the inclusive start of the current UTC calendar window containing *now*.
 
-    Reads config/budgets.yaml for caps.per_day.max_cost_usd, then queries the
-    cost-ledger for total accumulated cost. Failure-isolated: any read/parse/import
-    error returns False (safe — the heartbeat is conservative: if in doubt, idle).
+    Shared windowing primitive for every spend ceiling that must reset at a
+    calendar boundary rather than accumulate lifetime (D1/DAS-1618, and its
+    sibling D-per-day/DAS-1632): the monthly credit ceiling and the per-day
+    cap in ``_per_day_budget_exceeded`` both consume ``unit="day"``/
+    ``unit="month"`` here — ONE mechanism, not two divergent ones. Returns a
+    naive UTC datetime — the same convention
+    ``created_at`` envelope strings parse to (see
+    ``cost_ledger._parse_created_at`` / ``metrics_history_feeder._parse_iso``),
+    so it compares directly against parsed span timestamps.
+
+    Args:
+        now:  The current instant (aware or naive; aware is normalised to UTC
+              then stripped, naive is assumed already UTC).
+        unit: ``"month"`` -> first instant (00:00:00) of *now*'s UTC calendar
+              month. ``"day"`` -> midnight UTC of *now*'s UTC calendar day.
+              No other unit is accepted.
+
+    Raises:
+        ValueError: if ``unit`` is not ``"month"`` or ``"day"``.
+    """
+    now_utc = now.astimezone(UTC) if now.tzinfo is not None else now
+    naive = now_utc.replace(tzinfo=None)
+    if unit == "month":
+        return naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if unit == "day":
+        return naive.replace(hour=0, minute=0, second=0, microsecond=0)
+    raise ValueError(f"_window_start: unsupported unit {unit!r} (want 'month' or 'day')")
+
+
+def _per_day_budget_exceeded(
+    budgets_path: Path,
+    events_path: Path,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True if today's estimated spend already meets or exceeds the SI-5 per-day cap.
+
+    Reads ``config/budgets.yaml``'s ``mustaqil.caps.per_day.max_cost_usd`` — the
+    MUSTAQIL runner's self-imposed hard dispatch ceiling (ADR-0027 SI-5;
+    ADR-0042 SI-5.1: "the tightest binding constraint wins", evaluated alongside
+    ``_monthly_credit_exhausted``). It is deliberately NOT the top-level
+    ``caps.per_day.max_cost_usd`` block: that org-wide block is documented in
+    ``config/budgets.yaml`` itself as "informational — not a blocking gate until
+    C1 is promoted", and reading it here was DAS-1639's defect (the rail
+    enforced $500/day while every Founder-facing artifact — e.g.
+    ``heartbeat_go_no_go.py`` — quoted the $15/day ``mustaqil`` ceiling; a rail
+    and a report quoting different numbers is the defect regardless of which
+    number is "right"). Loaded via ``ws_b_admission.load_mustaqil_budgets`` —
+    the same reader ``_monthly_credit_exhausted`` uses — so there is ONE
+    accountant for the ``mustaqil:`` block, not two ad-hoc YAML reads
+    (ADR-0042 SI-5.1 "one accountant, no second one", applied here by analogy).
+
+    Then queries the cost-ledger for accumulated cost.
+
+    Fails OPEN, not closed: on a missing budgets file, unparseable YAML, an
+    absent ``mustaqil:``/``caps``/``per_day`` key, or any read/parse/import
+    error, this returns ``False`` — i.e. dispatch is NOT withheld. This is a
+    deliberate, reviewed trade-off (DAS-1639), not an oversight: a false
+    "idle" here would freeze the substrate on a config typo, which is worse
+    than a missed breach for a self-imposed, non-billing ceiling. The
+    compensating control is fail-CLOSED: ``ws_b_health_check.
+    check_budget_ceiling_drift`` treats every one of those same five inputs
+    as ``ok=False`` and is composed into ``heartbeat_go_no_go.py``'s FR-004
+    gate, so a malformed/absent cap blocks go-live even though it would not
+    block an individual tick. Read this rail and that gate together — this
+    function alone does not guarantee "if in doubt, idle".
+
+    ``since`` window (D1/DAS-1632 fix, sibling of DAS-1618's monthly fix): the
+    ledger is queried with ``since=_window_start(now, unit="day")`` — spend
+    from a *previous* UTC calendar day is excluded, so the cap actually resets
+    at the day boundary instead of latching permanently once a lifetime total
+    crosses it (a lifetime total is monotonic and would freeze the tick at
+    idle forever). ``now`` defaults to the current instant when the caller
+    (``tick()``) does not thread its own ``_now`` through, but ``tick()``
+    always does — one clock read per tick, never two.
+
+    ``aggregate_spans`` is called with ``budgets_path`` (DAS-1641/R3) so span
+    pricing resolves from the SAME ``budgets_path`` this rail was given, not
+    always the real ``config/budgets.yaml`` — matching ``_monthly_credit_
+    exhausted``'s call one function below, which already threads it. Before
+    this fix a caller-supplied ``budgets_path``'s ``tiers:`` block (e.g. a
+    test fixture) was silently ignored for pricing purposes.
     """
     try:
-        bdg = yaml.safe_load(budgets_path.read_text(encoding="utf-8")) or {}
-        cap_usd = float(((bdg.get("caps") or {}).get("per_day") or {}).get("max_cost_usd", 0) or 0)
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from ws_b_admission import load_mustaqil_budgets  # noqa: PLC0415
+
+        mustaqil = load_mustaqil_budgets(budgets_path)
+        cap_usd = float((((mustaqil.get("caps") or {}).get("per_day")) or {}).get("max_cost_usd", 0) or 0)
     except Exception:  # noqa: BLE001 — any failure is failure-safe (don't block)
         return False
     if cap_usd <= 0:
@@ -261,12 +345,80 @@ def _per_day_budget_exceeded(budgets_path: Path, events_path: Path) -> bool:
         if str(scripts_dir) not in sys.path:
             sys.path.insert(0, str(scripts_dir))
         from cost.cost_ledger import aggregate_spans  # noqa: PLC0415
-        ledger = aggregate_spans(events_path)
+        _now = now or datetime.now(tz=UTC)
+        day_start = _window_start(_now, unit="day")
+        ledger = aggregate_spans(events_path, budgets_path, since=day_start)
         if ledger is None:
             return False
         total_usd = ledger.raw_estimated_cost_usd
         return total_usd >= cap_usd
     except Exception:  # noqa: BLE001 — ledger unavailable is failure-safe
+        return False
+
+
+def _monthly_credit_exhausted(
+    budgets_path: Path,
+    events_path: Path,
+    credit_state=None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True if the monthly subscription credit ceiling is exhausted (SI-5/FR-004).
+
+    A thin adapter — reuses ``ws_b_admission.load_mustaqil_budgets`` /
+    ``check_credit_exhaustion`` directly (the SOLE credit accountant; ADR-0034
+    SR-2). No arithmetic of its own. Deliberately does NOT call ``admit()``
+    (fails closed on the absent per-tick ``model``) or ``gated_admit()`` (gated
+    on the unrelated ``ws_b_agent_sdk_runner`` flag — routing SI-5 through it
+    would make the ceiling silently vanish whenever WS-B is OFF).
+
+    The ``active_plan`` residual (design §3.5): ``config/budgets.yaml`` declares
+    credit per plan but not which plan is active. ``CreditState``'s dataclass
+    default (``plan="max_20x"``) must NOT be silently inherited — that would
+    under-report exhaustion on a smaller plan. When no ``credit_state`` is
+    supplied and ``active_plan`` is undeclared, this returns False (inert in
+    the tick; the undeclared plan becomes a readiness blocker in
+    ``check_heartbeat_readiness.py`` instead — a false-red here would freeze
+    the substrate and prevent the shadow window from ever accumulating).
+
+    ``used_usd`` window (D1/DAS-1618 fix): design §3.5 specifies "same reader,
+    different window" — a month-to-date total, not a lifetime one. When no
+    ``credit_state`` is injected, ``used_usd`` is derived from
+    ``cost_ledger.aggregate_spans(..., since=_window_start(now, unit="month"))``
+    — spend from a *previous* billing month is excluded, so the ceiling
+    actually resets at the month boundary instead of latching permanently
+    once crossed (a lifetime total is monotonic and would freeze the tick at
+    idle forever, per design §3.3).
+
+    Failure-isolated to False (mirrors ``_per_day_budget_exceeded``): a missing
+    file, absent yaml, or import error must never fabricate a pause.
+    """
+    try:
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from ws_b_admission import (  # noqa: PLC0415
+            CreditState,
+            check_credit_exhaustion,
+            load_mustaqil_budgets,
+        )
+
+        mustaqil = load_mustaqil_budgets(budgets_path)
+        if credit_state is None:
+            ceiling_cfg = mustaqil.get("monthly_credit_ceiling") or {}
+            active_plan = ceiling_cfg.get("active_plan")
+            if not isinstance(active_plan, str) or not active_plan.strip():
+                return False  # undeclared plan -> inert here (readiness blocker instead, §3.5)
+            from cost.cost_ledger import aggregate_spans  # noqa: PLC0415
+
+            _now = now or datetime.now(tz=UTC)
+            month_start = _window_start(_now, unit="month")
+            ledger = aggregate_spans(events_path, budgets_path, since=month_start)
+            used_usd = ledger.raw_estimated_cost_usd if ledger is not None else 0.0
+            credit_state = CreditState(plan=active_plan, used_usd=used_usd)
+        exhaustion = check_credit_exhaustion(credit_state, mustaqil)
+        return exhaustion is not None
+    except Exception:  # noqa: BLE001 — any failure is failure-safe (never fabricate a pause)
         return False
 
 
@@ -295,7 +447,8 @@ def tick(
       SI-2  Never edits loop.yaml. Reads it for evaluate_promotion only.
       SI-3  Consults break_glass.is_active() — dispatch blocked while active.
       SI-4  Consults _in_quiet_hours() — dispatch blocked inside the window.
-      SI-5  Consults _per_day_budget_exceeded() — dispatch blocked if cap hit.
+      SI-5  Consults _per_day_budget_exceeded() and _monthly_credit_exhausted()
+            — dispatch blocked if either cap/ceiling is hit (FR-004).
       SI-6  max_concurrent_waves passed to flow_router (defaults to 1).
       SI-7  Never auto-approves. Decision alphabet is {dispatch, validate, idle};
             no "answer"/"approve" action exists in the closed set (flow_router SI-7).
@@ -340,7 +493,10 @@ def tick(
     quiet_hours = _in_quiet_hours(schedule, _now)
 
     # SI-5: per-day budget
-    budget_exceeded = _per_day_budget_exceeded(_budgets, _events)
+    budget_exceeded = _per_day_budget_exceeded(_budgets, _events, now=_now)
+
+    # SI-5/FR-004: monthly subscription credit ceiling (the outer ceiling)
+    credit_exhausted = _monthly_credit_exhausted(_budgets, _events, now=_now)
 
     # Route via flow_router (SI-3/4/5/6/7 all enforced inside the router)
     try:
@@ -353,6 +509,7 @@ def tick(
             in_quiet_hours=quiet_hours,
             break_glass_active=break_glass_active,
             per_day_budget_exceeded=budget_exceeded,
+            credit_exhausted=credit_exhausted,
         )
     except Exception as exc:  # noqa: BLE001 — failure-isolated to idle
         from flow_router import IDLE, Decision  # noqa: PLC0415
@@ -367,6 +524,19 @@ def tick(
         DEFAULT_TARGETS,
     )
 
+    # SI-5/FR-004 alert limb (DAS-1634): a budget-rail trip is routed through
+    # the EXISTING alerting machinery (alerting.sanctioned_pause_alert) — no
+    # second notifier. This is OBSERVATION-ONLY: it reads the same
+    # budget_exceeded/credit_exhausted booleans already computed above for
+    # route_from_store() and is computed AFTER `decision` — it cannot alter
+    # the decision, and a failure here is failure-isolated to "no alert"
+    # rather than ever touching the tempo decision.
+    try:
+        import alerting  # noqa: PLC0415 — lazy: alerting imports loop_controller._window_start; avoid a load-time cycle
+        alert = alerting.sanctioned_pause_alert(budget_exceeded, credit_exhausted)
+    except Exception:  # noqa: BLE001 — alert emission must never affect the decision
+        alert = None
+
     result: dict = {
         "mode": mode,
         "decision": decision.as_dict(),
@@ -375,7 +545,9 @@ def tick(
             "break_glass_active": break_glass_active,
             "in_quiet_hours": quiet_hours,
             "per_day_budget_exceeded": budget_exceeded,
+            "monthly_credit_exhausted": credit_exhausted,
         },
+        "alert": alert,
     }
 
     # In shadow mode, annotate what would have happened
@@ -411,9 +583,13 @@ def _print_tick(result: dict, as_json: bool) -> None:
     if mode == "shadow":
         print(f"  note: {result.get('shadow_note', '')}")
     print("  safety rails:")
-    print(f"    break_glass_active      = {rails.get('break_glass_active', '?')}")
-    print(f"    in_quiet_hours          = {rails.get('in_quiet_hours', '?')}")
-    print(f"    per_day_budget_exceeded = {rails.get('per_day_budget_exceeded', '?')}")
+    print(f"    break_glass_active       = {rails.get('break_glass_active', '?')}")
+    print(f"    in_quiet_hours           = {rails.get('in_quiet_hours', '?')}")
+    print(f"    per_day_budget_exceeded  = {rails.get('per_day_budget_exceeded', '?')}")
+    print(f"    monthly_credit_exhausted = {rails.get('monthly_credit_exhausted', '?')}")
+    alert = result.get("alert")
+    if alert:
+        print(f"  alert: [{alert['severity'].upper()}] {alert['metric']}: {alert['message']}")
     print(f"  promotion: loop stays in '{promotion.get('current', '?')}' — eligible={promotion.get('eligible', False)}")
     if promotion.get("blockers"):
         for b in promotion["blockers"]:

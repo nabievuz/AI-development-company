@@ -42,6 +42,7 @@ import contextlib
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent  # scripts/
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+from dgox.created_at import parse_created_at  # noqa: E402
 from dgox.events import iter_events  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -241,12 +243,30 @@ class CostLedger:
     #: Tier slugs that appeared in spans but had no pricing entry.
     unknown_tiers: set[str] = field(default_factory=set)
 
+    #: DAS-1633 — count of spans whose ``created_at`` is missing/non-conforming.
+    #: When ``since`` is given these spans are EXCLUDED from the window (the
+    #: literal drop this counts); when ``since`` is None they are still
+    #: counted here for visibility even though lifetime aggregation does not
+    #: exclude them. Was previously an invisible, uncounted skip (DAS-1633).
+    dropped_undated: int = 0
+
 
 # ---------------------------------------------------------------------------
 # Core aggregation function
 # ---------------------------------------------------------------------------
 
 NO_RUN_ID_KEY = "(no run_id)"
+
+
+def _parse_created_at(ts: str) -> datetime | None:
+    """Parse a ``created_at`` string against the shared write-seam contract.
+
+    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` — the single
+    source of truth every consumer (this module, ``metrics_history_feeder``,
+    ``wave_kpi``, ``metrics_lib``, ``trends``) now shares, instead of each
+    re-implementing its own ``strptime`` and drifting independently.
+    """
+    return parse_created_at(ts)
 
 
 def _add_to_group(
@@ -270,19 +290,29 @@ def _add_to_group(
 def aggregate_spans(
     store_path: Path | str | None = None,
     budgets_path: Path = _BUDGETS_PATH,
+    *,
+    since: datetime | None = None,
 ) -> CostLedger | None:
-    """Aggregate all ``span`` events from the DGO-X event store.
+    """Aggregate ``span`` events from the DGO-X event store.
 
     Args:
         store_path:   Path to the JSONL event store (defaults to
                       ``board/.events.jsonl`` via ``iter_events``).
         budgets_path: Path to ``config/budgets.yaml`` (defaults to the
                       canonical config path).
+        since:        Optional window start (inclusive), compared against each
+                      span's ``created_at``. ``None`` (the default) aggregates
+                      **all** spans lifetime — today's behaviour, unchanged for
+                      every existing caller. Pass a window start (e.g. the first
+                      moment of the current billing month) to get a month-to-date
+                      or day-to-date total instead of a lifetime one. A span
+                      with a missing/unparseable ``created_at`` is excluded once
+                      ``since`` is given (never silently counted as "in window").
 
     Returns:
-        A :class:`CostLedger` when one or more span events exist, or ``None``
-        when the store is absent / has no span events (inert — gate stays off
-        until real waves produce real data).
+        A :class:`CostLedger` when one or more (windowed) span events exist, or
+        ``None`` when the store is absent / has no matching span events (inert
+        — gate stays off until real waves produce real data).
     """
     pricing = _load_pricing(budgets_path)
 
@@ -290,6 +320,14 @@ def aggregate_spans(
     has_spans = False
 
     for ev in iter_events(store_path, event_type="span"):
+        ts = _parse_created_at(str(ev.get("created_at", "")))
+        if ts is None:
+            # DAS-1633 — surfaced, never a silent skip. Counted regardless of
+            # whether a window is in effect; only actually excluded below.
+            ledger.dropped_undated += 1
+        if since is not None and (ts is None or ts < since):
+            continue
+
         # --- extract fields (verbatim names from events.py SPAN_OTEL_ATTRS) ---
         ticket_id: str = str(ev.get("ticket_id") or ev.get("trace_id") or "")
         run_id: str = str(ev.get("run_id") or "") or NO_RUN_ID_KEY

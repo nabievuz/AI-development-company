@@ -51,6 +51,19 @@ try:
 except ImportError:  # pragma: no cover - environment guard
     _COST_LEDGER_AVAILABLE = False
 
+# DAS-1640: reuse the SAME windowing primitive `_per_day_budget_exceeded` /
+# `_monthly_credit_exhausted` already consume (loop_controller._window_start,
+# D1/DAS-1618 + DAS-1632) rather than authoring a second one here. No import
+# cycle: loop_controller never imports alerting at module scope (only
+# ws_b_admission does, lazily, inside a function body), so this top-level
+# import is safe.
+try:
+    from loop_controller import _window_start as _WINDOW_START
+
+    _WINDOW_START_AVAILABLE = True
+except ImportError:  # pragma: no cover - environment guard
+    _WINDOW_START_AVAILABLE = False
+
 SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 ANOMALY = {"warning", "critical"}
 
@@ -203,6 +216,52 @@ def evaluate_alerts(
     return sorted(alerts, key=lambda a: -SEVERITY_ORDER.get(a["severity"], 0))
 
 
+def sanctioned_pause_alert(
+    per_day_budget_exceeded: bool,
+    monthly_credit_exhausted: bool,
+) -> dict | None:
+    """FR-004 alert limb (DAS-1634): an alert dict for a healthy SI-5 pause.
+
+    Emitted by ``loop_controller.tick()`` as an OBSERVATION alongside the
+    existing ``idle`` decision when a budget rail trips — it never changes
+    what ``flow_router`` decides (``idle``/``sanctioned_pause`` stays a reason
+    string; ``flow_router.DECISIONS`` stays the closed {dispatch, validate,
+    idle} alphabet, ADR-0042 SI-5.3).
+
+    Deliberately distinct from the ``critical`` COST alert ``evaluate_alerts``
+    raises via ``budget_governor`` (DAS-1461, the org-wide informational cost
+    cap): THIS is the substrate correctly stopping itself at its OWN mustaqil
+    SI-5 ceiling — expected, healthy behavior, not an emergency. Severity is
+    ``info`` — outside ``filter_quiet``'s ANOMALY set (``{warning, critical}``)
+    — so Quiet Mode and ``--fail-on-critical`` (CI) never see it and never
+    confuse a sanctioned pause with a real breach or an unexpected stall. The
+    metric tag ``SI-5`` (vs. the cost alert's ``COST``) gives a second,
+    orthogonal signal a reader can key on even without reading severity.
+
+    Uses the SAME alert-dict shape ``evaluate_alerts`` produces
+    (``severity``/``metric``/``message``) — this is the existing alerting
+    machinery's format, not a second notifier with its own schema or print
+    path.
+
+    Returns ``None`` (no alert) when neither rail is tripped.
+    """
+    if not (per_day_budget_exceeded or monthly_credit_exhausted):
+        return None
+    which: list[str] = []
+    if per_day_budget_exceeded:
+        which.append("per-day budget cap (SI-5)")
+    if monthly_credit_exhausted:
+        which.append("monthly credit ceiling (SI-5/FR-004)")
+    return {
+        "severity": "info",
+        "metric": "SI-5",
+        "message": (
+            "sanctioned_pause — substrate paused at its " + " and ".join(which) +
+            " as designed; expected/healthy, not a breach or unexpected stall"
+        ),
+    }
+
+
 def filter_quiet(alerts: list[dict]) -> list[dict]:
     """Quiet Mode: anomalies only (warning/critical), suppress routine info."""
     return [a for a in alerts if a["severity"] in ANOMALY]
@@ -266,16 +325,31 @@ def gather_readings(
     per_day_cost_usd: float | None = None
     if _COST_LEDGER_AVAILABLE:
         try:
-            kwargs: dict = {"store_path": events}
+            # per-run: most expensive single run observed in the event store —
+            # lifetime aggregation is correct here (a run's total spend never
+            # "resets"), so this reader is intentionally unwindowed.
+            run_kwargs: dict = {"store_path": events}
             if budgets_path is not None:
-                kwargs["budgets_path"] = budgets_path
-            ledger = _aggregate_spans(**kwargs)
-            if ledger is not None:
-                # per-run: most expensive single run observed in the event store
-                if ledger.by_run:
-                    per_run_cost_usd = max(g.estimated_cost_usd for g in ledger.by_run.values())
-                # per-day: total cost across all events (proxy for today's spend)
-                per_day_cost_usd = ledger.raw_estimated_cost_usd
+                run_kwargs["budgets_path"] = budgets_path
+            run_ledger = _aggregate_spans(**run_kwargs)
+            if run_ledger is not None and run_ledger.by_run:
+                per_run_cost_usd = max(g.estimated_cost_usd for g in run_ledger.by_run.values())
+
+            # per-day: DAS-1640 — windowed to the current UTC calendar day via
+            # the SAME mechanism (`_window_start`) `_per_day_budget_exceeded`
+            # and `_monthly_credit_exhausted` use (D1/DAS-1618, DAS-1632). This
+            # used to be `ledger.raw_estimated_cost_usd` from an unwindowed
+            # aggregate_spans call — a lifetime total mislabelled "today's
+            # spend"; that is the exact defect this fix removes. Failure-
+            # isolated to None (inert) when `_window_start` is unavailable,
+            # mirroring the tick-rail's failure-safe posture.
+            if _WINDOW_START_AVAILABLE:
+                day_kwargs: dict = {"store_path": events, "since": _WINDOW_START(datetime.now(tz=UTC), unit="day")}
+                if budgets_path is not None:
+                    day_kwargs["budgets_path"] = budgets_path
+                day_ledger = _aggregate_spans(**day_kwargs)
+                if day_ledger is not None:
+                    per_day_cost_usd = day_ledger.raw_estimated_cost_usd
         except Exception:  # noqa: BLE001  — degrade to inert on any ledger error
             pass
 

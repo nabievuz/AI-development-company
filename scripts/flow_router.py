@@ -43,8 +43,10 @@ Scheduler-safety invariants honored (ADR-0027 SI-1..SI-7)
     SI-3  Break-glass kill-switch (`break_glass_active`) forces every dispatch to
           idle while an override is live.
     SI-4  Quiet hours (`in_quiet_hours`) force a dispatch tick to idle.
-    SI-5  Per-day budget breach (`per_day_budget_exceeded`) forces dispatch to
-          idle.
+    SI-5  Per-day budget breach (`per_day_budget_exceeded`) or monthly credit
+          ceiling exhaustion (`monthly_credit_exhausted`, FR-004) forces
+          dispatch to idle — an expected, resumable (`sanctioned_pause`)
+          idle, never a fourth decision action.
     SI-6  Max 1 wave: if a wave is already in flight (a `run_start` with no
           matching `run_end`), a dispatch tick evaluates to idle — never a
           stacked/overlapping wave.
@@ -157,6 +159,9 @@ class TickContext:
         in_quiet_hours:         SI-4 — inside the configured quiet window.
         break_glass_active:     SI-3 — an emergency override is live.
         per_day_budget_exceeded: SI-5 — the per-day cost cap is already breached.
+        monthly_credit_exhausted: SI-5/FR-004 — the outer monthly subscription
+                                credit ceiling is exhausted (`sanctioned_pause`
+                                — a reason, never a fourth decision action).
     """
 
     trigger: str
@@ -167,6 +172,7 @@ class TickContext:
     in_quiet_hours: bool = False
     break_glass_active: bool = False
     per_day_budget_exceeded: bool = False
+    monthly_credit_exhausted: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -216,7 +222,8 @@ def _dispatch_blocked(ctx: TickContext) -> tuple[bool, str]:
 
     Enforces the ADR-0027 dispatch gates uniformly for every trigger that wants
     to dispatch — order fixed for a deterministic reason string:
-    SI-3 break-glass, SI-4 quiet hours, SI-5 per-day budget, SI-6 wave-in-flight.
+    SI-3 break-glass, SI-4 quiet hours, SI-5 per-day budget, SI-5/FR-004 monthly
+    credit ceiling, SI-6 wave-in-flight.
     """
     if ctx.break_glass_active:
         return True, "break-glass override active (SI-3)"
@@ -224,6 +231,8 @@ def _dispatch_blocked(ctx: TickContext) -> tuple[bool, str]:
         return True, "inside quiet-hours window (SI-4)"
     if ctx.per_day_budget_exceeded:
         return True, "per-day budget cap already breached (SI-5)"
+    if ctx.monthly_credit_exhausted:
+        return True, "monthly subscription credit exhausted — sanctioned pause (SI-5/FR-004)"
     if _wave_in_flight(ctx):
         return True, "a wave is already in flight, max 1 (SI-6)"
     return False, ""
@@ -361,6 +370,7 @@ def route_from_store(
     in_quiet_hours: bool = False,
     break_glass_active: bool = False,
     per_day_budget_exceeded: bool = False,
+    credit_exhausted: bool = False,
 ) -> Decision:
     """Convenience entry: read the event store, then :func:`route` one tick.
 
@@ -379,6 +389,7 @@ def route_from_store(
         in_quiet_hours=in_quiet_hours,
         break_glass_active=break_glass_active,
         per_day_budget_exceeded=per_day_budget_exceeded,
+        monthly_credit_exhausted=credit_exhausted,
     )
     return route(ctx)
 
@@ -404,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--quiet-hours", action="store_true", help="SI-4: inside the quiet-hours window")
     ap.add_argument("--break-glass", action="store_true", help="SI-3: an emergency override is live")
     ap.add_argument("--budget-exceeded", action="store_true", help="SI-5: the per-day cost cap is breached")
+    ap.add_argument("--credit-exhausted", action="store_true",
+                    help="SI-5/FR-004: the monthly subscription credit ceiling is exhausted")
     ap.add_argument("--json", action="store_true", help="emit the decision as JSON")
     args = ap.parse_args(argv)
 
@@ -415,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
         in_quiet_hours=args.quiet_hours,
         break_glass_active=args.break_glass,
         per_day_budget_exceeded=args.budget_exceeded,
+        credit_exhausted=args.credit_exhausted,
     )
 
     if args.json:

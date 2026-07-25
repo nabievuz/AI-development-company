@@ -95,6 +95,13 @@ mustaqil:
   # The subscription monthly credit is the OUTER ceiling (Q9). Values are the
   # per-plan monthly credit; the active plan's figure is the real ceiling.
   monthly_credit_ceiling:
+    # Active subscription plan (DAS-1629). Founder-stated verbatim 2026-07-25:
+    # "active_plan is max_20x". Keys into plan_credit_usd below -> $200/mo
+    # ceiling. This is the selector loop_controller._monthly_credit_exhausted /
+    # check_heartbeat_readiness read to make the FR-004 outer ceiling enforceable;
+    # while undeclared the tick path stayed inert by design. Changing the plan is
+    # a Founder-only budget decision.
+    active_plan: max_20x
     plan_credit_usd:
       pro: 20                         # Claude Pro   ($20/mo credit)
       max_5x: 100                     # Claude Max 5x ($100/mo credit)

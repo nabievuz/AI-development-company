@@ -417,6 +417,19 @@ def maintenance_schedule() -> dict:
     entry (ADR-0027 SI-1: cadence lives in the Founder-owned launchd/cron entry).
     The runs are never-auto-approve: any acted change (tier promotion, gate
     re-open) still waits for a human (QONUN-5 / SI-7).
+
+    Schema (DAS-1631 decision — NORMALIZE): every entry carries the base keys
+    ``{name, kind, command, cadence, config, safety}``. ``config`` is the
+    entry's human-readable runbook under ``docs/06-maintenance/`` and is
+    REQUIRED on every recurring run — "every scheduled run has a runbook a human
+    can read" is the standard, with no by-name exemption. A NEW run with no
+    ``config`` is a schema violation caught by
+    ``tests/test_stage_gate.py`` rather than shipping silently.
+    ``command`` is either a ``["python3", "<script>", ...]`` invocation (whose
+    ``command[1]`` must resolve to a file on disk) OR an MCP tool call such as
+    ``["prune_memory"]`` (structurally not a script path — no ``command[1]`` to
+    resolve). That exemption is keyed on the command SHAPE (``command[0]``),
+    never on an entry's name.
     """
     return {
         "gate": "GATE-6",
@@ -437,6 +450,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws6-eval",
                 "command": ["python3", "scripts/agent_eval.py"],
                 "cadence": "daily",
+                "config": "docs/06-maintenance/golden-eval.md",
                 "safety": "read-only scorecard; tier/model changes need GATE-6 human sign-off",
             },
             {
@@ -444,6 +458,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws4-scheduled",
                 "command": ["prune_memory"],
                 "cadence": "weekly",
+                "config": "docs/06-maintenance/memory-hygiene.md",
                 "safety": "ArcRift prune of stale/incorrect memories (Persistent Memory Law)",
             },
             {
@@ -524,6 +539,22 @@ def maintenance_schedule() -> dict:
                           "(ADR-0039/ADR-0033 GATE-6, DAS-1605); a non-zero exit is an "
                           "ALERT routed to a follow-up ticket, never silently retried or "
                           "auto-fixed",
+            },
+            {
+                "name": "ws-a2a-outbound-health",
+                "kind": "ws-a2a-eval",
+                "command": ["python3", "scripts/ws_a2a_health_check.py", "--json"],
+                "cadence": "daily",
+                "config": "docs/06-maintenance/ws-a2a-outbound-health.md",
+                "safety": "read-only in-tenant boundary drift (check_in_tenant.py, SC-003) "
+                          "+ flag/publish-state drift (a2a_outbound vs the newest logged "
+                          "a2a_publish event in board/.events.jsonl; flag OFF with zero "
+                          "events is the honest baseline, reported OK-with-zero-events) + "
+                          "negative-test drift (DAS-1612's suite still green) "
+                          "(ADR-0040 GATE-6, DAS-1614/DAS-1624); a non-zero exit is an "
+                          "ALERT routed to a follow-up ticket, never silently retried or "
+                          "auto-fixed; a2a_outbound is never flipped by this check "
+                          "(publish stays a Founder-only act, QONUN-5/FR-003)",
             },
         ],
     }

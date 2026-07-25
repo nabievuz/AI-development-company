@@ -19,6 +19,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
@@ -274,6 +276,126 @@ def test_maintenance_schedule_ws4_heartbeat_and_ws6_evals() -> None:
     cmds = " ".join(" ".join(r["command"]) for r in sched["recurring_runs"])
     assert "loop_controller.py" in cmds
     assert "agent_eval.py" in cmds
+
+
+# --------------------------------------------------------------------------- #
+# Maintenance schedule — schema test over EVERY entry (DAS-1626)
+#
+# Iterates whatever ``maintenance_schedule()`` returns — never a hand-enumerated
+# list of today's 10 entries — so entry 11 is covered the day it lands without
+# anyone remembering to update this test. Catches the dead-config failure mode:
+# a renamed key or a `command`/`config` path that no longer resolves on disk,
+# whose only symptom would otherwise be a health check that silently stops
+# being runnable.
+#
+# DECISION (DAS-1631 — NORMALIZE, option (a)): `config` is now REQUIRED on EVERY
+# recurring run. The standard is "every scheduled run has a runbook a human can
+# read" under `docs/06-maintenance/`, with NO by-name exemption. DAS-1626 shipped
+# this test with `config` merely OPTIONAL because two entries ("golden-eval",
+# "memory-hygiene") then lacked a linked doc — and it measured the residual that
+# a THIRD config-less entry could slip in unseen. DAS-1631 closes that residual
+# by authoring `docs/06-maintenance/golden-eval.md` +
+# `docs/06-maintenance/memory-hygiene.md`, adding `config` to both entries in
+# `stage_gate.py:maintenance_schedule()`, and tightening this test to require
+# `config` universally. The load-bearing property: a NEW config-less entry now
+# fails RED here (proven by `test_new_config_less_entry_fails_schema` below on a
+# scratch copy) instead of shipping in silence.
+#
+# The schema enforced on every entry:
+#   - base keys (name, kind, command, cadence, config, safety) required on ALL;
+#   - "config" must resolve to a real file on disk (dead-runbook guard);
+#   - for a `python3 <script>` command, command[1] must resolve to a file on
+#     disk. An MCP-tool-call command (e.g. ["prune_memory"], a single element
+#     with no script path) is exempt — the exemption is keyed on the command
+#     SHAPE (command[0] != "python3"), never on an entry's name, so a by-name
+#     special case cannot rot in;
+#   - "kind" is unique across all entries.
+# --------------------------------------------------------------------------- #
+
+# `config` is a REQUIRED base key (DAS-1631). No optional keys remain, so the
+# allowed set equals the base set — any stray key (a typo/rename like
+# "config" -> "configs") shows up as an unrecognized key.
+_MAINTENANCE_BASE_KEYS = {"name", "kind", "command", "cadence", "config", "safety"}
+_MAINTENANCE_ALLOWED_KEYS = _MAINTENANCE_BASE_KEYS
+
+
+def _assert_entry_conforms(r: dict, kinds: list[str]) -> None:
+    """Assert one recurring-run entry conforms to the DAS-1631 schema.
+
+    Factored out so the same schema can be run over a scratch copy carrying a
+    hypothetical extra entry (see ``test_new_config_less_entry_fails_schema``),
+    proving a NEW config-less entry fails RED rather than shipping silently.
+    """
+    label = r.get("name", "<unnamed>")
+
+    # Required base key set on every entry — `config` now included.
+    missing = _MAINTENANCE_BASE_KEYS - r.keys()
+    assert not missing, f"{label}: missing required key(s) {sorted(missing)}"
+
+    # No unrecognized/extra keys — catches a rename (e.g. "config" -> "configs").
+    extra = r.keys() - _MAINTENANCE_ALLOWED_KEYS
+    assert not extra, f"{label}: unrecognized key(s) {sorted(extra)} (typo or rename?)"
+
+    # `config` (the runbook link) must resolve to a real file (dead-runbook guard).
+    config_path = REPO_ROOT / r["config"]
+    assert config_path.is_file(), (
+        f"{label}: config {r['config']!r} does not resolve to a file on disk"
+    )
+
+    # A `python3 <script>` command must have a resolvable script path; an
+    # MCP-tool-call command (command[0] != "python3") is structurally exempt.
+    command = r["command"]
+    assert isinstance(command, list) and command, f"{label}: command must be a non-empty list"
+    if command[0] == "python3":
+        assert len(command) >= 2, f"{label}: python3 command has no script argument"
+        script_path = REPO_ROOT / command[1]
+        assert script_path.is_file(), (
+            f"{label}: command[1] {command[1]!r} does not resolve to a file on disk"
+        )
+
+    kinds.append(r["kind"])
+
+
+def test_maintenance_schedule_entries_conform_to_schema() -> None:
+    sched = sg.maintenance_schedule()
+    runs = sched["recurring_runs"]
+    assert runs, "maintenance_schedule() returned no recurring_runs entries"
+
+    kinds: list[str] = []
+    for r in runs:
+        _assert_entry_conforms(r, kinds)
+
+    assert len(kinds) == len(set(kinds)), f"duplicate 'kind' values across entries: {kinds}"
+
+
+def test_new_config_less_entry_fails_schema() -> None:
+    """A hypothetical 11th run shipping with NO `config` must fail RED.
+
+    This is the load-bearing proof of the DAS-1631 decision: on a SCRATCH copy
+    of the real schedule (the real `maintenance_schedule()` is never mutated), a
+    new config-less entry trips the required-`config` assertion. Without this
+    guard a future runbook-less run would ship in silence.
+    """
+    sched = sg.maintenance_schedule()
+    scratch = list(sched["recurring_runs"])  # shallow copy; do not mutate the source
+    scratch.append({
+        "name": "ws-z-future-health",
+        "kind": "ws-z-eval",  # unique kind so ONLY the missing config is under test
+        "command": ["python3", "scripts/agent_eval.py"],  # a real, resolvable script
+        "cadence": "daily",
+        # deliberately NO "config" key
+        "safety": "hypothetical future run with no linked runbook",
+    })
+
+    kinds: list[str] = []
+    with pytest.raises(AssertionError, match="missing required key.*config"):
+        for r in scratch:
+            _assert_entry_conforms(r, kinds)
+
+    # And the REAL schedule is untouched — every real entry still conforms.
+    real_kinds: list[str] = []
+    for r in sg.maintenance_schedule()["recurring_runs"]:
+        _assert_entry_conforms(r, real_kinds)
 
 
 # --------------------------------------------------------------------------- #

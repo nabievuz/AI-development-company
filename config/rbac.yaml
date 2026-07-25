@@ -75,6 +75,7 @@ grants:
     board.work: allow            # edit a ticket body + work-state
     audit.read: allow            # read the event store / attestation / SIEM export
     config.edit.security: allow  # edit rbac.yaml / tenant_boundary.yaml / egress-allowlist.yaml / features.yaml
+    a2a.publish: allow           # publish/enable/repoint the A2A outbound endpoint (A2-6, DAS-1610) — founder-only
 
   audit-team:
     audit.read: allow            # READ-ONLY: the trail only — mutate/approve/trigger NOTHING

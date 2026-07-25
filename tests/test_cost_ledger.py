@@ -422,3 +422,80 @@ def test_normalise_short_slug() -> None:
 
 def test_normalise_unknown_returns_lowercased() -> None:
     assert _normalise_tier("claude-future-99") == "claude-future-99"
+
+
+# ---------------------------------------------------------------------------
+# D1/DAS-1618 — ``since`` windowing (month-to-date, not lifetime)
+#
+# THE LOAD-BEARING ASSERTION: spend from a previous window must NOT count
+# toward the current one — i.e. the window actually resets at the boundary,
+# not merely "a big number is smaller than an even bigger cap".
+# ---------------------------------------------------------------------------
+
+from datetime import datetime  # noqa: E402
+
+
+def test_since_none_is_lifetime_unchanged(tmp_path: Path, budgets_yaml: Path) -> None:
+    """No existing caller's behaviour changes: since=None (the default) still
+    aggregates every span lifetime, exactly as before this fix."""
+    store = tmp_path / "board" / ".events.jsonl"
+    _write_store(store, [
+        _span(ticket_id="DAS-1", input_tokens=100, output_tokens=50),  # created_at = _TS (2026-07)
+    ])
+    ledger = aggregate_spans(store_path=store, budgets_path=budgets_yaml)
+    assert ledger is not None
+    assert ledger.raw_span_count == 1
+    ledger_explicit_none = aggregate_spans(store_path=store, budgets_path=budgets_yaml, since=None)
+    assert ledger_explicit_none.raw_estimated_cost_usd == ledger.raw_estimated_cost_usd
+
+
+def test_since_excludes_previous_month_spend(tmp_path: Path, budgets_yaml: Path) -> None:
+    """THE load-bearing test: a span from a prior billing month must NOT be
+    counted once a window ``since`` is given — reproduces the reviewer's D1
+    finding (store containing only prior-period spans -> lifetime total is
+    nonzero, windowed total for the current month must be zero/None)."""
+    store = tmp_path / "board" / ".events.jsonl"
+    old_span = _span(ticket_id="DAS-OLD", input_tokens=100_000, output_tokens=50_000)
+    old_span["created_at"] = "2025-01-15T12:00:00Z"  # previous billing month entirely
+    _write_store(store, [old_span])
+
+    # Lifetime (since=None) sees the old spend — nonzero, confirms the fixture is live.
+    lifetime = aggregate_spans(store_path=store, budgets_path=budgets_yaml)
+    assert lifetime is not None
+    assert lifetime.raw_estimated_cost_usd > 0
+
+    # Windowed to "this month" (2026-07) excludes it entirely -> None (inert).
+    month_start = datetime(2026, 7, 1)
+    windowed = aggregate_spans(store_path=store, budgets_path=budgets_yaml, since=month_start)
+    assert windowed is None
+
+
+def test_since_includes_current_month_excludes_previous(tmp_path: Path, budgets_yaml: Path) -> None:
+    """Mixed store: only the in-window span is counted; the resulting total is
+    strictly less than the lifetime total (the window genuinely narrows it)."""
+    store = tmp_path / "board" / ".events.jsonl"
+    old_span = _span(ticket_id="DAS-OLD", input_tokens=100_000, output_tokens=50_000)
+    old_span["created_at"] = "2025-01-15T12:00:00Z"
+    new_span = _span(ticket_id="DAS-NEW", input_tokens=100, output_tokens=50)
+    new_span["created_at"] = "2026-07-10T09:00:00Z"
+    _write_store(store, [old_span, new_span])
+
+    month_start = datetime(2026, 7, 1)
+    windowed = aggregate_spans(store_path=store, budgets_path=budgets_yaml, since=month_start)
+    lifetime = aggregate_spans(store_path=store, budgets_path=budgets_yaml)
+
+    assert windowed is not None and lifetime is not None
+    assert windowed.raw_span_count == 1
+    assert lifetime.raw_span_count == 2
+    assert windowed.raw_estimated_cost_usd < lifetime.raw_estimated_cost_usd
+
+
+def test_since_excludes_missing_or_unparseable_created_at(tmp_path: Path, budgets_yaml: Path) -> None:
+    """Once a window is requested, a span with no/garbage created_at is
+    excluded rather than silently assumed "in window"."""
+    store = tmp_path / "board" / ".events.jsonl"
+    bad_span = _span(ticket_id="DAS-BAD")
+    bad_span["created_at"] = "not-a-timestamp"
+    _write_store(store, [bad_span])
+    windowed = aggregate_spans(store_path=store, budgets_path=budgets_yaml, since=datetime(2026, 7, 1))
+    assert windowed is None

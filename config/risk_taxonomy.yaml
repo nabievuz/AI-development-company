@@ -49,7 +49,15 @@ matchers:
   governance_or_policy:
     # QONUN/charter/routing/codeowners + the governance SSOT configs
     # (the metric registry, the immutable T7 rubric, the loop mode).
-    paths: ["**/QONUN*", "**/CHARTER*", "**/ROUTING*", "**/CODEOWNERS", "governance/policies/**", "**/t7_rubric.yaml", "**/risk_taxonomy.yaml", "**/loop.yaml", "**/registry.yaml"]
+    # features.yaml is the feature-flag SSOT and holds every Founder-only flip point
+    # (heartbeat_enabled ADR-0027 SI-7, a2a_outbound ADR-0040 FR-003, organism_emit,
+    # the MUSTAQIL ws_* family). It is the exact sibling of loop.yaml — same class of
+    # Founder-only SSOT — and rbac.yaml scopes it under the founder-only
+    # `config.edit.security` permission. Its absence here was an asymmetry, not a
+    # design: coverage otherwise depended on a ticket happening to carry
+    # `labels: [security]` / `stage: GATE-5`, which is authoring convention, not
+    # structure (DAS-1625, Security Lead adjudication 2026-07-24).
+    paths: ["**/QONUN*", "**/CHARTER*", "**/ROUTING*", "**/CODEOWNERS", "governance/policies/**", "**/t7_rubric.yaml", "**/risk_taxonomy.yaml", "**/loop.yaml", "**/features.yaml", "**/registry.yaml"]
   permission_change:
     labels: ["permissions", "rbac"]
   secret_change:

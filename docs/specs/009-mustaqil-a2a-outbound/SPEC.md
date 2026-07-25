@@ -2,11 +2,20 @@
 
 - **Goal:** mustaqil-a2a-outbound
 - **Owner:** backend-em
-- **Status:** draft
+- **Status:** reviewed
+- **Reviewed:** 2026-07-24 — CTO (DAS-1607, GATE-1). All six functional
+  requirements and all five success criteria below were checked coherent, testable,
+  and traceable 1:1 to the ADR-0040 invariants (A2-1…A2-6): governed-delivery →
+  A2-1, goal-proposal-never-approval → A2-2, Founder-act publish → A2-6, in-tenant
+  only → A2-4, admission+redaction reuse → A2-5, feature-flag-OFF → A2-6; each
+  success criterion exercises the same invariants. No `[NEEDS CLARIFICATION]`
+  markers outstanding. The untrusted-caller-input / injection-defense invariant
+  (A2-3) is carried by ADR-0040 and exercised in the Stage-2 negative tests
+  (DAS-1612); the WHAT/WHY here stays sound.
 
 > WHAT/WHY only. The HOW (the A2A wire protocol shape, endpoint framework, queue
-> intake mechanics) lives in ADR-0040 (to be authored) and the AADL Stage-2 design
-> tickets, not here. Binds to ADR-0036 (OB-1…OB-4, which this extends), ADR-0038
+> intake mechanics) lives in ADR-0040 (`docs/adr/0040-a2a-outbound-surface.md`,
+> Accepted) and the AADL Stage-2 design tickets, not here. Binds to ADR-0036 (OB-1…OB-4, which this extends), ADR-0038
 > (TN-1 in-tenant boundary), ADR-0009 (admission layer), ADR-0012 (redaction),
 > QONUN-5 (never-auto-approve / Founder-only approval), the master prompt
 > (`docs/research/2026-07-23-daslab-mustaqil-master-prompt-v3.md`, Part 1 interop

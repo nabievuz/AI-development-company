@@ -187,11 +187,41 @@ class TestDispatchSafetyGates:
         assert d.action == fr.IDLE
         assert "SI-5" in d.reason
 
+    def test_monthly_credit_exhausted_forces_idle(self) -> None:
+        """FR-004/DAS-1618: the outer monthly credit ceiling blocks dispatch too."""
+        d = fr.route(fr.TickContext(
+            trigger="ticket_created", events=[], monthly_credit_exhausted=True))
+        assert d.action == fr.IDLE
+        assert "SI-5" in d.reason and "FR-004" in d.reason
+        assert "sanctioned pause" in d.reason
+
+    def test_monthly_credit_exhausted_is_a_reason_never_a_fourth_action(self) -> None:
+        """sanctioned_pause is a REASON STRING, never a new decision action —
+        the closed alphabet {dispatch, validate, idle} does not widen."""
+        d = fr.route(fr.TickContext(
+            trigger="interrupt_answered", events=[], monthly_credit_exhausted=True))
+        assert d.action in fr.DECISIONS
+        assert d.action == fr.IDLE
+        assert frozenset({"dispatch", "validate", "idle"}) == fr.DECISIONS
+
+    def test_monthly_credit_exhausted_never_blocks_validate(self) -> None:
+        """Blocks dispatch only — never validate (quiet-hours precedent)."""
+        d = fr.route(fr.TickContext(
+            trigger="wave_completed", events=[], monthly_credit_exhausted=True))
+        assert d.action == fr.VALIDATE
+
+    def test_monthly_credit_exhausted_never_raises_or_errors(self) -> None:
+        """Exhaustion must not raise and must not be an error decision — it is
+        an expected idle, like a gate."""
+        d = fr.route(fr.TickContext(
+            trigger="cron_tick", events=[], pending_work=True, monthly_credit_exhausted=True))
+        assert d.action == fr.IDLE
+
     def test_gates_do_not_block_validate(self) -> None:
         """A validate decision is read-only; the dispatch gates never touch it."""
         d = fr.route(fr.TickContext(
             trigger="wave_completed", events=[], break_glass_active=True,
-            in_quiet_hours=True, per_day_budget_exceeded=True))
+            in_quiet_hours=True, per_day_budget_exceeded=True, monthly_credit_exhausted=True))
         assert d.action == fr.VALIDATE
 
 
@@ -335,3 +365,20 @@ class TestCLI:
         assert rc == 0
         import json as _json
         assert _json.loads(capsys.readouterr().out)["action"] == "dispatch"
+
+    def test_cli_credit_exhausted_flag_withholds_dispatch(self, capsys, tmp_path: Path) -> None:
+        rc = fr.main(["--trigger", "cron_tick", "--events", str(tmp_path / "none.jsonl"),
+                      "--pending-work", "--credit-exhausted", "--json"])
+        assert rc == 0
+        import json as _json
+        payload = _json.loads(capsys.readouterr().out)
+        assert payload["action"] == "idle"
+        assert "FR-004" in payload["reason"]
+
+
+class TestRouteFromStoreCreditKwarg:
+    def test_credit_exhausted_kwarg_withholds_dispatch(self, tmp_path: Path) -> None:
+        d = fr.route_from_store("ticket_created", path=str(tmp_path / "none.jsonl"),
+                                credit_exhausted=True)
+        assert d.action == fr.IDLE
+        assert "FR-004" in d.reason

@@ -74,6 +74,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import metrics_lib  # noqa: E402
 import wave_kpi  # noqa: E402
 from _paths import ROOT  # noqa: E402
+from dgox.created_at import DropCounter, parse_created_at  # noqa: E402
 
 DEFAULT_EVENTS_PATH: Path = ROOT / "board" / ".events.jsonl"
 DEFAULT_WAVE_LOG_PATH: Path = ROOT / "board" / ".wave-log"
@@ -93,11 +94,13 @@ __all__ = [
 
 
 def _parse_iso(ts: str) -> datetime | None:
-    """Parse a 'YYYY-MM-DDTHH:MM:SSZ' timestamp, or return None on failure."""
-    try:
-        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-    except (ValueError, TypeError):
-        return None
+    """Parse a ``created_at`` timestamp against the shared write-seam contract.
+
+    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
+    source of truth shared with ``cost_ledger``/``wave_kpi``/``metrics_lib``/
+    ``trends``) instead of a locally re-implemented ``strptime``.
+    """
+    return parse_created_at(ts)
 
 
 # ---------------------------------------------------------------------------
@@ -109,16 +112,27 @@ def filter_events_by_window(
     events: list[dict[str, Any]],
     start: datetime | None,
     end: datetime | None,
+    *,
+    drop_counter: DropCounter | None = None,
 ) -> list[dict[str, Any]]:
     """Return events whose ``created_at`` falls in [start, end] (inclusive).
 
-    An event with a missing or unparseable ``created_at`` is excluded.
-    When both ``start`` and ``end`` are None the full list is returned unchanged.
+    An event with a missing or unparseable ``created_at`` is excluded — this
+    exclusion semantics is UNCHANGED and deliberate (DAS-1618: counting
+    undated events would make them count in every window forever). What
+    changed (DAS-1633) is that the exclusion is no longer silent: pass a
+    ``DropCounter`` and it is bumped once per excluded record, so a caller can
+    observe how many events the clean-day evidence window just lost instead of
+    a smaller number reporting with silent confidence.
+    When both ``start`` and ``end`` are None the full list is returned unchanged
+    (no filtering happens, so nothing is dropped and the counter is untouched).
 
     Args:
-        events: The full list of event dicts to filter.
-        start:  Window start (inclusive); None means no lower bound.
-        end:    Window end   (inclusive); None means no upper bound.
+        events:       The full list of event dicts to filter.
+        start:        Window start (inclusive); None means no lower bound.
+        end:          Window end   (inclusive); None means no upper bound.
+        drop_counter: Optional ``DropCounter`` bumped once per record excluded
+                      for a missing/unparseable ``created_at``.
 
     Returns:
         A new list containing only the events within the window.
@@ -129,6 +143,8 @@ def filter_events_by_window(
     for ev in events:
         ts = _parse_iso(str(ev.get("created_at", "")))
         if ts is None:
+            if drop_counter is not None:
+                drop_counter.bump()
             continue
         if start is not None and ts < start:
             continue
@@ -325,6 +341,7 @@ def emit_all_days(
     waves: list[dict],
     *,
     history_path: Path,
+    drop_counter: DropCounter | None = None,
 ) -> list[dict[str, Any]]:
     """Emit one row per calendar day found in ``events``, oldest → newest.
 
@@ -342,6 +359,9 @@ def emit_all_days(
         events:       All events from the full event store (unfiltered).
         waves:        All waves from the wave log (unfiltered).
         history_path: Path to the ``board/.metrics-history.jsonl`` output file.
+        drop_counter: Optional ``DropCounter`` (DAS-1633) bumped once per event
+                      excluded from a day's window for a missing/unparseable
+                      ``created_at`` — accumulates across every day scanned.
 
     Returns:
         The list of row dicts that were appended (useful for testing/logging).
@@ -352,7 +372,7 @@ def emit_all_days(
         end_str = f"{date_str}T23:59:59Z"
         start_dt = _parse_iso(start_str)
         end_dt = _parse_iso(end_str)
-        day_events = filter_events_by_window(events, start_dt, end_dt)
+        day_events = filter_events_by_window(events, start_dt, end_dt, drop_counter=drop_counter)
         day_waves = filter_waves_by_date(waves, date_str)
         row = compute_window_row(
             day_events,
@@ -434,8 +454,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # --all: scan every calendar day in the event store.
     if args.all_days:
-        rows = emit_all_days(all_events, all_waves, history_path=args.history)
+        drop_counter = DropCounter()
+        rows = emit_all_days(
+            all_events, all_waves, history_path=args.history, drop_counter=drop_counter
+        )
         print(f"Appended {len(rows)} day row(s) to {args.history}")
+        if drop_counter.count:
+            print(
+                f"NOTE: {drop_counter.count} event(s) excluded across all windows for a "
+                f"missing/non-conforming created_at (DAS-1633) — see "
+                f"dgox.created_at.CREATED_AT_FORMAT for the required shape."
+            )
         return 0
 
     # Resolve window bounds — --date provides shorthand for a full calendar day.
@@ -471,7 +500,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     # Filter to the window (or use the full event/wave set if no bounds given).
-    window_events = filter_events_by_window(all_events, start_dt, end_dt)
+    drop_counter = DropCounter()
+    window_events = filter_events_by_window(all_events, start_dt, end_dt, drop_counter=drop_counter)
     window_waves = (
         filter_waves_by_date(all_waves, date_str)
         if date_str
@@ -492,6 +522,12 @@ def main(argv: list[str] | None = None) -> int:
 
     append_history_row(row, history_path=args.history)
     print(f"Appended 1 row to {args.history}: {json.dumps(row, separators=(',', ':'))}")
+    if drop_counter.count:
+        print(
+            f"NOTE: {drop_counter.count} event(s) excluded from this window for a "
+            f"missing/non-conforming created_at (DAS-1633) — see "
+            f"dgox.created_at.CREATED_AT_FORMAT for the required shape."
+        )
     return 0
 
 

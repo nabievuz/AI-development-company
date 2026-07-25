@@ -83,6 +83,240 @@ class TestScanGateApprovalViolations:
 
 
 # ---------------------------------------------------------------------------
+# SI-7 — DAS-1637: deny-list → allow-list inversion, reviewer's positive-
+# control battery. Every row must flag; every previously-caught control must
+# still be caught; founder/pending must still NOT flag. This is the exact
+# battery the QA Lead ran against the (buggy) real scanner in the DAS-1621
+# review — do not weaken it to make the inversion look simpler than it is.
+# ---------------------------------------------------------------------------
+
+class TestAllowListInversion:
+    """DAS-1637 — an agent role-key approval must now be flagged (was silently
+    missed by the old deny-list, since it isn't heartbeat/scheduler/cron/bot)."""
+
+    def test_gate_check_approved_by_qa_lead_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "gate": "GATE-5", "decision": "approved", "approved_by": "qa-lead"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_gate_check_approved_by_claude_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "gate": "GATE-5", "decision": "approved", "approved_by": "claude"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_gate_check_approved_by_subagent_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "gate": "GATE-5", "decision": "approved", "approved_by": "subagent"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_approval_approved_by_orchestrator_is_flagged(self):
+        log = [{"event_type": "approval", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "approved", "approved_by": "orchestrator"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_interrupt_answer_answered_by_cto_is_flagged(self):
+        log = [{"event_type": "interrupt_answer", "ticket_id": "DAS-X", "created_at": "t",
+                "status": "answered", "approved_by": "cto"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_config_write_heartbeat_enabled_true_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": True}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_config_write_heartbeat_enabled_false_is_not_flagged(self):
+        """Turning the flag OFF is not the dangerous direction — only ON is a violation."""
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": False}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_config_write_other_key_is_not_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "some_other_flag", "value": True}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    # -- previously-caught controls must still be caught (no regression) -----
+
+    def test_approval_auto_still_flagged(self):
+        log = [{"event_type": "approval", "ticket_id": "DAS-X", "created_at": "t",
+                "approval": "auto", "approved_by": "founder"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_approved_by_heartbeat_still_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "approved", "approved_by": "heartbeat"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_auto_approved_true_still_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "auto_approved": True, "approved_by": "founder"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_resumed_by_scheduler_still_flagged(self):
+        log = [{"event_type": "interrupt_card", "ticket_id": "DAS-X", "created_at": "t",
+                "resumed_by": "scheduler"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    # -- must still NOT flag a genuine human approval / pending gate ---------
+
+    def test_approved_by_founder_still_not_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "gate": "GATE-5", "decision": "approved", "approved_by": "founder"}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_pending_gate_still_not_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "gate": "GATE-5", "decision": "pending", "approved_by": ""}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_synthetic_clean_log_unanswered_interrupt_still_not_flagged(self):
+        """The raised-but-unanswered interrupt card in the synthetic clean log
+        (status: open, no decision, no actor) must stay clean under the
+        _NOT_GRANTED inversion — 'open' is a real not-yet-decided state."""
+        log = ksd._synthetic_event_log()
+        assert ksd.scan_gate_approval_violations(log) == []
+
+
+# ---------------------------------------------------------------------------
+# SI-7 — DAS-1638: `_GRANTED` allow-list → `_NOT_GRANTED` clearly-not-granted
+# set, unknown verbs treated as GRANTED (fail closed), plus `event_type`
+# normalisation. Seeded battery per the DAS-1638 ticket — every slipping case
+# must flag; `decision: "rejected"` by an agent must still NOT flag; every
+# DAS-1637 case above must still flag (re-asserted in TestAllowListInversion).
+# ---------------------------------------------------------------------------
+
+class TestGrantVerbFailClosed:
+    """Item 1 — unrecognised grant verbs and event_type spellings no longer slip."""
+
+    def test_unrecognised_verb_accepted_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "accepted", "approved_by": "qa-lead"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_unrecognised_verb_ok_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "ok", "approved_by": "subagent"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_unrecognised_verb_signed_off_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "signed_off", "approved_by": "orchestrator"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_event_type_gate_check_uppercase_is_flagged(self):
+        log = [{"event_type": "GATE_CHECK", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "approved", "approved_by": "claude"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_event_type_gate_decision_alias_is_flagged(self):
+        log = [{"event_type": "gate_decision", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "approved", "approved_by": "cto"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_event_type_aadl_gate_alias_is_flagged(self):
+        log = [{"event_type": "aadl_gate", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "approved", "approved_by": "heartbeat"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_missing_decision_field_by_agent_is_flagged(self):
+        """No decision key at all + non-human actor: ambiguous ⇒ fail closed."""
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "approved_by": "subagent"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_empty_string_decision_by_agent_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "", "approved_by": "orchestrator"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_none_decision_by_agent_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": None, "approved_by": "qa-lead"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_non_string_decision_by_agent_is_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": True, "approved_by": "claude"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    # -- must NOT flag: genuine rejection by an agent -----------------------
+
+    def test_rejected_by_agent_is_not_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "rejected", "approved_by": "subagent"}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_denied_by_agent_is_not_flagged(self):
+        log = [{"event_type": "gate_check", "ticket_id": "DAS-X", "created_at": "t",
+                "decision": "denied", "approved_by": "orchestrator"}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+
+class TestFlagFlipFailClosed:
+    """Item 2 — `_config_write_flips_heartbeat_on` fails closed on an
+    unparseable value; the `value: null` / `new_value` fallback is fixed."""
+
+    def test_key_only_no_value_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_value_none_no_new_value_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": None}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_value_unparseable_string_enabled_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": "enabled"}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_changes_shape_true_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "changes": {"heartbeat_enabled": True}}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_changes_shape_unparseable_is_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "changes": {"heartbeat_enabled": "enabled"}}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_value_null_new_value_true_fallback_is_flagged(self):
+        """The DAS-1638 wart: `ev.get("value", ev.get("new_value"))` only
+        fell back when `value` was ABSENT, not when it was present-but-null."""
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": None, "new_value": True}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    def test_event_type_case_variant_config_write_is_flagged(self):
+        log = [{"event_type": "CONFIG_WRITE", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": True}]
+        assert len(ksd.scan_gate_approval_violations(log)) == 1
+
+    # -- must NOT flag: OFF is still safe, unrelated key still safe ---------
+
+    def test_value_false_is_not_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": False}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_value_string_off_is_not_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": "off"}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_unrelated_key_is_not_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "some_other_flag", "value": "enabled"}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+    def test_value_null_new_value_false_is_not_flagged(self):
+        log = [{"event_type": "config_write", "ticket_id": "DAS-X", "created_at": "t",
+                "key": "heartbeat_enabled", "value": None, "new_value": False}]
+        assert ksd.scan_gate_approval_violations(log) == []
+
+
+# ---------------------------------------------------------------------------
 # SI-7 — the closed decision alphabet (structural never-auto-approve).
 # ---------------------------------------------------------------------------
 

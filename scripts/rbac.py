@@ -53,9 +53,17 @@ DEFAULT_FEATURES = ROOT / "config" / "features.yaml"
 
 FLAG = "ws_e_tenant_hardening"
 
-# The three permissions that may be held ONLY by a founder principal. load_grants()
+# The permissions that may be held ONLY by a founder principal. load_grants()
 # refuses any rbac.yaml that grants one of these to a non-founder kind (§1.3).
-FOUNDER_ONLY = frozenset({"gate.approve", "run.trigger", "config.edit.security"})
+# `a2a.publish` (A2-6, DAS-1610/ADR-0040) is the A2A outbound publish-gate
+# permission — publishing/enabling/repointing the A2A endpoint is a Founder act
+# (mirrors TN-3), so it is structurally founder-only exactly like the original
+# three: `decide("agent:<any-role>", "a2a.publish")` is deny by construction,
+# and `load_grants()` refuses to load an `rbac.yaml` that granted it to a
+# non-founder kind (the same refuse-to-load lock, applied to a fourth permission).
+FOUNDER_ONLY = frozenset(
+    {"gate.approve", "run.trigger", "config.edit.security", "a2a.publish"}
+)
 
 # Recognised grant values in the matrix. Anything else is a config error (fail-closed).
 _VALID_GRANTS = frozenset({"allow", "own"})

@@ -29,3 +29,9 @@
 | `check_codeowners.py` | `.github/CODEOWNERS` covers every top-level area + matches `gen_codeowners.py`. |
 | `check_quickstart.py` | The README Quickstart runs `bootstrap` before `doctor` and its commands exit 0 on a fresh clone. |
 | `diagnostics.py` | **The weighted 7-dimension 100/100 release scorer** — the single source of truth for the release gate. |
+
+## Readiness Verification (Founder-facing)
+
+| Script | Purpose |
+|---|---|
+| `heartbeat_go_no_go.py` | Founder readiness report for HEARTBEAT flip (ADR-0027 SI-1..SI-7). Composes ten gates from existing checkers; reports PASS/FAIL/UNKNOWN states (exit 0 = VERDICT: GO, exit 1 = VERDICT: NO-GO). Evidence-only; UNKNOWN never counts as a pass. Cannot write config files. |

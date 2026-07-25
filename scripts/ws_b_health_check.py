@@ -156,12 +156,22 @@ def check_dispatch_equivalence_drift() -> dict:
     }
 
 
-def check_budget_ceiling_drift() -> dict:
-    """``config/budgets.yaml``'s ``mustaqil:`` still declares SI-5 caps + outer ceiling."""
-    if not BUDGETS_PATH.exists():
-        return {"ok": False, "detail": f"{BUDGETS_PATH} is missing"}
+def check_budget_ceiling_drift(path: Path | None = None) -> dict:
+    """``config/budgets.yaml``'s ``mustaqil:`` still declares SI-5 caps + outer ceiling.
+
+    *path* defaults to the module-global :data:`BUDGETS_PATH` (the real config).
+    It is accepted so a **composing** caller — e.g. the Founder-facing
+    ``scripts/heartbeat_go_no_go.py`` FR-004 gate, which must report THIS
+    checker's verdict rather than paraphrase it — can point the one owning
+    predicate at a scratch budgets file without monkeypatching this module.
+    The semantics are unchanged: same parse, same findings, same strict
+    ``metered_overflow is False`` identity guard.
+    """
+    budgets_path = Path(path) if path is not None else BUDGETS_PATH
+    if not budgets_path.exists():
+        return {"ok": False, "detail": f"{budgets_path} is missing"}
     try:
-        doc = yaml.safe_load(BUDGETS_PATH.read_text(encoding="utf-8")) or {}
+        doc = yaml.safe_load(budgets_path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
         return {"ok": False, "detail": f"budgets.yaml failed to parse: {exc}"}
 

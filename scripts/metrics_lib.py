@@ -12,14 +12,17 @@ from __future__ import annotations
 import datetime as dt
 
 import wave_kpi
+from dgox.created_at import parse_created_at
 
 
 def _parse_iso(ts: str) -> dt.datetime | None:
-    """Parse an ISO-8601 'YYYY-MM-DDTHH:MM:SSZ' timestamp, or None."""
-    try:
-        return dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-    except (ValueError, TypeError):
-        return None
+    """Parse a ``created_at`` timestamp against the shared write-seam contract.
+
+    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
+    source of truth shared with ``cost_ledger``/``metrics_history_feeder``/
+    ``wave_kpi``/``trends``) instead of a locally re-implemented ``strptime``.
+    """
+    return parse_created_at(ts)
 
 
 def read_waves(path: str = wave_kpi.LIVE_LOG) -> list[dict]:
@@ -75,6 +78,18 @@ def run_intervals(events: list[dict]) -> list[tuple[dt.datetime, dt.datetime]]:
     return [(starts[r], ends[r]) for r in starts if r in ends and ends[r] >= starts[r]]
 
 
+def _dropped_undated(events: list[dict], event_types: frozenset[str] | None = None) -> int:
+    """Count events (optionally filtered to ``event_types``) with a missing or
+    non-conforming ``created_at`` (DAS-1633) — surfaced by ``concurrency_stats``
+    and ``review_efficiency`` instead of the silent skip these loops used to do.
+    """
+    return sum(
+        1 for ev in events
+        if (event_types is None or ev.get("event_type") in event_types)
+        and _parse_iso(str(ev.get("created_at", ""))) is None
+    )
+
+
 def _percentile(sorted_vals: list[float], p: float) -> float:
     if not sorted_vals:
         return 0.0
@@ -104,6 +119,9 @@ def concurrency_stats(events: list[dict]) -> dict | None:
         "median": _percentile(levels, 50),
         "p95": _percentile(levels, 95),
         "samples": len(levels),
+        # DAS-1633 — visible count of run_start/run_end events excluded above
+        # for a missing/non-conforming created_at (was a silent skip).
+        "dropped_undated": _dropped_undated(events, frozenset({"run_start", "run_end"})),
     }
 
 
@@ -234,6 +252,9 @@ def review_efficiency(events: list[dict]) -> dict | None:
         "completed": len(cycles),
         "median_cycle_s": _percentile(cycles_sorted, 50) if cycles_sorted else 0.0,
         "rework_rate": rework / reviews,
+        # DAS-1633 — visible count of routing_decision events excluded above
+        # for a missing/non-conforming created_at (was a silent skip).
+        "dropped_undated": _dropped_undated(events, frozenset({"routing_decision"})),
     }
 
 

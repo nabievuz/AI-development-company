@@ -43,6 +43,48 @@ Registered as the `ws-b-runner-health` entry in `maintenance_schedule()`'s
    policy is a finding: the subscription-only budget stance (Q3/Q9,
    DAS-1543) must not drift quietly.
 
+   The check is implemented in `scripts/ws_b_health_check.py ::
+   check_budget_ceiling_drift(path=None)`, which takes an optional `path`
+   parameter defaulting to the module global `BUDGETS_PATH`. The semantics
+   are unchanged from the direct mode — same parse, same findings, same
+   strict `metered_overflow is False` identity guard. The `path` parameter
+   exists so a composing caller (see §Load-bearing use in heartbeat go/no-go,
+   below) can point the one owning predicate at a test budgets file without
+   monkeypatching this module.
+
+## Load-bearing use: heartbeat go/no-go (Founder-facing)
+
+The `check_budget_ceiling_drift()` predicate acquired a second, higher-stakes
+consumer: `scripts/heartbeat_go_no_go.py` (DAS-1619). This script is the
+**Founder-facing go/no-go readiness report** for the HEARTBEAT autonomy flip
+— an irreversible, one-time decision gate. The function is called directly by
+`probe_credit_ceiling_shape()` as gate `credit_semantics` (SI-5/FR-004) in the
+gating checks that decide the report's `VERDICT: GO` or `VERDICT: NO-GO`.
+
+**The predicate is now load-bearing: relaxing its guard locally will weaken the
+Founder's go-live gate as well as WS-B's own health check.** Specifically:
+
+- `check_budget_ceiling_drift()` is the **sole owner** of the monthly
+  credit-ceiling contract. No other code in `heartbeat_go_no_go.py` parses
+  `config/budgets.yaml` fields of its own — the report calls this function and
+  reports its verdict verbatim.
+- The strict-identity guard (`overflow is not False`) is **deliberate and must
+  not be relaxed**. It treats a *removed* `metered_overflow` key the same as a
+  flip to `true` — both are findings. A removed key silently re-enables metered
+  spend, which is exactly the bug the guard exists to catch. A lax truthiness
+  check (`if overflow:`) would miss a removed key and incorrectly pass the gate.
+- **A test in the go/no-go suite will fail if the guard is weakened.** The test
+  suite (`tests/test_heartbeat_go_no_go.py`) verifies the gate's verdict on
+  a scratch budgets file. If the guard is locally "simplified" to a lax check,
+  that test will go red. The failure may look unrelated to the local change
+  (because the test file name does not mention budgets), but the root cause
+  will be the guard relaxation.
+
+A WS-B maintainer reading only this doc — and not `heartbeat_go_no_go.py` —
+now knows that `check_budget_ceiling_drift()` is not just a health check, but a
+Founder-facing decision predicate. Any change to it must be reviewed for its
+impact on the go-live gate.
+
 ## Cadence and registration
 
 - **Cadence:** daily (declared in `maintenance_schedule()["recurring_runs"]`,

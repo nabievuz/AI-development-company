@@ -273,3 +273,177 @@ def test_cli_with_absent_budgets(tmp_path):
         "--budgets", str(tmp_path / "no_budgets.yaml"),
     ])
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# DAS-1640 — gather_readings' per_day_cost_usd must be day-windowed, not a
+# lifetime total mislabelled "today's spend" (the un-fixed sibling of the
+# defect DAS-1632 fixed in loop_controller._per_day_budget_exceeded).
+# ---------------------------------------------------------------------------
+
+import datetime as _dt  # noqa: E402
+import json as _json  # noqa: E402
+
+import loop_controller as _lc  # noqa: E402
+
+_PRICING_YAML = """
+tiers:
+  opus:
+    input_per_1m: 5.00
+    cached_input_per_1m: 0.50
+    output_per_1m: 25.00
+  sonnet:
+    input_per_1m: 3.00
+    cached_input_per_1m: 0.30
+    output_per_1m: 15.00
+"""
+
+
+def _write_pricing_budgets(tmp_path) -> Path:
+    p = tmp_path / "budgets.yaml"
+    p.write_text(_PRICING_YAML, encoding="utf-8")
+    return p
+
+
+def _write_span(path: Path, created_at: str, input_tokens: int, output_tokens: int, run_id: str = "r1") -> None:
+    """Append one opus span event — same shape test_loop_controller.py uses."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ev = {
+        "event_type": "span",
+        "ticket_id": "DAS-9999",
+        "trace_id": "DAS-9999",
+        "span_id": "span-001",
+        "kind": "invoke_agent",
+        "gen_ai.agent.name": "sre-eng",
+        "gen_ai.request.model": "opus",
+        "start": created_at,
+        "end": created_at,
+        "duration_ms": 0,
+        "gen_ai.usage.input_tokens": input_tokens,
+        "gen_ai.usage.output_tokens": output_tokens,
+        "gen_ai.usage.cached_input_tokens": 0,
+        "cached": False,
+        "status": "ok",
+        "created_at": created_at,
+        "run_id": run_id,
+    }
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(_json.dumps(ev) + "\n")
+
+
+def test_gather_readings_per_day_cost_windowed_not_lifetime(tmp_path, monkeypatch):
+    """Reproduces the SRE Lead's exact review finding: an event store with
+    ~$15 spend on the PREVIOUS UTC day plus ~$2 spend TODAY must report
+    per_day_cost_usd ~= $2.00 (today only), never the ~$17.00 lifetime total
+    the un-fixed `raw_estimated_cost_usd`-from-unwindowed-aggregate_spans
+    defect produced.
+    """
+    budgets = _write_pricing_budgets(tmp_path)
+    events = tmp_path / "events.jsonl"
+    # ~3M input tokens of opus on the prior day => 3,000,000/1e6 * $5 = $15.00
+    _write_span(events, "2026-07-23T09:00:00Z", 3_000_000, 0)
+    # ~0.4M input tokens of opus today => 0.4 * $5 = $2.00
+    _write_span(events, "2026-07-24T09:00:00Z", 400_000, 0, run_id="r2")
+
+    # Pin "now" inside gather_readings so the test is deterministic regardless
+    # of wall-clock day.
+    fixed_now = _dt.datetime(2026, 7, 24, 12, 0, 0, tzinfo=_dt.UTC)
+
+    class _FixedDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now if tz is not None else fixed_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(al, "datetime", _FixedDateTime)
+
+    # Sanity: lifetime aggregation genuinely sees the full $17 (proves the
+    # fixture reproduces the reviewer's premise — a vacuous fixture would
+    # already read ~$2 lifetime and the test would prove nothing).
+    from cost.cost_ledger import aggregate_spans
+    lifetime_ledger = aggregate_spans(events, budgets)
+    assert lifetime_ledger is not None
+    assert lifetime_ledger.raw_estimated_cost_usd == pytest.approx(17.0)
+
+    readings = al.gather_readings(events, tmp_path / "mem.jsonl", REPO_ROOT / "config" / "memory_governance.yaml", budgets)
+    assert readings["per_day_cost_usd"] == pytest.approx(2.0), (
+        f"expected windowed today-only spend ~$2.00, got {readings['per_day_cost_usd']!r} "
+        "(a value near $17.00 means gather_readings regressed back to the lifetime-total defect)"
+    )
+
+
+def test_gather_readings_per_day_cost_none_when_window_start_unavailable(tmp_path, monkeypatch):
+    """Failure-isolation: if `loop_controller._window_start` can't be imported,
+    per_day_cost_usd degrades to None (inert) rather than silently reverting
+    to an unwindowed lifetime read."""
+    budgets = _write_pricing_budgets(tmp_path)
+    events = tmp_path / "events.jsonl"
+    _write_span(events, "2026-07-24T09:00:00Z", 400_000, 0)
+
+    monkeypatch.setattr(al, "_WINDOW_START_AVAILABLE", False)
+    readings = al.gather_readings(events, tmp_path / "mem.jsonl", REPO_ROOT / "config" / "memory_governance.yaml", budgets)
+    assert readings["per_day_cost_usd"] is None
+
+
+# ---------------------------------------------------------------------------
+# DAS-1640 item 2 — future-dated spans: decision = (b) lower-bound-only is
+# DELIBERATE (see ticket log for full reasoning). This test proves the
+# decision is applied IDENTICALLY across all three readers that consult
+# `_window_start`-derived windows: the per-day tick rail, the monthly tick
+# rail, and this alerting reading. A future-dated span counts toward "today"
+# / "this month" in all three, or none — never a mismatched subset.
+# ---------------------------------------------------------------------------
+
+
+def test_future_dated_span_treated_identically_across_all_three_readers(tmp_path, monkeypatch):
+    budgets = _write_pricing_budgets(tmp_path)
+    events = tmp_path / "events.jsonl"
+    # A single span dated ~1 year in the future relative to "now".
+    _write_span(events, "2027-07-24T09:00:00Z", 1_000_000, 0)  # $5.00 of opus
+
+    fixed_now = _dt.datetime(2026, 7, 24, 12, 0, 0, tzinfo=_dt.UTC)
+
+    class _FixedDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now if tz is not None else fixed_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(al, "datetime", _FixedDateTime)
+
+    # Reader 1 — alerting's per_day_cost_usd.
+    readings = al.gather_readings(events, tmp_path / "mem.jsonl", REPO_ROOT / "config" / "memory_governance.yaml", budgets)
+    alerting_counts_it = readings["per_day_cost_usd"] is not None and readings["per_day_cost_usd"] > 0
+
+    # Reader 2 — the per-day tick rail (via a cap low enough that ONLY the
+    # future-dated span's inclusion/exclusion decides the verdict).
+    per_day_budgets = tmp_path / "per_day_budgets.yaml"
+    per_day_budgets.write_text(
+        "mustaqil:\n  caps:\n    per_day:\n      max_cost_usd: 1.00\n" + _PRICING_YAML,
+        encoding="utf-8",
+    )
+    per_day_rail_counts_it = _lc._per_day_budget_exceeded(per_day_budgets, events, now=fixed_now)
+
+    # Reader 3 — the monthly tick rail (same shape: a plan cap tight enough
+    # that only the future span's inclusion decides it).
+    monthly_budgets = tmp_path / "monthly_budgets.yaml"
+    monthly_budgets.write_text(
+        "mustaqil:\n"
+        "  monthly_credit_ceiling:\n"
+        "    plan_credit_usd:\n"
+        "      pro: 1.00\n"
+        "    active_plan: pro\n"
+        "    on_exhaustion: sanctioned_pause\n"
+        "    metered_overflow: false\n" + _PRICING_YAML,
+        encoding="utf-8",
+    )
+    monthly_rail_counts_it = _lc._monthly_credit_exhausted(monthly_budgets, events, now=fixed_now)
+
+    # All three must agree: either all three count the future-dated span
+    # (lower-bound-only, decision (b)), or none do. Never a mismatched subset.
+    verdicts = {alerting_counts_it, per_day_rail_counts_it, monthly_rail_counts_it}
+    assert len(verdicts) == 1, (
+        f"future-dated span treated inconsistently across readers: "
+        f"alerting={alerting_counts_it} per_day_rail={per_day_rail_counts_it} "
+        f"monthly_rail={monthly_rail_counts_it}"
+    )
+    # Pin the actual decision (b): lower-bound-only means it DOES count.
+    assert verdicts == {True}, "decision (b) (lower-bound-only) means a future-dated span IS counted"

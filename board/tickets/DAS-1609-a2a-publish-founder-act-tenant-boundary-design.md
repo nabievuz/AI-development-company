@@ -1,8 +1,8 @@
 ---
 id: DAS-1609
 title: A2A Design — endpoint-publish-is-a-Founder-act and the in-tenant boundary
-status: backlog
-assignee: backend-em
+status: done
+assignee: cto
 author: ceo
 dept: engineering
 priority: p1
@@ -14,7 +14,7 @@ labels: [security]
 zone: docs/design
 depends_on: [DAS-1607]
 created: 2026-07-24
-updated: 2026-07-24
+updated: 2026-07-25
 ---
 
 ## Description
@@ -53,3 +53,68 @@ No code in this stage — building the check and the endpoint wiring is DAS-1610
 Created by `/daslab-plan` (A2A Design, publish + boundary half). Depends on
 DAS-1607. Gated behind DAS-1606's binding sequencing note (after WS-B, deferred
 until after WS-G's proof per Q12) — left in `status: backlog` until that gate opens.
+
+### 2026-07-25 — Backend EM
+Wrote the shared A2A OUTBOUND design doc `docs/design/a2a-outbound.md` covering
+both design halves (one file avoids a same-`docs/design`-zone collision with
+DAS-1608). **This ticket's scope is §2 (publish-is-a-Founder-act + in-tenant
+boundary / A2-4, A2-6 / FR-003, FR-004):** the dedicated `a2a_outbound` flag OFF
+by default (independent kill-switch, not a `ws_d_langfuse_lens` reuse); publishing
+= a Founder act — authorized by a Founder-only `scripts/rbac.decide("a2a.publish")`
+check (mirrors ADR-0038 TN-3, reuses the WS-E RBAC SSOT; RBAC not a chat string,
+Founder identity from the session), logged to `board/.events.jsonl` as an
+attributed+redacted `a2a_publish` event (shape specified), and deferred to the Q12
+go-live gate; the in-tenant boundary via the **reused** `scripts/check_in_tenant.py`
++ a new `config/tenant_boundary.yaml` `a2a_outbound` entry (`carries_code_ip: true`,
+role NOT in `accepted_external_roles`) — a hosted relay/registry config fails the
+check (exit 1). Explicitly states ADR-0009 admission + ADR-0012 redaction are
+**reused, not replaced** — one governed edge, no second admission path (no new
+admission/redaction mechanism invented). §3 hands DAS-1612 the negative-path spec
+for this half (SC-004 admission-skip + redaction probe; SC-003/SC-005 guard —
+hosted-endpoint-blocked, flag-off inert, publish-requires-a-Founder-act).
+Acceptance criteria met. Validators all exit 0: `board_lint.py` (0 violations),
+`check_links.py` (no broken links), `check_spec_consistency.py` (10 SPECs OK).
+LOCAL-ONLY — no commit/push/PR. Status → `in_review`, assignee → `cto` (GATE-2
+accountable; Security Lead consulted). Touched only the design doc + this ticket.
+
+### 2026-07-25 — CTO — GATE-2 CLOSURE (part B of two)
+**GATE-2 (Design) CLOSED for the A2A publish + boundary half.** Reviewed §2 of
+`docs/design/a2a-outbound.md` against Accepted ADR-0040 (A2-4/A2-5/A2-6), SPEC-009
+FR-003/FR-004/FR-005, ADR-0038 TN-1/TN-3, ADR-0009 admission, ADR-0012 redaction,
+ADR-0019 (flag OFF), and the reused WS-E RBAC SSOT (`scripts/rbac.py`). Carried the
+Security-Lead consulted review myself.
+
+Design ratified:
+- **Publish is a Founder act.** Authorization is a Founder-only
+  `scripts/rbac.decide("a2a.publish")` check (mirrors TN-3, reuses the WS-E RBAC
+  SSOT) — Founder identity comes from the authenticated session, never from a chat
+  string / ticket field / caller payload. Verified `rbac.py` already carries the
+  structural double-lock (`FOUNDER_ONLY` + `load_grants()` refuse-to-load for a
+  non-founder grant + `decide()` deny-by-default). Every publish/enable/repoint —
+  allow and deny — is appended to canonical `board/.events.jsonl` (ADR-0024/0025,
+  ADR-0012-redacted), and an `allow`+`principal_kind: founder` record is the only
+  thing that marks the surface published (a bare flag-set is a forged claim).
+  Deferred to the Q12 go-live gate; flag stays OFF on merge.
+- **Flag OFF by default.** Dedicated `a2a_outbound: false` key confirmed present in
+  `config/features.yaml` (NOT a `ws_d_langfuse_lens` reuse — an independent
+  kill-switch). OFF ⇒ the endpoint does not exist, dispatch/board byte-identical to
+  pre-merge (SC-005).
+- **In-tenant only (TN-1).** Reuses the existing `scripts/check_in_tenant.py`
+  (verified present) + one new `config/tenant_boundary.yaml` `a2a_outbound` entry
+  (`carries_code_ip: true`, role deliberately NOT in `accepted_external_roles`) —
+  a hosted-relay/registry config fails the check (exit 1). No public A2A SaaS
+  surface (Q10).
+- **One governed edge.** ADR-0009 admission + ADR-0012 redaction are explicitly
+  reused, NOT replaced — A2A adds a caller *type*, not a second admission path. No
+  new admission/redaction mechanism invented.
+
+**Binding note for DAS-1610 (build):** to realize the *structural* refuse-to-load
+lock the design invokes (not merely deny-by-default), the concrete `a2a.publish`
+permission key MUST be registered in `rbac.py`'s `FOUNDER_ONLY` set alongside
+`gate.approve`/`run.trigger`/`config.edit.security`. The exact key string is an
+ADR-0040-sanctioned DAS-1610 choice; adding it to `FOUNDER_ONLY` is the mechanism,
+not optional. Negative-path spec (§3: SC-004 admission-skip + redaction probe;
+SC-003/SC-005 guard) accepted and handed to DAS-1612.
+Validators exit 0: `board_lint.py` (0 violations), `check_links.py` (clean),
+`check_spec_consistency.py` (10 SPECs OK). **Status → `done`. LOCAL-ONLY.**
+Unblocks DAS-1610 (`tools/a2a` outbound endpoint).

@@ -98,3 +98,28 @@ actionable by policy," re-opened only by an explicit orchestrator/CEO action onc
 WS-G's proof ships. No `project:` field — org-engine platform epic (board_lint R9).
 This is a planning-only dispatch: no ADR authored, no code written, no ticket
 executed — that is each child's own job when its gate opens.
+
+### 2026-07-24 — Orchestrator (orchestrator-recorded)
+**All eight children are now `done` (DAS-1607..DAS-1614), each through its own AADL
+stage gate, flag OFF.** GATE-5 (DAS-1613) closed by SRE Lead and GATE-6 (DAS-1614)
+by Product Analyst in this run; `a2a_outbound` reads `false` and `git diff
+config/features.yaml` is empty — the surface is merged-but-dark, never published,
+zero `a2a_publish` events.
+
+**This epic is deliberately NOT being closed, and its last acceptance criterion is
+NOT ticked.** That criterion reads: "confirmation logged that WS-G's proof had
+landed before any child moved out of `backlog`." That confirmation cannot be
+truthfully logged. WS-G's proof has **not** shipped: DAS-1595 (WS-G Deployment,
+GATE-5) is `blocked` on an external dependency — no provisioned tenant Linux VM in
+this session — and DAS-1596 (GATE-6) is blocked behind it. The A2A children were
+worked ahead of the Q12 post-proof deferral this epic declared binding.
+
+No agent may self-authorize that move, and the orchestrator will not retroactively
+declare the gate open. **Founder decision required** — either (a) ratify the
+out-of-order execution explicitly, at which point this criterion is amended to
+record the waiver and the epic can close, or (b) hold the epic open until WS-G's
+proof genuinely lands. Recorded honestly rather than closed quietly; the delivered
+work itself is gate-verified and unaffected either way.
+
+Follow-up DAS-1624 raised from DAS-1614's close report (two `scripts/`-zone items
+its zone lock put out of reach). It does not reopen any closed A2A gate.

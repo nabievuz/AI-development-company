@@ -28,6 +28,8 @@ import json
 import re
 import sys
 
+from dgox.created_at import parse_created_at
+
 WAVE = re.compile(r"^===== wave (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) =====")
 IDLE = re.compile(r"^\[idle (\d+)s before next wave — (\d{2}:\d{2}:\d{2})\]")
 # A dispatch table row: starts with |, names a DAS ticket, has a status arrow,
@@ -87,11 +89,13 @@ EVENTS_LOG = "board/.events.jsonl"   # DGO-X event store (gitignored runtime)
 # --------------------------------------------------------------------------- #
 
 def _parse_iso(ts: str) -> dt.datetime | None:
-    """Parse an ISO-8601 'YYYY-MM-DDTHH:MM:SSZ' timestamp, or None."""
-    try:
-        return dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
-    except (ValueError, TypeError):
-        return None
+    """Parse a ``created_at`` timestamp against the shared write-seam contract.
+
+    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
+    source of truth shared with ``cost_ledger``/``metrics_history_feeder``/
+    ``metrics_lib``/``trends``) instead of a locally re-implemented ``strptime``.
+    """
+    return parse_created_at(ts)
 
 
 def read_events(path: str = EVENTS_LOG) -> list[dict]:
@@ -142,10 +146,15 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
     ends: dict[str, dt.datetime] = {}
     all_ts: list[dt.datetime] = []
     model_mix = {"opus": 0, "sonnet": 0, "haiku": 0}
+    dropped_undated = 0
     for ev in events:
         ts = _parse_iso(str(ev.get("created_at", "")))
         if ts is not None:
             all_ts.append(ts)
+        else:
+            # DAS-1633 — surfaced instead of a silent skip; this event is
+            # excluded from both the T1 span and any run_start/run_end pairing.
+            dropped_undated += 1
         rid = ev.get("run_id")
         et = ev.get("event_type")
         if et == "run_start" and rid and ts is not None:
@@ -166,6 +175,7 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
         "runs_started": len(starts),
         "runs_completed": len(intervals),
         "model_mix": model_mix,
+        "dropped_undated": dropped_undated,  # DAS-1633
     }
     if not intervals or len(all_ts) < 2:
         return None, stats

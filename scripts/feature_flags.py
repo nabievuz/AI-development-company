@@ -39,6 +39,7 @@ DEFAULTS: dict[str, bool] = {
     "ws_g_proof": False,             # WS-G end-to-end proof / attestation (ADR-0037)
     "ws_h_control_plane": False,     # WS-H self-hosted web control plane (ADR-0039)
     "ws_f_heartbeat": False,         # WS-F alias placeholder — flip heartbeat_enabled instead
+    "a2a_outbound": False,           # A2A outbound governed endpoint (ADR-0040, DAS-1607); Founder flip-only
 }
 
 

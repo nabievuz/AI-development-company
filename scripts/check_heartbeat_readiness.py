@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 
 import loop_controller
+import yaml
 from _paths import ROOT
 
 try:
@@ -54,15 +55,51 @@ HEARTBEAT_TARGETS = {
 }
 
 DEFAULT_HISTORY = ROOT / "board" / ".metrics-history.jsonl"
+DEFAULT_BUDGETS = ROOT / "config" / "budgets.yaml"
+DEFAULT_EVENTS = ROOT / "board" / ".events.jsonl"
 
 
-def assess(history: list[dict], flag_on: bool) -> dict:
-    """Report (never apply) HEARTBEAT go-live readiness. Pure — no I/O, no flip."""
+def _active_plan(budgets_path: Path) -> str | None:
+    """Read ``mustaqil.monthly_credit_ceiling.active_plan`` from budgets.yaml.
+
+    Returns ``None`` when absent/malformed/unreadable — failure-isolated, and
+    it never guesses a plan (design §3.5: silently inheriting a default plan
+    would under- or over-report exhaustion)."""
+    try:
+        data = yaml.safe_load(budgets_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(data, dict):
+        return None
+    ceiling = (data.get("mustaqil") or {}).get("monthly_credit_ceiling") or {}
+    plan = ceiling.get("active_plan")
+    return plan.strip() if isinstance(plan, str) and plan.strip() else None
+
+
+def assess(
+    history: list[dict],
+    flag_on: bool,
+    *,
+    active_plan: str | None = None,
+    credit_exhausted: bool = False,
+) -> dict:
+    """Report (never apply) HEARTBEAT go-live readiness. Pure — no I/O, no flip.
+
+    ``active_plan``/``credit_exhausted`` give the reporter the FR-004 monthly
+    credit ceiling as a go-live PRECONDITION (design §3.5): an undeclared
+    ``active_plan`` makes the ceiling unenforceable and blocks readiness (never
+    guessed); a declared-but-exhausted ceiling likewise blocks readiness. This
+    is deliberately a READINESS blocker, not a `--tick` fabricated pause — an
+    inert `--tick` keeps the shadow window accumulating.
+    """
     streak = loop_controller.clean_live_days(history, HEARTBEAT_TARGETS)
     window_met = streak >= MIN_CLEAN_DAYS_HEARTBEAT
-    # A clean window is the ONE thing this reporter can verify from evidence. The
-    # kill-switch drill + zero-gate-violations are surfaced as Founder-verified gates.
-    ready = (not flag_on) and window_met
+    credit_declared = isinstance(active_plan, str) and bool(active_plan.strip())
+    credit_precondition_met = credit_declared and not credit_exhausted
+    # A clean window + an enforceable, unexhausted credit ceiling are the things
+    # this reporter can verify from evidence. The kill-switch drill +
+    # zero-gate-violations are surfaced as Founder-verified gates.
+    ready = (not flag_on) and window_met and credit_precondition_met
     blockers: list[str] = []
     if flag_on:
         blockers.append("heartbeat_enabled is ALREADY true — the org is live; nothing to gate")
@@ -71,6 +108,13 @@ def assess(history: list[dict], flag_on: bool) -> dict:
             f"insufficient clean shadow window: {streak}/{MIN_CLEAN_DAYS_HEARTBEAT} "
             f"consecutive clean day(s) (T1>=0.60, T2<=0.15, T7 holds)"
         )
+    if not credit_declared:
+        blockers.append(
+            "monthly credit ceiling not enforceable: "
+            "mustaqil.monthly_credit_ceiling.active_plan is undeclared"
+        )
+    elif credit_exhausted:
+        blockers.append("monthly subscription credit exhausted — sanctioned pause in effect")
     return {
         "ready": ready,
         "heartbeat_enabled": flag_on,
@@ -78,6 +122,9 @@ def assess(history: list[dict], flag_on: bool) -> dict:
         "clean_days_required": MIN_CLEAN_DAYS_HEARTBEAT,
         "window_met": window_met,
         "history_rows": len(history),
+        "active_plan": active_plan,
+        "credit_ceiling_enforceable": credit_declared,
+        "credit_exhausted": credit_exhausted,
         "blockers": blockers,
         # Gates this reporter CANNOT verify — the Founder confirms them before flipping:
         "founder_verified_gates": [
@@ -95,6 +142,12 @@ def _render(report: dict) -> str:
     lines.append(
         f"  {mark}clean shadow window ..... {report['clean_days']}/{report['clean_days_required']} "
         f"consecutive clean day(s)  (from {report['history_rows']} history row(s))"
+    )
+    credit_mark = "OK " if (report["credit_ceiling_enforceable"] and not report["credit_exhausted"]) else "XX "
+    plan_desc = report["active_plan"] or "undeclared"
+    lines.append(
+        f"  {credit_mark}monthly credit ceiling .. plan={plan_desc}  "
+        f"exhausted={report['credit_exhausted']}  (FR-004)"
     )
     lines.append("  Founder-verified gates (this tool cannot check — confirm before flipping):")
     for g in report["founder_verified_gates"]:
@@ -120,12 +173,22 @@ def _render(report: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--history", type=Path, default=DEFAULT_HISTORY)
+    ap.add_argument("--budgets", type=Path, default=DEFAULT_BUDGETS,
+                    help="path to config/budgets.yaml (FR-004 monthly credit ceiling)")
+    ap.add_argument("--events", type=Path, default=DEFAULT_EVENTS,
+                    help="path to the JSONL event store (month-to-date credit usage)")
     ap.add_argument("--json", action="store_true", help="emit the report as JSON")
     args = ap.parse_args(argv)
 
     history = loop_controller._load_jsonl(args.history)
     flag_on = bool(feature_flags.enabled("heartbeat_enabled")) if feature_flags else False
-    report = assess(history, flag_on)
+    active_plan = _active_plan(args.budgets)
+    credit_exhausted = (
+        loop_controller._monthly_credit_exhausted(args.budgets, args.events)
+        if active_plan
+        else False
+    )
+    report = assess(history, flag_on, active_plan=active_plan, credit_exhausted=credit_exhausted)
 
     print(json.dumps(report, indent=2) if args.json else _render(report))
     return 0 if report["ready"] else 1
