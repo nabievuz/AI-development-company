@@ -17,7 +17,7 @@ heartbeat_enabled: false  # WS4 HEARTBEAT (ADR-0027 SI-7): default OFF. Flip to 
 # closed; flipping is a Founder-only act once the flip condition is met. WS-F
 # (HEARTBEAT) reuses the existing `heartbeat_enabled` above — NOT duplicated here.
 # ---------------------------------------------------------------------------
-ws_a_tool_bridge: false      # WS-A ecosystem tool/MCP bridge (ADR-0033). Consumer: tools/ bridge + scripts/check_in_tenant TN-1 boundary. Flip when the bridge lands with deny-all + allow-list egress (Q5) live.
+ws_a_tool_bridge: true       # ACTIVATED 2026-07-26 (Founder-authorized): WS-A ecosystem tool/MCP bridge (ADR-0033) live. Bridge + deny-all/allow-list egress (Q5) landed; PreToolUse hook (audit_external_tool.py) enforces the compiled board/.tool-allowlist.json (wired via DASLAB_TOOL_ALLOWLIST in .claude/settings.json). Core infra MCPs (ArcRift/obsidian) carved out so the Persistent Memory Law is never denied; ecosystem bridges governed per role; ungranted + unidentified fail-closed deny.
 ws_b_agent_sdk_runner: false # WS-B headless Agent SDK runner (ADR-0034, daslab_sdk). Consumer: the subscription-Claude dispatch path. Flip when the runner authenticates via Claude account/OAuth and the ADR-0009 admission layer wraps it.
 ws_c_langgraph_loop: false   # WS-C LangGraph/DGO-X execution substrate (ADR-0035). Consumer: the finisher loop. Flip when the loop runs a real 0->100 slice under supervision (Q4).
 ws_d_langfuse_lens: false    # WS-D self-host Langfuse observability lens (ADR-0036). Consumer: in-tenant trace/eval viewer. Flip when self-host Langfuse is up on the tenant VM (Q2) and in-tenant (TN-1).

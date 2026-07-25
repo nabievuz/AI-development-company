@@ -38,6 +38,20 @@ except Exception:  # noqa: BLE001
 EXTERNAL_PREFIX = "mcp__"
 _FLAG = "ws_a_tool_bridge"
 
+# Internal-infrastructure MCP servers WS-A does NOT govern. These are core
+# memory / plumbing that every role AND the operator depend on — the Persistent
+# Memory Law mandates ArcRift for EVERY agent — not ecosystem tool bridges
+# (ADR-0033 is scoped to the tools/ ecosystem sidecars). Without this carve-out,
+# flipping the flag would deny every role's mandatory ArcRift call and break the
+# org. Overridable via DASLAB_INFRA_MCP (comma-separated ``mcp__<server>`` keys);
+# fail-closed — a server not listed here is still governed by the allow-list.
+_DEFAULT_INFRA_MCP = "mcp__ArcRift,mcp__obsidian"
+
+
+def _infra_servers() -> frozenset[str]:
+    raw = os.environ.get("DASLAB_INFRA_MCP", _DEFAULT_INFRA_MCP)
+    return frozenset(s.strip() for s in raw.split(",") if s.strip())
+
 
 def server_of(tool_name: str) -> str:
     """``mcp__<server>__<tool>`` -> ``mcp__<server>``."""
@@ -113,6 +127,10 @@ def decide(tool_name: str, agent_type: str, allowlist: dict) -> tuple[str, str]:
     """
     if not tool_name.startswith(EXTERNAL_PREFIX):
         return "allow", "not an external tool"
+    if server_of(tool_name) in _infra_servers():
+        # Core memory/plumbing MCP (ArcRift/obsidian) — not an ecosystem bridge;
+        # always allowed so the mandatory Persistent Memory Law is never denied.
+        return "allow", f"{server_of(tool_name)} is internal infrastructure (WS-A governs ecosystem bridges only)"
     roles = allowlist.get(tool_name)
     if roles is None:
         roles = allowlist.get(server_of(tool_name))

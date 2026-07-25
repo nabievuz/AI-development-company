@@ -20,11 +20,18 @@ def test_real_config_matches_live_flag_state():
     # consumer). DEFAULTS stay all-off (see the missing/empty-file tests below).
     # heartbeat_enabled was added by DAS-1475 (WS4 HEARTBEAT, ADR-0027 SI-7) and
     # ships default OFF — Founder flip-only after a >=3-day clean shadow window.
+    # ws_a_tool_bridge was ACTIVATED 2026-07-26 (Founder-authorized): the WS-A
+    # ecosystem tool bridge + deny-all/allow-list egress (Q5) landed, and the
+    # PreToolUse hook (audit_external_tool.py) enforces the compiled
+    # board/.tool-allowlist.json (wired via DASLAB_TOOL_ALLOWLIST). Core infra
+    # MCPs (ArcRift/obsidian) are carved out so the Persistent Memory Law is
+    # never denied; ecosystem bridges are governed per role.
     # Assert the live contract against DEFAULTS (the SSOT) so adding a new latent
     # flag (e.g. the MUSTAQIL ws_* keys, DAS-1543) does not break this test: live
-    # config = all DEFAULTS OFF except organism_emit, which is ON.
+    # config = all DEFAULTS OFF except organism_emit + ws_a_tool_bridge, which are ON.
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
+    expected["ws_a_tool_bridge"] = True
     assert ff.load() == expected
 
 

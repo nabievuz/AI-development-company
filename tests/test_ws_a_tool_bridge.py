@@ -198,6 +198,25 @@ def test_c3_decode_failclosed():
     assert hook.decide("mcp__x__t", "unknown", {"mcp__x": "qa-lead"})[0] == "deny"
 
 
+def test_infra_mcp_servers_are_never_governed():
+    """ArcRift/obsidian (core memory/plumbing) are internal infrastructure — the
+    WS-A allow-list governs ecosystem bridges only. They are allowed even with an
+    empty allow-list AND an unknown identity, so flipping the flag never denies a
+    role's (or the operator's) mandatory Persistent Memory Law ArcRift call."""
+    for tool in ("mcp__ArcRift__store_memory", "mcp__ArcRift__recall_context", "mcp__obsidian__anything"):
+        assert hook.decide(tool, "unknown", {})[0] == "allow", tool
+        assert hook.decide(tool, "backend-em", {})[0] == "allow", tool
+    # A NON-infra ecosystem tool stays fail-closed (deny) when ungranted.
+    assert hook.decide("mcp__playwright__browser_navigate", "unknown", {})[0] == "deny"
+
+
+def test_infra_mcp_carveout_is_env_overridable(monkeypatch):
+    """DASLAB_INFRA_MCP scopes the carve-out; a server outside it stays governed."""
+    monkeypatch.setenv("DASLAB_INFRA_MCP", "mcp__ArcRift")
+    assert hook.decide("mcp__ArcRift__x", "unknown", {})[0] == "allow"
+    assert hook.decide("mcp__obsidian__x", "unknown", {})[0] == "deny"  # no longer exempt
+
+
 def _run_hook(event: dict, env_extra: dict) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.update(env_extra)
