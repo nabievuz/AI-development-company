@@ -28,10 +28,16 @@ def test_real_config_matches_live_flag_state():
     # never denied; ecosystem bridges are governed per role.
     # Assert the live contract against DEFAULTS (the SSOT) so adding a new latent
     # flag (e.g. the MUSTAQIL ws_* keys, DAS-1543) does not break this test: live
-    # config = all DEFAULTS OFF except organism_emit + ws_a_tool_bridge, which are ON.
+    # ws_h_control_plane was ACTIVATED 2026-07-26 (Founder-authorized): the WS-H
+    # control plane is deployed on the tenant box as a loopback-only systemd user
+    # unit (daslab-control-plane, 127.0.0.1:8899) with Founder-only RBAC
+    # (DASLAB_CP_RBAC vault). Serves requests; dispatches nothing on its own (CP-5).
+    # config = all DEFAULTS OFF except organism_emit + ws_a_tool_bridge +
+    # ws_h_control_plane, which are ON.
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
+    expected["ws_h_control_plane"] = True
     assert ff.load() == expected
 
 

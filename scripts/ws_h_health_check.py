@@ -156,39 +156,51 @@ def check_audit_redaction_drift() -> dict:
 
 
 def check_degrade_flag_drift() -> dict:
-    """Assert ``ws_h_control_plane`` still defaults OFF, and the degrade-to-static
-    path (``resolve_surface()``) still fires with the flag OFF — and even with the
-    flag forced ON when the optional fastapi/uvicorn deps are absent (CP-5,
-    NOT-a-daemon: absence degrades, it never crashes and never silently starts a
-    server)."""
+    """Assert the degrade-to-static path (``resolve_surface()``) still fires — the
+    CP-5 / NOT-a-daemon guarantee: a forced static (or absent fastapi/uvicorn)
+    always degrades to the static cockpit, never crashes, never silently starts a
+    server — AND that the served surface tracks the flag. ``ws_h_control_plane``
+    was ACTIVATED 2026-07-26 (Founder-authorized; loopback systemd unit +
+    DASLAB_CP_RBAC), so the flag being ON with a control-plane surface is the
+    healthy live state, not drift."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import feature_flags  # local import: scripts/ owns this module, we only read it
 
     problems: list[str] = []
-    if feature_flags.enabled(FLAG, FEATURES_PATH):
-        problems.append(f"{FLAG!r} is ON in {FEATURES_PATH} — expected default OFF")
-
     degrade = _degrade_mod()
-    decision = degrade.resolve_surface(features_path=FEATURES_PATH)
-    if decision.mode != "static":
-        problems.append(
-            f"resolve_surface() with the flag as-configured returned mode={decision.mode!r} "
-            "(expected 'static' — flag is OFF by default)"
-        )
 
+    # CP-5 invariant, holds regardless of the flag: a forced static always
+    # degrades to the static cockpit — the NOT-a-daemon guarantee.
     forced = degrade.resolve_surface(features_path=FEATURES_PATH, force_static=True)
     if forced.mode != "static":
         problems.append(
             f"resolve_surface(force_static=True) returned mode={forced.mode!r} — "
-            "--force-static regression"
+            "degrade-to-static / --force-static regression (CP-5)"
+        )
+
+    # The served surface must track the flag: OFF => static (always); ON =>
+    # 'control-plane' when the fastapi/uvicorn deps are present, else a clean
+    # degrade to 'static' (CP-5) — both are healthy when the flag is ON.
+    flag_on = feature_flags.enabled(FLAG, FEATURES_PATH)
+    decision = degrade.resolve_surface(features_path=FEATURES_PATH)
+    if flag_on:
+        if decision.mode not in ("control-plane", "static"):
+            problems.append(
+                f"flag ON but resolve_surface() returned mode={decision.mode!r} "
+                "(expected 'control-plane', or a degraded 'static' when deps are absent)"
+            )
+    elif decision.mode != "static":
+        problems.append(
+            f"flag OFF but resolve_surface() returned mode={decision.mode!r} (expected 'static')"
         )
 
     if problems:
         return {"ok": False, "detail": "; ".join(problems)}
+    state = f"ON (activated) → {decision.mode}" if flag_on else "OFF → static"
     return {
         "ok": True,
-        "detail": f"{FLAG!r} defaults OFF; resolve_surface() still degrades to the static "
-        "cockpit (CP-5, no daemon)",
+        "detail": f"degrade-to-static still fires under force_static (CP-5, no daemon); "
+        f"surface tracks the flag: {FLAG!r} {state}",
     }
 
 

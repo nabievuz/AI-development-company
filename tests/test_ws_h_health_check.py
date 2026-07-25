@@ -125,14 +125,19 @@ def test_audit_redaction_drift_ok_on_the_real_scrubber():
 # 3. Degrade / flag drift
 # --------------------------------------------------------------------------- #
 
-def test_degrade_flag_drift_flags_flag_on_by_default(monkeypatch, tmp_path):
+def test_degrade_flag_on_is_healthy_when_surface_tracks_flag(monkeypatch, tmp_path):
+    """ws_h_control_plane was ACTIVATED 2026-07-26 (Founder-authorized): flag ON is
+    now the healthy live state. The check passes as long as the served surface
+    tracks the flag (control-plane when the fastapi/uvicorn deps are present, else
+    a degraded static) and force_static still degrades (CP-5) — it no longer
+    treats flag-ON as drift."""
     mod = _load_health_check()
     on_features = tmp_path / "features.yaml"
     on_features.write_text("ws_h_control_plane: true\n", encoding="utf-8")
     monkeypatch.setattr(mod, "FEATURES_PATH", on_features)
     result = mod.check_degrade_flag_drift()
-    assert result["ok"] is False
-    assert "expected default OFF" in result["detail"]
+    assert result["ok"] is True, result
+    assert "surface tracks the flag" in result["detail"]
 
 
 def test_degrade_flag_drift_flags_resolve_surface_regression(monkeypatch):
