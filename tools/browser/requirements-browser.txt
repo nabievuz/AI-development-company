@@ -4,8 +4,9 @@
 # where the browser sidecar actually runs.
 #   pip install -r tools/browser/requirements-browser.txt
 mcp>=1.2
-# Swap the reference stdlib navigate/read backend for a real browser driver by
-# adding ONE of the following (never both) and wiring it behind the C8 action
-# gate in browser_bridge.py — the gate does not change when the backend does:
-#   playwright>=1.45          # then `python -m playwright install --with-deps`
-#   browser-use>=0.1
+# Real browser backend (wired in tools/browser/playwright_backend.py, behind the
+# unchanged C8 action gate). Engaged only when DASLAB_BROWSER_BACKEND=playwright;
+# unset => the stdlib reference backend runs and this dep is not needed.
+# After install run:  python -m playwright install chromium
+playwright>=1.45
+#   browser-use>=0.1          # alternative driver (do not enable alongside playwright)
