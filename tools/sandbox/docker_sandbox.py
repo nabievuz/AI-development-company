@@ -25,7 +25,9 @@ credential / network all unreachable from inside).
 """
 from __future__ import annotations
 
+import grp
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -37,10 +39,91 @@ from local_stub import LocalStubSandbox  # noqa: E402
 _IMAGE = os.environ.get("DASLAB_SANDBOX_IMAGE", "alpine:3.20")
 _DOCKER = os.environ.get("DASLAB_DOCKER_BIN", "docker")
 _OP_TIMEOUT = 60
+# The group the docker UNIX socket is owned by on a standard Ubuntu install.
+_SOCKET_GROUP = os.environ.get("DASLAB_DOCKER_GROUP", "docker")
+
+
+# --------------------------------------------------------------------------- #
+# Group-stale login self-heal — so a real container backend never silently
+# degrades to the stub just because THIS session started before the operator
+# was added to the docker group.
+# --------------------------------------------------------------------------- #
+def _daemon_ok(argv: list[str]) -> bool:
+    """True iff running *argv* (a ``docker info`` form) exits 0."""
+    try:
+        return subprocess.run(argv, capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+def _group_stale() -> bool:
+    """True on a *group-stale login*: the operator is a member of the docker
+    socket group in ``/etc/group``, but this process's live credentials don't
+    include its gid yet — the membership was granted AFTER the session (shell /
+    app) started, and a running process cannot be granted a supplementary group
+    from outside (a kernel rule). A fresh login or reboot clears it; ``sg``
+    bridges it without one. Podman / rootless never hit this (no socket group).
+    """
+    try:
+        gr = grp.getgrnam(_SOCKET_GROUP)
+    except (KeyError, OSError):
+        return False
+    if gr.gr_gid in os.getgroups():
+        return False  # already active — nothing to bridge
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
+    return bool(user) and user in gr.gr_mem
+
+
+def _compute_group_prefix() -> list[str]:
+    """Self-heal the group-stale login (see :func:`_group_stale`) so DockerSandbox
+    works in ANY session — freshly logged in or not — with no manual ``sg docker``
+    and no silent degradation to the stub. Returns a command PREFIX that runs the
+    docker CLI under the socket group, or ``[]`` when none is needed:
+
+    - CLI absent, or the daemon already answers directly (fresh login, rootless,
+      podman) → ``[]`` (behave exactly as before this hardening).
+    - Group-stale AND ``sg`` present AND ``sg <group> -c 'docker info'`` answers
+      → ``["sg", <group>, "-c"]`` (every call is bridged through it). ``sg`` needs
+      no password for a group the operator already belongs to.
+    - Otherwise ``[]`` — fail-closed, identical to the pre-hardening probe.
+    """
+    if shutil.which(_DOCKER) is None:
+        return []
+    if _daemon_ok([_DOCKER, "info"]):
+        return []
+    if _group_stale() and shutil.which("sg"):
+        prefix = ["sg", _SOCKET_GROUP, "-c"]
+        if _daemon_ok(prefix + [shlex.join([_DOCKER, "info"])]):
+            return prefix
+    return []
+
+
+_GROUP_PREFIX_CACHE: list[str] | None = None
+
+
+def _group_prefix() -> list[str]:
+    """Cache :func:`_compute_group_prefix` — the probe runs at most once."""
+    global _GROUP_PREFIX_CACHE
+    if _GROUP_PREFIX_CACHE is None:
+        _GROUP_PREFIX_CACHE = _compute_group_prefix()
+    return _GROUP_PREFIX_CACHE
+
+
+def _run(argv: list[str], **kwargs):
+    """``subprocess.run`` for a docker argv, transparently bridged under the
+    socket group on a group-stale login. When bridging, the argv is passed as a
+    single ``sg <group> -c`` shell string built with :func:`shlex.join`, so every
+    token — including untrusted ``exec`` command args and credential values — is
+    safely quoted and cannot break out of the wrapper shell."""
+    prefix = _group_prefix()
+    if prefix:
+        argv = [*prefix, shlex.join(argv)]
+    return subprocess.run(argv, **kwargs)
 
 
 def docker_available() -> bool:
-    """True iff the configured container CLI is on PATH and its daemon answers.
+    """True iff the configured container CLI is on PATH and its daemon answers —
+    directly, or via the group-stale bridge (see :func:`_compute_group_prefix`).
 
     ``DASLAB_DOCKER_BIN`` selects the binary (``docker`` default, or ``podman``).
     Used to skip every live path/test when no engine is installed — the whole
@@ -49,8 +132,7 @@ def docker_available() -> bool:
     if shutil.which(_DOCKER) is None:
         return False
     try:
-        proc = subprocess.run([_DOCKER, "info"], capture_output=True, timeout=10)
-        return proc.returncode == 0
+        return _run([_DOCKER, "info"], capture_output=True, timeout=10).returncode == 0
     except Exception:
         return False
 
@@ -92,7 +174,7 @@ class DockerSandbox(LocalStubSandbox):
         mount_mode = "ro" if primary.read_only else "rw"
         name = _container_name(task_id)
         # Idempotent: clear any stale container of this name first.
-        subprocess.run([_DOCKER, "rm", "-f", name], capture_output=True, timeout=_OP_TIMEOUT)
+        _run([_DOCKER, "rm", "-f", name], capture_output=True, timeout=_OP_TIMEOUT)
         rl = scope.resource_limits
         argv = [
             _DOCKER, "run", "-d", "--name", name,
@@ -111,7 +193,7 @@ class DockerSandbox(LocalStubSandbox):
         # Keep the container alive without relying on `sleep infinity` (not
         # supported by every busybox); `tail -f /dev/null` is universal.
         argv += [self._image, "tail", "-f", "/dev/null"]
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=_OP_TIMEOUT)
+        proc = _run(argv, capture_output=True, text=True, timeout=_OP_TIMEOUT)
         if proc.returncode != 0:
             # Fail-closed: no live container ⇒ tear the registration down too, so
             # a caller can never hold a handle to a half-open sandbox.
@@ -123,7 +205,7 @@ class DockerSandbox(LocalStubSandbox):
     def close(self, handle: SandboxHandle) -> None:
         name = self._containers.pop(handle.task_id, None)
         if name:
-            subprocess.run([_DOCKER, "rm", "-f", name], capture_output=True, timeout=_OP_TIMEOUT)
+            _run([_DOCKER, "rm", "-f", name], capture_output=True, timeout=_OP_TIMEOUT)
         super().close(handle)
 
     # -- the REAL untrusted-code path (DAS-1566 live isolation smoke) --------- #
@@ -146,7 +228,7 @@ class DockerSandbox(LocalStubSandbox):
         cap = reg.scope.resource_limits.max_output_bytes
         timeout = reg.scope.resource_limits.wallclock_seconds or 30.0
         try:
-            proc = subprocess.run(
+            proc = _run(
                 [_DOCKER, "exec", name, *command],
                 capture_output=True, text=True, timeout=timeout,
             )
