@@ -34,10 +34,15 @@ def test_real_config_matches_live_flag_state():
     # (DASLAB_CP_RBAC vault). Serves requests; dispatches nothing on its own (CP-5).
     # config = all DEFAULTS OFF except organism_emit + ws_a_tool_bridge +
     # ws_h_control_plane, which are ON.
+    # ws_d_langfuse_lens was ACTIVATED 2026-07-26 (Founder-authorized): self-host
+    # Langfuse v3 is deployed in-tenant on the tenant box (docker compose, loopback
+    # 127.0.0.1:3000, OTLP ingestion verified); the read-side exporter is live
+    # behind the flag. TN-1 boundary holds (check_in_tenant OK).
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
     expected["ws_h_control_plane"] = True
+    expected["ws_d_langfuse_lens"] = True
     assert ff.load() == expected
 
 

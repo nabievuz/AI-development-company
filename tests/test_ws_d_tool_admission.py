@@ -246,9 +246,14 @@ def test_flag_off_is_inert_for_all_three_tools(tmp_path):
     assert not audit_log.exists()  # no side effect while flag OFF
 
 
-def test_features_yaml_ws_d_flag_default_off():
+def test_features_yaml_ws_d_flag_on_after_activation():
+    """ws_d_langfuse_lens was ACTIVATED 2026-07-26 (Founder-authorized): self-host
+    Langfuse v3 is deployed in-tenant (loopback 127.0.0.1:3000, OTLP verified), so
+    the committed config carries the flag ON. The DEFAULTS SSOT (scripts/
+    feature_flags.py) still ships it OFF — see test_feature_flags.py's live
+    contract."""
     text = (ROOT / "config" / "features.yaml").read_text()
-    assert "ws_d_langfuse_lens: false" in text
+    assert "ws_d_langfuse_lens: true" in text
 
 
 def test_egress_profile_for_eval_tools_is_deny_all():
