@@ -1,6 +1,98 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
+
+# ===========================================================================
+# Project metadata (PEP 621)
+# ===========================================================================
+# DasLab is primarily a *clone-and-run* system — a fresh `git clone` boots the
+# whole org and work is driven in-place through `/daslab-*` skills. This table
+# nonetheless declares the project's identity and its distributable packages
+# precisely, so tooling, mirrors, and any downstream import see an unambiguous
+# boundary. Version is single-sourced from the top-level `VERSION` file.
+[project]
+name = "daslab"
+dynamic = ["version"]
+description = "An operating system for a 32-agent AI software org — charters, a file-based board, a gated lifecycle, and Claude Code orchestration."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Akmaljon Nabiev" }]
+keywords = [
+    "ai-agents", "agent-orchestration", "autonomous-agents",
+    "ai-agent-framework", "agentic-workflows", "claude", "anthropic",
+    "claude-code", "software-organization", "multi-agent",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Runtime: the engine's validators/scripts are stdlib-only except PyYAML
+# (~15 validators import it and hard-exit if absent). See `requirements.in`.
+dependencies = [
+    "PyYAML>=6.0.2",
+]
+
+[project.optional-dependencies]
+# WS-H self-hosted control plane (tools/control_plane) — an optional, OFF-by-
+# default FastAPI surface. Its deps are deliberately kept OUT of the hash-pinned
+# core lockfiles; install this extra to run/test the control-plane endpoints.
+control-plane = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+]
+# Contributor toolchain (lint/format/test). The reproducible, hash-pinned
+# lockfile is `requirements-dev.txt`; this extra is the unpinned convenience set.
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "black>=24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/nabievuz/daslab"
+Repository = "https://github.com/nabievuz/daslab"
+Changelog = "https://github.com/nabievuz/daslab/blob/main/CHANGELOG.md"
+Releases = "https://github.com/nabievuz/daslab/releases"
+Issues = "https://github.com/nabievuz/daslab/issues"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+# ---------------------------------------------------------------------------
+# Distributable packages — the first-party importable packages ONLY.
+# EXPLICIT list (unambiguous boundary): every entry is a git-tracked package
+# with an `__init__.py`. Deliberately EXCLUDED:
+#   * the 110 flat `scripts/*.py` — CLI/validator modules run in-place via
+#     `python3 scripts/<name>.py` (imported through sys.path, not as a package);
+#   * `tests/` — the test suite, not shipped;
+#   * `tools/control_plane/.vendor/` — vendored third-party deps (fastapi,
+#     pydantic, uvicorn, …), never first-party;
+#   * `tools/{browser,control_plane,guardrails,mcp_bridges}` — app/namespace
+#     dirs without a package `__init__.py`;
+#   * `projects/` — gitignored, per-project repos.
+[tool.setuptools]
+packages = [
+    "daslab_sdk",            # WS-B headless Agent SDK runner (the one clean reusable library)
+    "governance.guardrails", # per-role input/output guardrail tripwires
+    "scripts.a2a_intake",    # A2A goal-proposal → board intake (WS-I)
+    "scripts.cache",         # result cache + cache-prefix machinery
+    "scripts.cost",          # per-run cost ledger
+    "scripts.dgox",          # DGO-X shadow event store / control-plane primitives
+    "tools.a2a",             # A2A outbound endpoint + publish surface (WS-I)
+    "tools.model_gateway",   # model-allocation gateway
+    "tools.observability",   # OTel-shaped span emission (WS-D)
+    "tools.sandbox",         # per-task sandbox execution adapter (WS-C)
+]
 
 # ---------------------------------------------------------------------------
 # Ruff — fast Python linter (replaces flake8/isort/pyupgrade)
