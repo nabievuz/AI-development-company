@@ -91,8 +91,10 @@ writing back to ArcRift.
   `ArcRift`; backend `~/ArcRift`, local SQLite). LLM modules:
   - **Graph extraction (triples) → Claude subscription.** `~/ArcRift/claude-bridge`
     (`claude -p`, sonnet) runs as a local OpenAI-compatible endpoint (`:8787`);
-    ArcRift `.env`: `GRAPH_BACKEND=local-openai`. The bridge auto-starts via
-    launchd (`dev.arcrift.claude-bridge`).
+    ArcRift `.env`: `GRAPH_BACKEND=local-openai`. On Ubuntu the bridge
+    auto-starts via a systemd **user** unit (`arcrift-bridge.service`,
+    `~/.config/systemd/user/`); on macOS it is a launchd agent
+    (`dev.arcrift.claude-bridge`).
   - **Embeddings → local Ollama `nomic-embed-text`.** Anthropic has NO embeddings
     API, so this layer is not tied to Claude — Ollama is mandatory.
 - **At the start of work (MANDATORY):** call `recall_context` — the current

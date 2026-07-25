@@ -19,6 +19,11 @@ node_modules/
 __pycache__/
 *.pyc
 dokploy-mcp.env
+
+# Python build/install artifacts + local virtualenvs (machine-specific)
+*.egg-info/
+.venv/
+venv/
 /.claude/workflows/
 
 # Live wave KPI log (append-only, written by /daslab-cycle + /daslab-run)
