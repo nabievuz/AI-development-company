@@ -13,4 +13,12 @@ paths = [
   '''(^|/)\.claude/worktrees/''',
   '''(^|/)dist/''',
   '''(^|/)evals/[^/]+/[^/]+/fixtures/''',  # golden-eval inputs: synthetic fakes for secret-DETECTION tasks
+  # Redaction-scrubber health probes: these two files carry `_REDACTION_PROBES` —
+  # synthetic, secret-SHAPED fixtures (jwt.io sample JWT, hunter2@example.com, a
+  # fragment-assembled AKIA…) whose sole purpose is to verify the ADR-0012 scrubber
+  # redacts them. Never real secrets. Same category as the evals fixtures above.
+  # diagnostics.py's own no-committed-secrets scanner still covers these files, so a
+  # real literal credential added here would still be caught (defense-in-depth).
+  '''(^|/)scripts/ws_a_health_check\.py$''',  # ADR-0033 tool-edge redaction probes
+  '''(^|/)scripts/ws_d_health_check\.py$''',  # ADR-0036 lens redaction probes
 ]

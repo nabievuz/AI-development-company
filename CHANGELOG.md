@@ -4,6 +4,49 @@ All notable changes to DasLab are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and DasLab adheres to
 [Semantic Versioning](https://semver.org/) (see [ADR 0022](docs/adr/0022-semantic-versioning-policy.md)).
 
+## [3.0.0] — 2026-07-25
+
+DasLab **v3.0 "MUSTAQIL"** — the org-engine gains its interop and self-host reach:
+DasLab can call the ecosystem (WS-A), run headless (WS-B), execute on a governed loop
+substrate (WS-C), observe itself (WS-D), harden its tenant (WS-E), prove a project
+0→100 (WS-G), and expose a self-hosted control plane (WS-H) — plus the A2A OUTBOUND
+surface (WS-I) that makes DasLab a callable governed agent for another agent system.
+Every workstream closes its six AADL gates; the tempo go-live (WS-F) reaches GATE-4
+and rests at its Founder gate.
+
+> **Honest scope of "3.0" — everything autonomy-bearing ships OFF.** Same discipline
+> as v2.0: the A2A outbound endpoint (`a2a_outbound`), the HEARTBEAT tempo loop
+> (`heartbeat_enabled`), and every MUSTAQIL workstream flag ship **default-OFF**. With
+> the flags off, dispatch/board behavior is byte-identical to pre-merge (SC-005). No
+> endpoint is published and no autonomous tick runs until the Founder flips the flag —
+> a QONUN-5 Founder-only act. HEARTBEAT go-live remains evidence-gated on a ≥3-day
+> clean shadow window of counted waves (`scripts/check_heartbeat_readiness.py` →
+> NOT READY at 0/3; `scripts/heartbeat_go_no_go.py` → NO-GO); the FR-004 monthly credit
+> ceiling is declared and enforceable (Founder-set `active_plan: max_20x`, $200/mo).
+
+### Added
+- **A2A OUTBOUND (WS-I)** — governed callable-agent surface (ADR-0040, extends ADR-0036):
+  an external system submits a goal *proposal* (board intake), never a gate approval;
+  publishing the endpoint is a Founder act; in-tenant only (TN-1); reuses the ADR-0009
+  admission + ADR-0012 redaction edge. Flag `a2a_outbound` default-OFF.
+- **ADR-0042** — addendum to ADR-0027 recording the monthly credit ceiling as an outer
+  SI-5 cap (idle + alert), with the ceiling window defined so it cannot latch.
+- WS-F TEMPO go/no-go readiness artifact (`scripts/heartbeat_go_no_go.py`), a
+  three-state (PASS/FAIL/UNKNOWN) Founder-facing gate; the SI-5 sanctioned-pause alert
+  limb; and per-workstream maintenance health checks.
+
+### Fixed (budget/evidence rails — found by adversarial review)
+- Monthly credit ceiling compared a **lifetime** total against a monthly cap (would
+  latch the substrate at idle permanently); now month-to-date windowed and non-latching.
+- Per-day rail enforced the **$500 informational** org cap instead of the **$15 SI-5**
+  ceiling; now reads the authoritative `mustaqil.caps` block.
+- Go/no-go credit gate could return GO on a corrupted budget config (re-implemented an
+  owned predicate more weakly); now composes the owning checker.
+- Gate-approval violation scanner read agent-signed gates as human (deny-list →
+  human-actor allow-list, fail-closed).
+- `created_at` write seam admitted non-canonical timestamps that then vanished silently
+  from budgets and clean-day evidence; now rejected at the seam with a visible drop count.
+
 ## [2.0.0] — 2026-07-04
 
 DasLab **v2.0 "ORGANISM"** — the file-native org gains a durable, observable,

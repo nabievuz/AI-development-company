@@ -1,15 +1,15 @@
 {
   "attest_chain": {
     "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "self": "sha256:2d26f51d410b1cfe0f9eaef4e73ff032995ad39e88d79ce9b8573ee64ebc187a"
+    "self": "sha256:552ba7af854031e93a23630a26ead1bd202c061956701a806896153057830130"
   },
   "counts": {
     "counted_completions": 2,
     "dispatched": 2
   },
   "created_at": "2026-07-04T12:00:00Z",
-  "engine_version": "2.0.0",
-  "event_digest": "sha256:a2369a980c8451d9e49883502c62e646a68ce5935c465495a1cbc01d52abcb94",
+  "engine_version": "3.0.0",
+  "event_digest": "sha256:e51cf2e8d2597b364c8bb44665716383c79e59edb5e536ab5d3ea38aefef978f",
   "evidence": {
     "digest": "sha256:502972cc6d1ddea3ad01193532c487f2f175d828331f8af27c40b7e2826b8b7b",
     "dir": "metrics/evidence",
