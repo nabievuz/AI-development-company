@@ -6,12 +6,13 @@ the shared value types (:class:`SandboxScope`, :class:`Mount`, :class:`ScopedSec
 :class:`ResourceLimits`, :class:`ExecResult`, :class:`SandboxHandle`,
 :class:`SandboxEscapeError`).
 
-The LIVE backend (``DockerSandbox`` — E2B/OpenHands, real Docker/E2B host) is
-**out of scope here** — it is DAS-1566 (blocked on a live host, Q2). This
-package ships importable + unit-testable with **zero optional dependencies**
-installed: the sandbox simply does not exist as a live thing until an optional
-backend (``requirements-sandbox.txt``) is installed, exactly the WS-A pattern
-(``tools/mcp_bridges``).
+The LIVE backend (``DockerSandbox`` — a real per-task Docker/podman container)
+lives in ``docker_sandbox.py`` (DAS-1566). It is **absent-by-default**: the
+driver shells out to the ``docker`` CLI (no third-party dependency), so this
+package still ships importable + unit-testable with nothing installed —
+:func:`docker_available` reports whether an engine is actually reachable, and
+``LocalStubSandbox`` is used until one is, exactly the WS-A pattern
+(``tools/mcp_bridges``). The live isolation smoke on a real host is DAS-1566.
 
 Feature-flagged: behind ``ws_c_langgraph_loop`` (default OFF, see
 ``config/features.yaml``). With the flag OFF, :func:`flag_on` returns
@@ -37,8 +38,10 @@ from contract import (  # noqa: E402
 )
 from flag import flag_on  # noqa: E402
 from local_stub import LocalStubSandbox  # noqa: E402
+from docker_sandbox import DockerSandbox, docker_available  # noqa: E402
 
 __all__ = [
+    "DockerSandbox",
     "ExecResult",
     "LocalStubSandbox",
     "Mount",
@@ -48,5 +51,6 @@ __all__ = [
     "SandboxHandle",
     "SandboxScope",
     "ScopedSecret",
+    "docker_available",
     "flag_on",
 ]

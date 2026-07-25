@@ -4,9 +4,14 @@
 # LocalStubSandbox (tools/sandbox/local_stub.py) needs NONE of this and is
 # fully importable/testable with nothing installed.
 #
-# Install only where a real DockerSandbox (E2B / OpenHands, Docker-based per
-# Q2) is actually driven — that wiring is DAS-1566's job, not this file's:
-#   pip install -r tools/sandbox/requirements-sandbox.txt
+# DockerSandbox (tools/sandbox/docker_sandbox.py) drives the `docker` CLI via
+# subprocess, so its real dependency is the Docker ENGINE (a system package),
+# NOT a python package — which is why this file has no hard requirement.
+# Install the engine on the host that actually runs the sandbox, e.g.:
+#   sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+#   sudo usermod -aG docker "$USER"   # then re-login
+# Set DASLAB_DOCKER_BIN=podman to drive a rootless podman instead.
 #
-# docker>=7.0          # local Docker Engine driver
-# e2b>=0.17             # E2B hosted sandbox SDK (alternative/managed backend)
+# Optional python extras (NOT required — the driver uses the CLI):
+# docker>=7.0          # python Docker SDK
+# e2b>=0.17            # E2B hosted-sandbox SDK (alternative managed backend)
