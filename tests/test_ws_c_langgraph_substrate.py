@@ -386,9 +386,12 @@ def test_flag_off_substrate_is_inert(tmp_path: Path) -> None:
     assert not (tmp_path / "board" / "wave-ledger.jsonl").exists()
 
 
-def test_flag_default_is_off() -> None:
-    """The live config default is OFF (ADR-0019 / ADR-0035 LG-5)."""
-    assert lg.drive_enabled() is False
+def test_flag_on_after_activation_but_loop_stays_shadow() -> None:
+    """ACTIVATED 2026-07-26 (Founder-authorized): the flag is ON, but the loop
+    stays SHADOW — run_loop never drives on the flag alone (the real drive is a
+    board act, DAS-1568), so flag-on == flag-off dispatch (ADR-0035 LG-5 / SC-004a)."""
+    assert lg.drive_enabled() is True
+    assert lg.run_loop().drove is False
 
 
 def test_absent_langgraph_is_unavailable_not_broken() -> None:

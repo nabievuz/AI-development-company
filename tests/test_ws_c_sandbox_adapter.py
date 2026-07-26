@@ -362,16 +362,19 @@ def test_credential_exec_result_stdout_is_not_serialized_into_an_event_by_a_corr
 # ---------------------------------------------------------------------------
 
 
-def test_flag_off_by_default(monkeypatch):
-    monkeypatch.delenv("DASLAB_WS_C_FLAG", raising=False)
+def test_flag_off_via_env_override(monkeypatch):
+    # The committed config is ON after the 2026-07-26 activation; force the flag
+    # OFF explicitly to keep the inert-path coverage deterministic.
+    monkeypatch.setenv("DASLAB_WS_C_FLAG", "false")
     monkeypatch.delenv("DASLAB_FEATURES", raising=False)
     assert flag.flag_on() is False
 
 
-def test_flag_reads_tracked_features_file_as_off(monkeypatch):
+def test_flag_reads_tracked_features_file_as_on(monkeypatch):
+    # ACTIVATED 2026-07-26: the tracked config now carries ws_c_langgraph_loop ON.
     monkeypatch.delenv("DASLAB_WS_C_FLAG", raising=False)
     monkeypatch.setenv("DASLAB_FEATURES", str(ROOT / "config" / "features.yaml"))
-    assert flag.flag_on() is False
+    assert flag.flag_on() is True
 
 
 def test_flag_env_override_can_flip_on(monkeypatch):
@@ -385,7 +388,7 @@ def test_adapter_usable_regardless_of_flag_state(tmp_path, monkeypatch):
     """The adapter itself is a library — it stays importable/usable no matter
     the flag; the flag only gates the (separately flagged-off) WS-C loop that
     would call it. Flag OFF ⇒ no behavior of this module changes."""
-    monkeypatch.delenv("DASLAB_WS_C_FLAG", raising=False)
+    monkeypatch.setenv("DASLAB_WS_C_FLAG", "false")  # force OFF (config is ON after activation)
     assert flag.flag_on() is False
     backend = LocalStubSandbox()
     scope = _scope("task-f1", tmp_path)

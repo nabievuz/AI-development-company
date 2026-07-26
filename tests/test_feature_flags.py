@@ -57,6 +57,10 @@ def test_real_config_matches_live_flag_state():
     # edge (ADR-0040) is live, loopback-only (TN-1). Its publish is a Founder-only
     # double-lock (rbac a2a.publish + in-tenant target); intake writes only a
     # 'proposed' goal to board/goal-inbox, never an approval/routing.
+    # ws_c_langgraph_loop was ACTIVATED 2026-07-26 (Founder-authorized): the
+    # LangGraph/DGO-X substrate is live in SHADOW POSTURE — run_loop stays
+    # inert-drive (drove=False) on the flag alone; the real 0->100 drive is a
+    # separate board act (DAS-1568), so flag-on == flag-off dispatch.
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
@@ -66,6 +70,7 @@ def test_real_config_matches_live_flag_state():
     expected["ws_e_tenant_hardening"] = True
     expected["ws_g_proof"] = True
     expected["a2a_outbound"] = True
+    expected["ws_c_langgraph_loop"] = True
     assert ff.load() == expected
 
 
