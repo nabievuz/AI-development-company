@@ -43,12 +43,18 @@ def test_real_config_matches_live_flag_state():
     # Claude account OAuth profile (a live query returned a real reply); ADR-0009
     # admission (scripts/ws_b_admission.py) wraps every dispatch. Additive to
     # /daslab-cycle; flag-on == flag-off DECISIONS.
+    # ws_e_tenant_hardening was ACTIVATED 2026-07-26 (Founder-authorized): the
+    # internal-only boundary (Q10) is enforced end-to-end — RBAC founder-only
+    # double-lock, LiteLLM gateway boundary, TN-1 check_in_tenant, read-only
+    # in-tenant SIEM export. The nested ws_e_openweight_ejectpath stays OFF (an
+    # explicit-decision-only sub-flag, not in DEFAULTS).
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
     expected["ws_h_control_plane"] = True
     expected["ws_d_langfuse_lens"] = True
     expected["ws_b_agent_sdk_runner"] = True
+    expected["ws_e_tenant_hardening"] = True
     assert ff.load() == expected
 
 

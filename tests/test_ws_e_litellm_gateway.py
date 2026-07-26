@@ -188,6 +188,9 @@ def test_e3_ejectpath_external_target_blocked_even_with_subflag_on(monkeypatch):
 
 def test_e4_parent_flag_off_keeps_ejectpath_inert_even_if_subflag_env_on(monkeypatch):
     # Sub-flag override alone, WITHOUT the parent, must not open the eject-path.
+    # The committed parent flag is ON after activation, so force it OFF here to
+    # test the nesting invariant deterministically.
+    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
     monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "true")
     assert gw_flag.tenant_hardening_on() is False
     assert gw_flag.openweight_ejectpath_on() is False
@@ -222,7 +225,11 @@ def test_e5_ejectpath_call_shape_matches_claude_route_shape(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_f1_both_flags_off_by_default_and_import_is_inert():
+def test_f1_default_gateway_is_flag_independent(monkeypatch):
+    # Force both WS-E flags OFF explicitly — the committed config now carries
+    # ws_e_tenant_hardening ON after the 2026-07-26 Founder-authorized activation.
+    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
+    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "false")
     assert gw_flag.tenant_hardening_on() is False
     assert gw_flag.openweight_ejectpath_on() is False
     # Constructing/using the near-term default gateway does not depend on
@@ -231,7 +238,9 @@ def test_f1_both_flags_off_by_default_and_import_is_inert():
     assert gateway.resolve(gw.DEFAULT_CLAUDE_ROUTE_NAME).url == "https://api.anthropic.com"
 
 
-def test_f1b_real_features_yaml_declares_both_flags_off():
+def test_f1b_real_features_yaml_tenant_hardening_on_ejectpath_off():
+    # Post-activation (2026-07-26): the parent flag is ON, the eject-path sub-flag
+    # stays OFF (explicit-decision-only, nested under the parent).
     text = (ROOT / "config" / "features.yaml").read_text(encoding="utf-8")
-    assert "ws_e_tenant_hardening: false" in text
+    assert "ws_e_tenant_hardening: true" in text
     assert "ws_e_openweight_ejectpath: false" in text

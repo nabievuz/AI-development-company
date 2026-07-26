@@ -113,13 +113,18 @@ def _clean_env(monkeypatch):
 # --------------------------------------------------------------------------- #
 # SC-005 composite — ALL THREE WS-E surfaces together, both flags OFF
 # --------------------------------------------------------------------------- #
-def test_sc005_composite_all_wse_surfaces_are_byte_identical_with_flags_off(tmp_path):
-    """With both `ws_e_tenant_hardening` and `ws_e_openweight_ejectpath` OFF
-    (the repo default, and the only state at merge), RBAC enforcement, the
-    guardrail chain, and the model gateway invoked TOGETHER produce no
-    board/dispatch side effect and byte-identical passthrough — the WS-E
-    surface does not exist. Each surface's OWN inertness is already proven in
-    isolation by its DAS-1582/1583/1584 test file; this proves the composite."""
+def test_sc005_composite_all_wse_surfaces_are_byte_identical_with_flags_off(tmp_path, monkeypatch):
+    """With both `ws_e_tenant_hardening` and `ws_e_openweight_ejectpath` OFF, RBAC
+    enforcement, the guardrail chain, and the model gateway invoked TOGETHER
+    produce no board/dispatch side effect and byte-identical passthrough — the
+    WS-E surface does not exist. Each surface's OWN inertness is already proven in
+    isolation by its DAS-1582/1583/1584 test file; this proves the composite.
+    The committed config now carries ws_e_tenant_hardening ON (2026-07-26
+    activation), so both flags are forced OFF here to prove the inert composite
+    still holds regardless of the live config."""
+    monkeypatch.setenv("DASLAB_WS_E_FLAG", "false")
+    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
+    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "false")
     # 1. RBAC enforcement is inert — never even touches the ledger.
     ledger = tmp_path / ".rbac-audit.jsonl"
     closed, reason = rbac.enforce_gate_closed(
@@ -148,9 +153,10 @@ def test_sc005_composite_all_wse_surfaces_are_byte_identical_with_flags_off(tmp_
     assert not (tmp_path / ".events.jsonl").exists()
 
 
-def test_sc005_features_yaml_declares_both_wse_flags_off():
+def test_sc005_features_yaml_tenant_hardening_on_ejectpath_off():
+    # Post-activation (2026-07-26): parent flag ON, eject-path sub-flag OFF.
     text = (ROOT / "config" / "features.yaml").read_text(encoding="utf-8")
-    assert "ws_e_tenant_hardening: false" in text
+    assert "ws_e_tenant_hardening: true" in text
     assert "ws_e_openweight_ejectpath: false" in text
 
 
