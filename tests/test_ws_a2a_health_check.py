@@ -80,11 +80,14 @@ def test_in_tenant_drift_flags_an_external_endpoint(monkeypatch, tmp_path):
 # 2. Flag/publish-state drift
 # --------------------------------------------------------------------------- #
 
-def test_flag_publish_drift_ok_on_the_real_honest_baseline():
+def test_flag_publish_drift_ok_after_activation():
+    # a2a_outbound is ON after the 2026-07-26 Founder-authorized activation and
+    # agrees with the newest logged a2a_publish event (Founder, decision=allow) —
+    # no drift between the flag and the audited publish state.
     mod = _load_health_check()
     result = mod.check_flag_publish_drift()
     assert result["ok"] is True
-    assert "no drift" in result["detail"]
+    assert "agrees" in result["detail"]
 
 
 def test_flag_publish_drift_flags_flag_on_with_zero_events(monkeypatch, tmp_path):

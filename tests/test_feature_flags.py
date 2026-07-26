@@ -53,6 +53,10 @@ def test_real_config_matches_live_flag_state():
     # end-to-end evidence gate (ADR-0037) is live — it verifies committed delivery
     # scorecards against the attestation+evidence chain, honest-empty until a
     # delivery is claimed.
+    # a2a_outbound was ACTIVATED 2026-07-26 (Founder-authorized): the A2A governed
+    # edge (ADR-0040) is live, loopback-only (TN-1). Its publish is a Founder-only
+    # double-lock (rbac a2a.publish + in-tenant target); intake writes only a
+    # 'proposed' goal to board/goal-inbox, never an approval/routing.
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
@@ -61,6 +65,7 @@ def test_real_config_matches_live_flag_state():
     expected["ws_b_agent_sdk_runner"] = True
     expected["ws_e_tenant_hardening"] = True
     expected["ws_g_proof"] = True
+    expected["a2a_outbound"] = True
     assert ff.load() == expected
 
 

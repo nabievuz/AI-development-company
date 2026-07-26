@@ -672,7 +672,10 @@ def test_the_real_repo_is_honestly_no_go_today() -> None:
     # satisfied (was FAIL on the undeclared plan). The NO-GO verdict no longer
     # rests on this gate.
     assert gates["credit_ceiling"]["state"] == PASS
-    assert gates["event_log"]["state"] == UNKNOWN
+    # event_log is UNKNOWN on a pristine (absent) log, or PASS once a legitimate
+    # audit event exists (e.g. the a2a_publish record from the WS-A2A activation);
+    # either way it is not FAIL and the NO-GO verdict rests on the shadow_window gate.
+    assert gates["event_log"]["state"] in (PASS, UNKNOWN)
     assert report["is_a_recommendation"] is False
 
 

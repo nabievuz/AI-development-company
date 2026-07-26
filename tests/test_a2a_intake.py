@@ -570,10 +570,12 @@ def test_is_enabled_env_override(monkeypatch, paths):
     assert is_enabled(paths["on"]) is False
 
 
-def test_real_repo_features_yaml_has_a2a_outbound_off_by_default():
-    """Sanity check against the real config landed at DAS-1607 — this test does
-    NOT write anything, it only reads the tracked config."""
-    assert is_enabled(REPO_ROOT / "config" / "features.yaml") is False
+def test_real_repo_features_yaml_has_a2a_outbound_on_after_activation():
+    """ACTIVATED 2026-07-26 (Founder-authorized): the A2A governed edge is live
+    (loopback-only, TN-1) after the WS-G proof shipped. The flag reader still
+    defaults OFF fail-safe (see the DASLAB_A2A_FLAG / absent-file tests). This
+    test only reads the tracked config, never writes."""
+    assert is_enabled(REPO_ROOT / "config" / "features.yaml") is True
 
 
 def test_forbidden_fields_constant_matches_design_examples():
