@@ -38,11 +38,17 @@ def test_real_config_matches_live_flag_state():
     # Langfuse v3 is deployed in-tenant on the tenant box (docker compose, loopback
     # 127.0.0.1:3000, OTLP ingestion verified); the read-side exporter is live
     # behind the flag. TN-1 boundary holds (check_in_tenant OK).
+    # ws_b_agent_sdk_runner was ACTIVATED 2026-07-26 (Founder-authorized): the
+    # claude-agent-sdk is installed and the headless runner authenticates via the
+    # Claude account OAuth profile (a live query returned a real reply); ADR-0009
+    # admission (scripts/ws_b_admission.py) wraps every dispatch. Additive to
+    # /daslab-cycle; flag-on == flag-off DECISIONS.
     expected = dict.fromkeys(ff.DEFAULTS, False)
     expected["organism_emit"] = True
     expected["ws_a_tool_bridge"] = True
     expected["ws_h_control_plane"] = True
     expected["ws_d_langfuse_lens"] = True
+    expected["ws_b_agent_sdk_runner"] = True
     assert ff.load() == expected
 
 

@@ -334,12 +334,21 @@ def test_gated_admit_reaches_admit_logic_when_flag_on():
     assert decision.outcome is gw.AdmissionOutcome.ADMIT
 
 
-def test_gated_admit_defaults_to_repo_feature_flags_file():
-    """With no explicit flag_enabled, gated_admit reads config/features.yaml,
-    where ws_b_agent_sdk_runner defaults to false — so today's real repo
-    state is inert."""
-    decision = gw.gated_admit(ticket_id="DAS-9999", role="backend-eng-1", model="claude-sonnet-4-6")
+def test_gated_admit_inert_when_flag_disabled():
+    """With the flag explicitly disabled, gated_admit is inert (UNAVAILABLE).
+    The fail-closed inert path holds regardless of the committed config, which is
+    now ON after the 2026-07-26 Founder-authorized activation of the runner."""
+    decision = gw.gated_admit(
+        ticket_id="DAS-9999", role="backend-eng-1", model="claude-sonnet-4-6", flag_enabled=False
+    )
     assert decision.outcome is gw.AdmissionOutcome.UNAVAILABLE
+
+
+def test_gated_admit_no_longer_unavailable_when_flag_on():
+    """Post-activation the ambient config is ON: gated_admit is no longer inert —
+    it proceeds to the real admission decision (never UNAVAILABLE)."""
+    decision = gw.gated_admit(ticket_id="DAS-9999", role="backend-eng-1", model="claude-sonnet-4-6")
+    assert decision.outcome is not gw.AdmissionOutcome.UNAVAILABLE
 
 
 # ---------------------------------------------------------------------------

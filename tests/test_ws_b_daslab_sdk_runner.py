@@ -96,8 +96,12 @@ def test_dispatch_ticket_flag_off_is_inert_noop(tmp_path):
     assert spy.calls == []  # no model call reached
 
 
-def test_dispatch_ticket_flag_off_by_default(tmp_path):
-    # No flag_path ⇒ reads the repo config, where ws_b_agent_sdk_runner is OFF.
+def test_dispatch_ticket_inert_when_flag_off(tmp_path):
+    # Explicit flag-off features file ⇒ inert, no SDK/query call. The inert path
+    # holds regardless of the committed config, which is ON after the 2026-07-26
+    # Founder-authorized activation of the runner.
+    off = tmp_path / "features.yaml"
+    off.write_text("ws_b_agent_sdk_runner: false\n", encoding="utf-8")
     spy = _QuerySpy()
     res = rn.dispatch_ticket(
         ticket_id="DAS-9001",
@@ -106,6 +110,7 @@ def test_dispatch_ticket_flag_off_by_default(tmp_path):
         prompt="p",
         admit=_admit_yes,
         query_fn=spy,
+        flag_path=off,
     )
     assert res.status is RunnerStatus.INERT_FLAG_OFF
     assert spy.calls == []
