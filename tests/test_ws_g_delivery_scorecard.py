@@ -108,15 +108,19 @@ def test_flag_off_is_inert(tmp_path: Path) -> None:
     assert card.verdict == "incomplete"
 
 
-def test_default_reads_flag_and_is_inert_when_off(tmp_path: Path) -> None:
-    # ws_g_proof defaults OFF in config/features.yaml — no explicit override → inert.
-    card = ae.score_delivery(_complete_delivery(tmp_path / "d"))
-    assert card.inert is True
+def test_score_delivery_is_flag_gated(tmp_path: Path) -> None:
+    # Explicit flag-off ⇒ inert; flag-on ⇒ scores. The committed config is ON
+    # after the 2026-07-26 Founder-authorized activation, so both states are
+    # asserted with explicit overrides — the inert coverage survives activation.
+    d = _complete_delivery(tmp_path / "d")
+    assert ae.score_delivery(d, enabled=False).inert is True
+    assert ae.score_delivery(d, enabled=True).inert is False
 
 
-def test_features_yaml_keeps_ws_g_proof_off() -> None:
+def test_features_yaml_ws_g_proof_on_after_activation() -> None:
+    # ACTIVATED 2026-07-26 (Founder-authorized): the first WS-H proof slice shipped.
     import feature_flags
-    assert feature_flags.enabled("ws_g_proof") is False
+    assert feature_flags.enabled("ws_g_proof") is True
 
 
 # --------------------------------------------------------------------------- #

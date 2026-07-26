@@ -360,10 +360,12 @@ def test_sc003_flag_off_scorecard_and_gate_are_both_inert(tmp_path: Path, capsys
     assert not (tmp_path / "attest" / f"{att.run_id}.delivery.json").exists()
 
 
-def test_sc003_features_yaml_default_is_off() -> None:
+def test_sc003_features_yaml_ws_g_proof_on_after_activation() -> None:
+    # ACTIVATED 2026-07-26 (Founder-authorized): the first WS-H proof slice shipped,
+    # so the end-to-end evidence gate is live (honest-empty until a delivery claim).
     import feature_flags
 
-    assert feature_flags.enabled("ws_g_proof") is False
+    assert feature_flags.enabled("ws_g_proof") is True
 
 
 # =========================================================================== #
