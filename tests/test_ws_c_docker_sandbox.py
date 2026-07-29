@@ -49,6 +49,22 @@ def _scope(task_id: str, mount_root: Path, **kw) -> SandboxScope:
     return SandboxScope(task_id=task_id, workdir_mounts=[Mount(host_path=str(mount_root))], **kw)
 
 
+#: Marker a probe emits when the tool it needs is missing from the image.
+_NO_PROBE = "NOPROBE"
+
+
+def _guarded_probe(tool: str, script: str) -> str:
+    """Wrap an in-container probe so a MISSING tool cannot read as a clean result.
+
+    Every probe here is shaped ``<tool> ... && echo BAD || echo GOOD``, so absence
+    of the tool takes the GOOD branch and the assertion passes without testing
+    anything. Demonstrated: with ``--network none`` swapped for ``bridge`` in
+    ``docker_sandbox.py``, alpine:3.20 fails the egress test while an image with no
+    ``wget`` passes it. The guard turns that into a loud failure instead.
+    """
+    return f"command -v {tool} >/dev/null 2>&1 || {{ echo {_NO_PROBE}; exit 0; }}; {script}"
+
+
 # --------------------------------------------------------------------------- #
 # Contract parity — identical wall decisions to the stub
 # --------------------------------------------------------------------------- #
@@ -174,8 +190,11 @@ def test_live_host_etc_is_not_exposed(tmp_path):
     h = b.open(task_id="live-1b", scope=_scope("live-1b", tmp_path))
     try:
         user = getpass.getuser()
-        probe = f"grep -q {shlex.quote(user)} /etc/passwd && echo HOSTETC || echo isolated"
+        probe = _guarded_probe(
+            "grep", f"grep -q {shlex.quote(user)} /etc/passwd && echo HOSTETC || echo isolated"
+        )
         etc = b.exec_in_container(h, ["sh", "-c", probe])
+        assert _NO_PROBE not in etc.stdout, "image lacks grep — the /etc probe cannot run"
         assert "isolated" in etc.stdout, etc.stdout
     finally:
         b.close(h)
@@ -188,8 +207,17 @@ def test_live_network_is_off(tmp_path):
     try:
         # --network none: no route out even to a raw IP (avoids DNS).
         net = b.exec_in_container(
-            h, ["sh", "-c", "wget -T2 -qO- http://1.1.1.1 >/dev/null 2>&1 && echo REACH || echo NONET"]
+            h,
+            [
+                "sh",
+                "-c",
+                _guarded_probe(
+                    "wget",
+                    "wget -T2 -qO- http://1.1.1.1 >/dev/null 2>&1 && echo REACH || echo NONET",
+                ),
+            ],
         )
+        assert _NO_PROBE not in net.stdout, "image lacks wget — the egress probe cannot run"
         assert "NONET" in net.stdout, net.stdout
     finally:
         b.close(h)
