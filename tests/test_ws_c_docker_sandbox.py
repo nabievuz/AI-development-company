@@ -19,6 +19,7 @@ Drive podman instead:       DASLAB_DOCKER_BIN=podman pytest ...
 """
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -129,16 +130,22 @@ def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
         assert b.exec(h, ["write", "mine.txt", "owned"]).ok is True
         ls = b.exec_in_container(h, ["sh", "-c", "ls /work"])
         assert ls.ok is True and "mine.txt" in ls.stdout
-        # The host repo is NOT mounted — invisible from inside.
+        # The host repo is NOT mounted — invisible from inside. The repo root is
+        # resolved at runtime (LAW A: never written down), so the probe is about
+        # THIS checkout on whatever machine runs it.
         repo = b.exec_in_container(
-            h, ["sh", "-c", "test -e /home/daslab/projects/daslab && echo REACH || echo NONE"]
+            h, ["sh", "-c", f"test -e {shlex.quote(str(ROOT))} && echo REACH || echo NONE"]
         )
         assert "NONE" in repo.stdout, repo.stdout
-        # A real host file path resolves to nothing in the container.
-        passwd_host = b.exec_in_container(
-            h, ["sh", "-c", "grep -q daslab /etc/passwd && echo HOSTUSER || echo isolated"]
-        )
-        assert "isolated" in passwd_host.stdout, passwd_host.stdout
+        # A real host file OUTSIDE the mounted workdir resolves to nothing in the
+        # container. The sentinel is created at runtime under tmp_path's parent
+        # (only tmp_path itself is mounted), so the probe is host-unique and can
+        # never pass vacuously the way a hardcoded host username would.
+        sentinel = tmp_path.parent / f"daslab-host-sentinel-{tmp_path.name}"
+        sentinel.write_text("host-only", encoding="utf-8")
+        probe = f"test -e {shlex.quote(str(sentinel))} && echo HOSTREACH || echo isolated"
+        host_only = b.exec_in_container(h, ["sh", "-c", probe])
+        assert "isolated" in host_only.stdout, host_only.stdout
     finally:
         b.close(h)
 
