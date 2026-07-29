@@ -19,6 +19,8 @@ Drive podman instead:       DASLAB_DOCKER_BIN=podman pytest ...
 """
 from __future__ import annotations
 
+import getpass
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -130,22 +132,51 @@ def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
         assert b.exec(h, ["write", "mine.txt", "owned"]).ok is True
         ls = b.exec_in_container(h, ["sh", "-c", "ls /work"])
         assert ls.ok is True and "mine.txt" in ls.stdout
-        # The host repo is NOT mounted — invisible from inside. The repo root is
-        # resolved at runtime (LAW A: never written down), so the probe is about
-        # THIS checkout on whatever machine runs it.
+        # Both probes below cover ONE failure mode: an *identity* bind-mount, where
+        # a host path is reachable inside the container under that same path. The
+        # workdir binds at /work, so that is exactly what a regression in open()'s
+        # mount handling would look like. Neither probe can see a host tree exposed
+        # under a DIFFERENT in-container path — the /etc content probe in
+        # test_live_host_etc_is_not_exposed covers that leg, and a full-host mount
+        # at some third path is covered by neither (a known blind spot).
+        # The repo root is resolved at runtime (LAW A: never written down).
         repo = b.exec_in_container(
             h, ["sh", "-c", f"test -e {shlex.quote(str(ROOT))} && echo REACH || echo NONE"]
         )
         assert "NONE" in repo.stdout, repo.stdout
-        # A real host file OUTSIDE the mounted workdir resolves to nothing in the
-        # container. The sentinel is created at runtime under tmp_path's parent
-        # (only tmp_path itself is mounted), so the probe is host-unique and can
-        # never pass vacuously the way a hardcoded host username would.
+        # Same, for a host file outside the mounted workdir: the sentinel is created
+        # at runtime under tmp_path's parent, which is never granted as a mount.
         sentinel = tmp_path.parent / f"daslab-host-sentinel-{tmp_path.name}"
         sentinel.write_text("host-only", encoding="utf-8")
         probe = f"test -e {shlex.quote(str(sentinel))} && echo HOSTREACH || echo isolated"
         host_only = b.exec_in_container(h, ["sh", "-c", probe])
         assert "isolated" in host_only.stdout, host_only.stdout
+    finally:
+        b.close(h)
+
+
+@requires_docker
+@pytest.mark.skipif(
+    os.getuid() < 1000,
+    reason="system-account uid: a stock image carries this account name too, so the probe "
+    "could not tell host /etc from the image's own",
+)
+def test_live_host_etc_is_not_exposed(tmp_path):
+    # The CONTENT leg of the host wall, and the only probe here that sees a host
+    # tree mounted under a different in-container path: a stock image's /etc/passwd
+    # never carries a real host account, so finding this host's user inside means
+    # host /etc leaked in. Verified against a deliberately broken sandbox: with
+    # `-v /etc:/etc:ro` added to open()'s flags this probe reports the leak while
+    # the identity-path probes above still read clean.
+    # The account name is read at runtime — a hardcoded one passes vacuously on
+    # every machine that happens not to have that user.
+    b = DockerSandbox()
+    h = b.open(task_id="live-1b", scope=_scope("live-1b", tmp_path))
+    try:
+        user = getpass.getuser()
+        probe = f"grep -q {shlex.quote(user)} /etc/passwd && echo HOSTETC || echo isolated"
+        etc = b.exec_in_container(h, ["sh", "-c", probe])
+        assert "isolated" in etc.stdout, etc.stdout
     finally:
         b.close(h)
 
