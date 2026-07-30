@@ -174,3 +174,63 @@ def test_classify_tier_and_policy_decide_are_pure():
     assert chain.classify_tier(("EMAIL",)) == "B"
     assert chain.policy_decide("M") == "allow"
     assert chain.policy_decide("B") == "redact"
+
+
+# --------------------------------------------------------------------------- #
+# Flag resolution — the features file is the only source
+#
+# This chain fails OPEN: with the flag resolved OFF it passes text through
+# byte-identical, so redaction simply does not happen. An ambient value that
+# could resolve it OFF was therefore able to strip redaction from a live
+# guardrail without any caller asking for it. Two env doors existed —
+# DASLAB_WS_E_FLAG (shared with the RBAC surface) and a DASLAB_FEATURES
+# redirect that fully substituted for it — plus a Path.cwd() walk-up, so the
+# flag a caller saw also depended on where the process started.
+# --------------------------------------------------------------------------- #
+
+def _features(tmp_path: Path, on: bool) -> Path:
+    p = tmp_path / "features.yaml"
+    p.write_text(f"ws_e_tenant_hardening: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
+
+
+def test_no_env_value_can_flip_the_chain_flag(tmp_path, monkeypatch):
+    on = _features(tmp_path, on=True)
+    off_dir = tmp_path / "off"
+    off_dir.mkdir()
+    off = _features(off_dir, on=False)
+    for value in ("false", "0", "off", "", "true", "1"):
+        monkeypatch.setenv("DASLAB_WS_E_FLAG", value)
+        monkeypatch.setenv("DASLAB_FEATURES", str(off))
+        assert chain.flag_on(features_path=on) is True, value
+        monkeypatch.setenv("DASLAB_FEATURES", str(on))
+        assert chain.flag_on(features_path=off) is False, value
+
+
+def test_an_ambient_value_cannot_strip_redaction_from_a_live_chain(monkeypatch):
+    """The concrete harm, asserted end-to-end rather than at the flag read: the
+    committed config carries ws_e_tenant_hardening ON, so guard() with no
+    flag_override must redact — and no ambient value may turn that into an
+    inert passthrough that returns the PII intact."""
+    text = "Contact jane@example.com now"
+    for value in ("false", "0", "off"):
+        monkeypatch.setenv("DASLAB_WS_E_FLAG", value)
+        result = chain.guard(text, role="security-lead", allowlist=_GRANTED)
+        assert result.action != "inert-flag-off", value
+        assert "jane@example.com" not in (result.output_text or ""), value
+
+
+def test_chain_flag_file_is_anchored_to_the_package_not_the_cwd(tmp_path, monkeypatch):
+    assert chain.DEFAULT_FEATURES == ROOT / "config" / "features.yaml"
+    monkeypatch.chdir(tmp_path)
+    assert chain.flag_on() is chain.flag_on(features_path=ROOT / "config" / "features.yaml")
+
+
+def test_explicit_flag_override_still_wins_for_callers_that_pass_one(tmp_path):
+    """flag_override is the sanctioned caller-side seam (the golden-eval harness
+    and the SC-005 composite use it); removing the env doors must not touch it."""
+    text = "Contact jane@example.com now"
+    inert = chain.guard(text, role="security-lead", allowlist=_GRANTED, flag_override=False)
+    assert inert.output_text == text
+    live = chain.guard(text, role="security-lead", allowlist=_GRANTED, flag_override=True)
+    assert live.action != "inert-flag-off"
