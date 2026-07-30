@@ -75,11 +75,18 @@ flipping the feature flag alone grants nothing:
    this regenerates `board/.tool-allowlist.json` from the overlay SSOT (TB-2:
    no server-wide "any-role" value is ever emitted, only the explicit role list
    that declared the grant).
-2. **Flip the flag ON** — either globally via `config/features.yaml`
-   (`ws_a_tool_bridge: true`, a `security_sensitive` + `governance_or_policy`
-   change, never `approval: auto*`, QONUN-5), or scoped to one shell/session via
-   `DASLAB_WS_A_FLAG=on` (read first, overrides the file — useful for a
-   narrow shadow test without touching the tracked config).
+2. **Flip the flag ON** — via `config/features.yaml` (`ws_a_tool_bridge: true`,
+   a `security_sensitive` + `governance_or_policy` change, never
+   `approval: auto*`, QONUN-5). That file is the only source.
+
+   There is deliberately **no environment override**. `DASLAB_WS_A_FLAG` and a
+   `DASLAB_FEATURES` redirect used to be read ahead of the file, and the flag was
+   otherwise resolved by walking up from the process cwd — so an ambient value,
+   or merely running the engine from another directory, made the hook inert AND
+   wrote no audit line: the call was permitted with no record that governance had
+   been skipped. For a narrow shadow test, invoke the hook directly with
+   `--features <path>`; the deployed `PreToolUse` command passes no arguments, so
+   a shell cannot reach the flag.
 
 With the flag ON but a role absent from the compiled allow-list, every call from
 that role is still denied and audited (TB-2 deny-by-default holds regardless of
@@ -135,8 +142,8 @@ behaviour, and they can be applied together for defense in depth:
    untouched). With the entries gone, the tool servers do not exist from Claude
    Code's point of view — there is nothing to call, allow-list or deny.
    This is the **primary, structural rollback**: absence = the tool doesn't exist.
-2. **Flip the flag OFF** (already the default) — `ws_a_tool_bridge: false` in
-   `config/features.yaml`, or unset `DASLAB_WS_A_FLAG`. With the flag OFF the
+2. **Flip the flag OFF** — `ws_a_tool_bridge: false` in
+   `config/features.yaml` (the only source). With the flag OFF the
    `PreToolUse` hook is fully inert and passes every call through unchanged
    (TB-5) — this is a software-only kill switch that doesn't require touching
    `.mcp.json`, useful when the sidecar processes should stay registered but

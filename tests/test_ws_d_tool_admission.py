@@ -114,11 +114,23 @@ def test_mcp_json_wires_all_three_sidecars():
 # FR-005 — every decision is audited; audit-skip is denied
 # --------------------------------------------------------------------------- #
 
-def _run_hook(event: dict, env_extra: dict) -> subprocess.CompletedProcess:
+def _features(tmp_path: Path, on: bool) -> Path:
+    """A features file selecting the WS-A flag state (the hook honours no env var)."""
+    p = tmp_path / "features.yaml"
+    p.write_text(f"ws_a_tool_bridge: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
+
+
+def _run_hook(
+    event: dict, env_extra: dict, features: Path | None = None
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.update(env_extra)
+    cmd = [sys.executable, str(BRIDGES / "audit_external_tool.py")]
+    if features is not None:
+        cmd += ["--features", str(features)]
     return subprocess.run(
-        [sys.executable, str(BRIDGES / "audit_external_tool.py")],
+        cmd,
         input=json.dumps(event),
         capture_output=True,
         text=True,
@@ -135,20 +147,20 @@ def test_every_decision_is_audited_allow_and_deny(tmp_path):
     r_allow = _run_hook(
         {"tool_name": "mcp__promptfoo__run_eval", "agent": "qa-eng"},
         {
-            "DASLAB_WS_A_FLAG": "on",
             "DASLAB_TOOL_AUDIT_LOG": str(audit_log),
             "DASLAB_TOOL_ALLOWLIST": str(allow_file),
         },
+        features=_features(tmp_path, on=True),
     )
     assert json.loads(r_allow.stdout) == {}
 
     r_deny = _run_hook(
         {"tool_name": "mcp__presidio__analyze_text", "agent": "backend-eng-1"},
         {
-            "DASLAB_WS_A_FLAG": "on",
             "DASLAB_TOOL_AUDIT_LOG": str(audit_log),
             "DASLAB_TOOL_ALLOWLIST": str(allow_file),
         },
+        features=_features(tmp_path, on=True),
     )
     deny_out = json.loads(r_deny.stdout)
     assert deny_out["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -166,12 +178,17 @@ def test_audit_skip_denied_malformed_event(tmp_path):
     cannot dodge governance by sending an event the hook can't parse."""
     audit_log = tmp_path / "audit.jsonl"
     r = subprocess.run(
-        [sys.executable, str(BRIDGES / "audit_external_tool.py")],
+        [
+            sys.executable,
+            str(BRIDGES / "audit_external_tool.py"),
+            "--features",
+            str(_features(tmp_path, on=True)),
+        ],
         input="not json",
         capture_output=True,
         text=True,
         cwd=ROOT,
-        env={**os.environ, "DASLAB_WS_A_FLAG": "on", "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        env={**os.environ, "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
     )
     out = json.loads(r.stdout)
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -240,7 +257,8 @@ def test_flag_off_is_inert_for_all_three_tools(tmp_path):
     ):
         r = _run_hook(
             {"tool_name": tool, "agent": "backend-eng-1"},
-            {"DASLAB_WS_A_FLAG": "off", "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+            {"DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+            features=_features(tmp_path, on=False),
         )
         assert json.loads(r.stdout) == {}  # allow (inert passthrough)
     assert not audit_log.exists()  # no side effect while flag OFF
