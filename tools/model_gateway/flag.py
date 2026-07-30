@@ -22,47 +22,33 @@ OFF: an absent/unreadable file, or the key simply not present, resolves
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 TENANT_HARDENING_FLAG = "ws_e_tenant_hardening"
 OPENWEIGHT_EJECTPATH_FLAG = "ws_e_openweight_ejectpath"
 
-_ENV_OVERRIDE = {
-    TENANT_HARDENING_FLAG: "DASLAB_WS_E_TENANT_HARDENING_FLAG",
-    OPENWEIGHT_EJECTPATH_FLAG: "DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG",
-}
-_ENV_FEATURES = "DASLAB_FEATURES"
 _DEFAULT_REL = "config/features.yaml"
 _TRUE = {"1", "true", "on", "yes"}
 
-
-def _features_path() -> Path | None:
-    env = os.environ.get(_ENV_FEATURES)
-    if env:
-        return Path(env)
-    here = Path.cwd()
-    for base in (here, *here.parents):
-        cand = base / _DEFAULT_REL
-        if cand.is_file():
-            return cand
-    # Fall back to the path relative to this file (works even when the caller's
-    # cwd is outside the repo, e.g. a test run from a different directory).
-    repo_guess = Path(__file__).resolve().parents[2] / _DEFAULT_REL
-    return repo_guess if repo_guess.is_file() else None
+#: Anchored to THIS file's location (LAW A — resolved at runtime, never written
+#: down), not to the process cwd. Two env doors were removed here: a per-flag
+#: override (``DASLAB_WS_E_TENANT_HARDENING_FLAG`` /
+#: ``DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG``) and a ``DASLAB_FEATURES`` redirect,
+#: which was a complete substitute for it. Because the parent flag is committed
+#: ON, EITHER door alone was enough to open ``ws_e_openweight_ejectpath`` — the
+#: vLLM/SGLang eject-path that ADR-0038 Q9 explicitly DEFERS pending a Founder
+#: decision. An ambient value must not be able to open a deferred capability.
+DEFAULT_FEATURES = Path(__file__).resolve().parents[2] / _DEFAULT_REL
 
 
-def _read_flag(flag: str) -> bool:
-    """``True`` only if ``flag`` resolves truthy in ``config/features.yaml``.
+def _read_flag(flag: str, features_path: Path | None = None) -> bool:
+    """``True`` only if ``flag`` resolves truthy in the features file.
 
-    Order: an explicit env override wins outright (narrow shadow tests);
-    otherwise scan the tracked features file. Any failure resolves ``False``.
+    Resolution is ``features_path`` when given, else :data:`DEFAULT_FEATURES`.
+    No environment variable participates. Any failure resolves ``False``.
     """
-    override = os.environ.get(_ENV_OVERRIDE.get(flag, ""))
-    if override is not None:
-        return override.strip().lower() in _TRUE
-    path = _features_path()
-    if path is None or not path.is_file():
+    path = Path(features_path) if features_path is not None else DEFAULT_FEATURES
+    if not path.is_file():
         return False
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -74,17 +60,20 @@ def _read_flag(flag: str) -> bool:
     return False
 
 
-def tenant_hardening_on() -> bool:
+def tenant_hardening_on(features_path: Path | None = None) -> bool:
     """``True`` iff the shared WS-E workstream flag is ON."""
-    return _read_flag(TENANT_HARDENING_FLAG)
+    return _read_flag(TENANT_HARDENING_FLAG, features_path)
 
 
-def openweight_ejectpath_on() -> bool:
+def openweight_ejectpath_on(features_path: Path | None = None) -> bool:
     """``True`` iff the vLLM/SGLang eject-path sub-flag is ON.
 
     Nested gating (design §4.2): the eject-path is inert unless BOTH the
     parent ``ws_e_tenant_hardening`` AND this sub-flag are ON. This function
     enforces that nesting itself so no caller can accidentally open the
-    eject-path by flipping only the sub-flag.
+    eject-path by flipping only the sub-flag. Both reads take the SAME file, so
+    parent and sub-flag can never be sourced from different places.
     """
-    return tenant_hardening_on() and _read_flag(OPENWEIGHT_EJECTPATH_FLAG)
+    return _read_flag(TENANT_HARDENING_FLAG, features_path) and _read_flag(
+        OPENWEIGHT_EJECTPATH_FLAG, features_path
+    )

@@ -122,13 +122,17 @@ def test_sc005_composite_all_wse_surfaces_are_byte_identical_with_flags_off(tmp_
     The committed config now carries ws_e_tenant_hardening ON (2026-07-26
     activation), so both flags are forced OFF here to prove the inert composite
     still holds regardless of the live config."""
-    monkeypatch.setenv("DASLAB_WS_E_FLAG", "false")
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "false")
+    # None of these surfaces honours an environment variable any more: each is
+    # driven by an explicit features file, which is also what makes "forced OFF"
+    # true rather than merely asserted.
+    off = tmp_path / "features.yaml"
+    off.write_text(
+        "ws_e_tenant_hardening: false\nws_e_openweight_ejectpath: false\n", encoding="utf-8"
+    )
     # 1. RBAC enforcement is inert — never even touches the ledger.
     ledger = tmp_path / ".rbac-audit.jsonl"
     closed, reason = rbac.enforce_gate_closed(
-        "DAS-9999", "gate5_deployment", audit_path=ledger, features_path=tmp_path / "features.yaml"
+        "DAS-9999", "gate5_deployment", audit_path=ledger, features_path=off
     )
     assert closed is True
     assert "inert" in reason.lower()
@@ -144,10 +148,10 @@ def test_sc005_composite_all_wse_surfaces_are_byte_identical_with_flags_off(tmp_
     # 3. Gateway construction/routing is unaffected by either flag (plain library call).
     gateway = gw.default_gateway()
     assert gateway.resolve(gw.DEFAULT_CLAUDE_ROUTE_NAME).url == "https://api.anthropic.com"
-    assert gw_flag.tenant_hardening_on() is False
-    assert gw_flag.openweight_ejectpath_on() is False
+    assert gw_flag.tenant_hardening_on(off) is False
+    assert gw_flag.openweight_ejectpath_on(off) is False
     with pytest.raises(ep.EjectPathInactiveError):
-        ep.register_ejectpath(gateway)
+        ep.register_ejectpath(gateway, features_path=off)
 
     # No board event store / ticket file was created anywhere by any of the above.
     assert not (tmp_path / ".events.jsonl").exists()
