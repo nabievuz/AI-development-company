@@ -79,6 +79,13 @@ def _flag_on(tmp_path: Path, on: bool = True) -> Path:
     return p
 
 
+def _subdir(tmp_path: Path, name: str) -> Path:
+    """A fresh directory under *tmp_path*, so two features.yaml files can coexist."""
+    d = tmp_path / name
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _tenant_config(tmp_path: Path, audit_url: str) -> Path:
     """Write a tenant_boundary.yaml with the audit sink pointed at *audit_url*."""
     p = tmp_path / "tenant_boundary.yaml"
@@ -332,6 +339,58 @@ def test_rbac_enforcement_inert_when_flag_off(tmp_path):
     )
     assert closed is True
     assert "inert" in reason.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Flag resolution — the features file is the ONLY source (FR-008)
+# --------------------------------------------------------------------------- #
+def test_ambient_env_cannot_disable_enforcement_that_the_config_commits(tmp_path, monkeypatch):
+    """The regression this closes: ``is_enabled()`` used to read ``DASLAB_WS_E_FLAG``
+    BEFORE the features file, so an ambient ``=false`` silently turned enforcement
+    inert while ``config/features.yaml`` commits the posture ON (2026-07-26
+    activation). No environment value may decide this flag in either direction."""
+    features = _flag_on(tmp_path, on=True)
+    ledger = tmp_path / ".rbac-audit.jsonl"  # empty ⇒ an ENFORCED gate is not closed
+    for value in ("false", "0", "off", "no", "", "true", "1", "garbage"):
+        monkeypatch.setenv("DASLAB_WS_E_FLAG", value)
+        assert rbac.is_enabled(features) is True, value
+        closed, reason = rbac.enforce_gate_closed(
+            "DAS-1586", "gate5_deployment", audit_path=ledger, features_path=features
+        )
+        assert closed is False, value  # genuinely enforced…
+        assert "inert" not in reason.lower(), value  # …not silently skipped
+
+
+def test_explicit_features_path_outranks_any_environment_value(tmp_path, monkeypatch):
+    """The other half of the same defect: the env read happened before the argument,
+    so an explicitly passed ``features_path`` was unreachable."""
+    off = _flag_on(_subdir(tmp_path, "off_dir"), on=False)
+    on = _flag_on(_subdir(tmp_path, "on_dir"), on=True)
+    for value in ("true", "1", "false", "0"):
+        monkeypatch.setenv("DASLAB_WS_E_FLAG", value)
+        assert rbac.is_enabled(off) is False, value
+        assert rbac.is_enabled(on) is True, value
+
+
+def test_flag_reader_consults_no_environment_variable_at_all(tmp_path, monkeypatch):
+    """Guards the contract rather than one variable name: every DASLAB_* name the
+    engine reads is set hostile, and the verdict must still come from the file."""
+    features = _flag_on(tmp_path, on=True)
+    monkeypatch.setenv("DASLAB_ROOT", str(_subdir(tmp_path, "elsewhere")))
+    for name in ("DASLAB_WS_E_FLAG", "DASLAB_WS_E_TENANT_HARDENING_FLAG", "DASLAB_FEATURES"):
+        monkeypatch.setenv(name, "false")
+    assert rbac.is_enabled(features) is True
+    assert rbac.is_enabled(_flag_on(_subdir(tmp_path, "off_dir"), on=False)) is False
+
+
+def test_flag_stays_fail_safe_to_off_when_the_file_cannot_be_read(tmp_path, monkeypatch):
+    # Removing the override must not have weakened the fail-safe: an absent or
+    # flag-less file is still OFF, and no env value can substitute for it.
+    monkeypatch.setenv("DASLAB_WS_E_FLAG", "true")
+    assert rbac.is_enabled(tmp_path / "does-not-exist.yaml") is False
+    other = tmp_path / "unrelated.yaml"
+    other.write_text("some_other_flag: true\n", encoding="utf-8")
+    assert rbac.is_enabled(other) is False
 
 
 # --------------------------------------------------------------------------- #
