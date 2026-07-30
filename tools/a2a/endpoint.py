@@ -137,20 +137,17 @@ def _redaction_mod() -> Any:
 def is_enabled(features_path: Path | None = None) -> bool:
     """True iff ``a2a_outbound`` resolves truthy. Default OFF => endpoint inert.
 
-    An env override (``DASLAB_A2A_OUTBOUND_FLAG``) takes precedence for tests. Any
-    read problem (missing file, malformed line) falls back to OFF — a broken config
-    never turns the surface on.
+    Any read problem (missing file, malformed line) falls back to OFF — a broken
+    config never turns the surface on.
 
-    NOTE: ``scripts/rbac.is_enabled`` no longer shares this pattern. Its override was
-    removed because reading the env BEFORE the ``features_path`` argument let an
-    ambient value silently disable a security posture the committed config declares
-    ON, and made an explicit path unreachable. The same argument applies here and to
-    the other flag readers that still carry an override; changing this surface is a
-    separate decision, so only the cross-reference is corrected.
+    Resolved from the features file only: ``features_path`` when given, else
+    :data:`DEFAULT_FEATURES`. A ``DASLAB_A2A_OUTBOUND_FLAG`` override used to be
+    read ahead of the argument; it is gone because an ambient value could flip a
+    Founder-only publish decision, and because it made this reader disagree with
+    ADR-0019's canonical ``scripts/feature_flags.enabled`` — which honours no env
+    var — so ``scripts/ws_a2a_health_check.py`` (reading through the canonical
+    one) was structurally blind to the divergence.
     """
-    override = os.environ.get("DASLAB_A2A_OUTBOUND_FLAG")
-    if override is not None:
-        return override.strip().lower() in {"1", "true", "on", "yes"}
     path = Path(features_path) if features_path is not None else FEATURES_PATH
     if not path.is_file():
         return False
