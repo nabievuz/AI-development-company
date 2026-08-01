@@ -23,6 +23,7 @@ to end. (Runtime: [06-CLAUDE-CODE-MODE.md](06-CLAUDE-CODE-MODE.md).)
 | **[04-OPERATIONS.md](04-OPERATIONS.md)** | **Human operator runbook** — how to run a wave, monitor the board, and what stays a human approval. |
 | **[05-SCRIPTS.md](05-SCRIPTS.md)** | Inventory of every script in `scripts/` — purpose, when to run, run order. |
 | **[06-CLAUDE-CODE-MODE.md](06-CLAUDE-CODE-MODE.md)** | **How the runtime works** — the org runs on Claude Code subagents over the file-based `board/` (`/daslab-plan`, `/daslab-cycle`). **Operators start here.** |
+| **[BOSHLANGICH-QOLLANMA.md](BOSHLANGICH-QOLLANMA.md)** | **Boshlang'ich qo'llanma (o'zbekcha)** — zero-knowledge, step-by-step: install → bootstrap → doctor → diagnostics → the three orchestration commands. **Start here if this is your first time.** |
 | **[USER-GUIDE.md](USER-GUIDE.md)** | Operator user guide. |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | **System design** — components, the dispatch/wave model, worktree concurrency, enforcement gates, model allocation, and the ArcRift loop; includes architecture + wave diagrams. |
 | **[USAGE.md](USAGE.md)** | **End-to-end operator guide** — bootstrap, drive the org, plan a new project, and the four QONUN laws in practice. |

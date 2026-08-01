@@ -70,6 +70,10 @@ claude
 
 The Quickstart's `bootstrap` → `doctor` ordering is itself CI-enforced (`scripts/check_quickstart.py`).
 
+**First time here?** [`docs/BOSHLANGICH-QOLLANMA.md`](docs/BOSHLANGICH-QOLLANMA.md) walks the same
+path one step at a time, in Uzbek, assuming no prior knowledge — what each command prints, how to
+read it, and what to do when it fails.
+
 The engine's runtime is **stdlib-only except PyYAML** — a fresh clone boots with nothing installed.
 For the optional Python package surface (the reusable `daslab_sdk`, the control plane), see
 [Packages](#packages).
