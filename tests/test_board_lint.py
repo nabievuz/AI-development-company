@@ -467,6 +467,62 @@ def test_load_tickets_self_review_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# R14 — ticket ids are unique
+# ---------------------------------------------------------------------------
+
+
+def _write_ticket_as(tmp_path: Path, fm: dict[str, str], filename: str) -> Path:
+    """Like make_ticket_file but with the filename chosen by the caller — needed
+    here because a duplicate id is by definition two files the id cannot name."""
+    path = tmp_path / filename
+    lines = ["---"] + [f"{k}: {v}" for k, v in fm.items()]
+    lines += ["---", "", "## Description", "Fixture.", "", "## Log"]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_duplicate_ticket_id_fires(tmp_path: Path) -> None:
+    """Two files claiming one id is the merge-collision case: each branch
+    allocated the next free number off the same base, and git saw no conflict
+    because the filenames differ."""
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), "DAS-9100-first.md")
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), "DAS-9100-second.md")
+    errors = lint_tickets(load_tickets(tmp_path), _KNOWN_ROLES)
+    dupes = [e for e in errors if "duplicate ticket id" in e]
+    assert len(dupes) == 1, errors
+    # Both offenders must be named — reporting only one leaves the operator
+    # hunting for the other half of a collision they cannot see from the id.
+    assert "DAS-9100-first.md" in dupes[0] and "DAS-9100-second.md" in dupes[0]
+
+
+def test_distinct_ticket_ids_do_not_fire(tmp_path: Path) -> None:
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), "DAS-9100-a.md")
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9101"), "DAS-9101-b.md")
+    errors = lint_tickets(load_tickets(tmp_path), _KNOWN_ROLES)
+    assert not [e for e in errors if "duplicate ticket id" in e], errors
+
+
+def test_duplicate_id_is_fatal_not_a_warning(tmp_path: Path) -> None:
+    """R14 must land in the error list (non-zero exit), not the WARN channel —
+    a collision silently collapses `known_ids`, so R7 parent references resolve
+    to "exists" while pointing at an ambiguity."""
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), "DAS-9100-first.md")
+    _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), "DAS-9100-second.md")
+    errors = lint_tickets(load_tickets(tmp_path), _KNOWN_ROLES)
+    assert errors, "duplicate id produced no violation"
+
+
+def test_three_way_duplicate_reports_once_naming_all_three(tmp_path: Path) -> None:
+    for suffix in ("a", "b", "c"):
+        _write_ticket_as(tmp_path, make_ticket(id="DAS-9100"), f"DAS-9100-{suffix}.md")
+    errors = lint_tickets(load_tickets(tmp_path), _KNOWN_ROLES)
+    dupes = [e for e in errors if "duplicate ticket id" in e]
+    assert len(dupes) == 1, dupes
+    assert "3 files" in dupes[0]
+    assert all(f"DAS-9100-{s}.md" in dupes[0] for s in ("a", "b", "c"))
+
+
+# ---------------------------------------------------------------------------
 # load_known_roles — verify ROUTING.md parsing
 # ---------------------------------------------------------------------------
 

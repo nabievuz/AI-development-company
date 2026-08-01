@@ -313,10 +313,27 @@ def lint_tickets(
 
     # Build a set of known ticket IDs for parent-reference check (rule 7)
     known_ids: set[str] = set()
-    for _, fm in tickets:
+    id_owners: dict[str, list[str]] = {}
+    for path, fm in tickets:
         tid = fm.get("id", "").strip()
         if tid:
             known_ids.add(tid)
+            id_owners.setdefault(tid, []).append(path.name)
+
+    # R14 — ticket IDs are unique. Cross-ticket, so it runs before the per-ticket
+    # loop. Two files claiming one ID is silent corruption everywhere downstream:
+    # `known_ids` collapses them, so a `parent:`/`depends_on:` reference resolves
+    # to "exists" while pointing at an ambiguity, and any ID-keyed reader (routing,
+    # wave ledger, metrics) sees whichever file it happened to read last. The
+    # collision arrives by merge — two branches each allocate the next free number
+    # off the same base, and neither side conflicts because the filenames differ.
+    for tid, owners in sorted(id_owners.items()):
+        if len(owners) > 1:
+            errors.append(
+                f"{tid}: duplicate ticket id claimed by {len(owners)} files "
+                f"({', '.join(sorted(owners))}) — renumber all but the "
+                f"earliest-created one to the next free DAS-* id"
+            )
 
     for path, fm in tickets:
         ticket_label = fm.get("id") or path.name

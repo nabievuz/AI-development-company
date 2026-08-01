@@ -19,7 +19,7 @@
 
 | Script | Enforces |
 |---|---|
-| `board_lint.py` | Ticket schema, status enum, routing, no orphans, no self-review. |
+| `board_lint.py` | Ticket schema, status enum, routing, unique ids, no orphans, no self-review. |
 | `check_links.py` | No broken relative links in tracked Markdown. |
 | `check_agents_sync.py` | `.claude/agents/*` + `ROUTING.md` match the overlays + model table. |
 | `check_gates.py` | AADL gate order (no ticket actionable before its prior gate closes). |

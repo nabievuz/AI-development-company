@@ -1,5 +1,5 @@
 ---
-id: DAS-1644
+id: DAS-1645
 title: Admit image generation (OpenRouter) through the ADR-0033 edge, scoped to design roles
 status: in_review
 assignee: security-lead
