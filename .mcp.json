@@ -63,6 +63,17 @@
         "${workspaceFolder}/tools/mcp_bridges/presidio_tool_bridge.py"
       ],
       "env": {}
+    },
+    "imagegen": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/tools/mcp_bridges/imagegen_tool_bridge.py"
+      ],
+      "env": {
+        "DASLAB_EGRESS_PROFILE": "imagegen-openrouter",
+        "DASLAB_IMAGEGEN_OUT_ROOT": "projects"
+      }
     }
   }
 }
