@@ -217,15 +217,36 @@ def test_infra_mcp_carveout_is_env_overridable(monkeypatch):
     assert hook.decide("mcp__obsidian__x", "unknown", {})[0] == "deny"  # no longer exempt
 
 
-def _run_hook(event: dict, env_extra: dict) -> subprocess.CompletedProcess:
+def _features(tmp_path: Path, on: bool) -> Path:
+    """A features file selecting the WS-A flag state, passed via ``--features``.
+
+    The hook no longer honours any environment variable for its flag: an ambient
+    value (or merely running from another directory) used to make the governance
+    edge inert AND write no audit line — a zero-trace bypass. ``--features`` is
+    the sanctioned seam because the deployed hook command passes no arguments.
+    """
+    p = tmp_path / "features.yaml"
+    p.write_text(f"ws_a_tool_bridge: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
+
+
+def _run_hook(
+    event: dict,
+    env_extra: dict,
+    features: Path | None = None,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.update(env_extra)
+    cmd = [sys.executable, str(BRIDGES / "audit_external_tool.py")]
+    if features is not None:
+        cmd += ["--features", str(features)]
     return subprocess.run(
-        [sys.executable, str(BRIDGES / "audit_external_tool.py")],
+        cmd,
         input=json.dumps(event),
         capture_output=True,
         text=True,
-        cwd=ROOT,
+        cwd=str(cwd) if cwd is not None else ROOT,
         env=env,
     )
 
@@ -236,7 +257,8 @@ def test_c3_flag_off_is_inert(tmp_path):
     audit_log = tmp_path / "audit.jsonl"
     r = _run_hook(
         {"tool_name": "mcp__ArcRift__store_memory", "agent": "backend-em"},
-        {"DASLAB_WS_A_FLAG": "off", "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        {"DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        features=_features(tmp_path, on=False),
     )
     assert r.returncode == 0
     assert json.loads(r.stdout) == {}  # allow
@@ -251,10 +273,10 @@ def test_c3_flag_on_enforces_and_audits(tmp_path):
     r = _run_hook(
         {"tool_name": "mcp__playwright__browser_navigate", "agent": "backend-em"},
         {
-            "DASLAB_WS_A_FLAG": "on",
             "DASLAB_TOOL_AUDIT_LOG": str(audit_log),
             "DASLAB_TOOL_ALLOWLIST": str(empty_allow),
         },
+        features=_features(tmp_path, on=True),
     )
     out = json.loads(r.stdout)
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -507,7 +529,8 @@ def test_sc003_flag_off_no_op_even_for_a_would_be_denied_tool(tmp_path):
     audit_log = tmp_path / "audit.jsonl"
     r = _run_hook(
         {"tool_name": "mcp__playwright__browser_navigate", "agent": "engineer-ic"},
-        {"DASLAB_WS_A_FLAG": "off", "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        {"DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        features=_features(tmp_path, on=False),
     )
     assert r.returncode == 0
     assert json.loads(r.stdout) == {}  # allow — byte-identical to pre-merge
@@ -515,11 +538,97 @@ def test_sc003_flag_off_no_op_even_for_a_would_be_denied_tool(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# The ambient environment cannot silence the governance edge
+#
+# "Inert" here does not mean "does nothing": it means the allow-list stops
+# governing AND no audit line is written. So anything that could silently
+# resolve the flag OFF was a ZERO-TRACE bypass — the call is permitted and
+# nothing records that governance was skipped. All three below were reproduced
+# against the live hook before the fix (each returned `{}` with an empty audit
+# log where the control denied). Each asserts BOTH halves: the deny, and the
+# audit line — a test that only read the flag would miss the missing trace.
+# --------------------------------------------------------------------------- #
+
+def _denied_event() -> dict:
+    """A governed (non-infra) tool for a role the compiled allow-list refuses."""
+    return {"tool_name": "mcp__playwright__browser_navigate", "agent": "backend-eng-1"}
+
+
+def _assert_governed(r: subprocess.CompletedProcess, audit_log: Path, ctx: str) -> None:
+    assert r.returncode == 0, ctx
+    out = json.loads(r.stdout or "{}")
+    assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", f"{ctx}: {out}"
+    assert audit_log.exists(), f"{ctx}: denied but wrote no audit line"
+
+
+def test_ambient_flag_var_cannot_silence_the_hook(tmp_path):
+    audit_log = tmp_path / "audit.jsonl"
+    for value in ("off", "false", "0", "no"):
+        log = tmp_path / f"audit-{value}.jsonl"
+        r = _run_hook(
+            _denied_event(),
+            {"DASLAB_WS_A_FLAG": value, "DASLAB_TOOL_AUDIT_LOG": str(log)},
+            features=_features(tmp_path, on=True),
+        )
+        _assert_governed(r, log, f"DASLAB_WS_A_FLAG={value}")
+    assert not audit_log.exists()
+
+
+def test_ambient_features_redirect_cannot_silence_the_hook(tmp_path):
+    """A DASLAB_FEATURES redirect at an empty file was a complete substitute for
+    the flag override — same bypass, different variable."""
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("{}\n", encoding="utf-8")
+    audit_log = tmp_path / "audit.jsonl"
+    r = _run_hook(
+        _denied_event(),
+        {"DASLAB_FEATURES": str(empty), "DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        features=_features(tmp_path, on=True),
+    )
+    _assert_governed(r, audit_log, "DASLAB_FEATURES redirect")
+
+
+def test_running_from_another_directory_cannot_silence_the_hook(tmp_path):
+    """The lowest bar of the three: the flag used to be resolved by walking UP
+    from Path.cwd(), so running the engine from a directory with no
+    config/features.yaml above it disabled governance with NO env var set at all.
+    The features file is now anchored to the hook's own location (LAW A)."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    audit_log = tmp_path / "audit.jsonl"
+    r = _run_hook(
+        _denied_event(),
+        {"DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
+        cwd=elsewhere,  # no --features: the default must find the engine's own config
+    )
+    _assert_governed(r, audit_log, "foreign cwd")
+
+
+def test_default_features_is_anchored_to_the_hook_not_the_cwd():
+    assert hook.DEFAULT_FEATURES == ROOT / "config" / "features.yaml"
+    assert hook.DEFAULT_FEATURES.is_file()
+
+
+def test_features_option_is_the_only_seam_and_the_deployed_hook_passes_none():
+    """The sanctioned override is an argv option precisely because the deployed
+    PreToolUse command cannot carry one — so an operator's shell cannot reach the
+    flag. If that command ever grows a --features, this fails."""
+    assert hook._features_arg(["--features", "/x/f.yaml"]) == Path("/x/f.yaml")
+    assert hook._features_arg(["--features=/x/f.yaml"]) == Path("/x/f.yaml")
+    assert hook._features_arg([]) is None
+    settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    blob = json.dumps(settings)
+    assert "--features" not in blob
+    assert "DASLAB_WS_A_FLAG" not in blob
+    assert "DASLAB_FEATURES" not in blob
+
+
+# --------------------------------------------------------------------------- #
 # DAS-1549 — T1 (C3): hook-exec CRASH ⇒ fail-closed deny (exit 2), including
 # the red-team residual — flag-ON + an unparseable/malformed event
 # --------------------------------------------------------------------------- #
 
-def test_t1_internal_crash_denies_and_exits_2():
+def test_t1_internal_crash_denies_and_exits_2(tmp_path):
     """Mirrors the EXACT ``if __name__ == "__main__":`` fail-closed wrapper in
     audit_external_tool.py (an internal exception during ``main()`` is caught,
     emits a deny, and exits 2) by forcing ``decide()`` to raise, proving the
@@ -533,7 +642,7 @@ def test_t1_internal_crash_denies_and_exits_2():
         import audit_external_tool as hook
         hook.decide = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
-            raise SystemExit(hook.main())
+            raise SystemExit(hook.main(["--features", {str(_features(tmp_path, on=True))!r}]))
         except SystemExit:
             raise
         except Exception as exc:
@@ -542,7 +651,7 @@ def test_t1_internal_crash_denies_and_exits_2():
         """
     )
     env = dict(os.environ)
-    env.update({"DASLAB_WS_A_FLAG": "on", "DASLAB_TOOL_ALLOWLIST": "/tmp/does-not-exist.json"})
+    env.update({"DASLAB_TOOL_ALLOWLIST": "/tmp/does-not-exist.json"})
     r = subprocess.run(
         [sys.executable, "-c", script],
         input='{"tool_name":"mcp__x__t","agent":"a"}',
@@ -562,13 +671,17 @@ def test_t1_malformed_event_with_flag_on_must_deny_not_allow(tmp_path):
     env = dict(os.environ)
     env.update(
         {
-            "DASLAB_WS_A_FLAG": "on",
             "DASLAB_TOOL_AUDIT_LOG": str(audit_log),
             "DASLAB_TOOL_ALLOWLIST": str(empty_allow),
         }
     )
     r = subprocess.run(
-        [sys.executable, str(BRIDGES / "audit_external_tool.py")],
+        [
+            sys.executable,
+            str(BRIDGES / "audit_external_tool.py"),
+            "--features",
+            str(_features(tmp_path, on=True)),
+        ],
         input="{not valid json",  # malformed stdin event, flag ON
         capture_output=True,
         text=True,

@@ -59,27 +59,33 @@ def server_of(tool_name: str) -> str:
     return "__".join(parts[:2]) if len(parts) >= 2 else tool_name
 
 
-def _flag_on() -> bool:
-    """Read ``ws_a_tool_bridge`` from config/features.yaml. Fail-safe to OFF.
+#: The engine's own features file, anchored to THIS file's location (LAW A —
+#: resolved at runtime, never written down). Deliberately not the process cwd:
+#: this hook is spawned by the harness with whatever directory the operator
+#: happens to be in.
+DEFAULT_FEATURES = Path(__file__).resolve().parents[2] / "config" / "features.yaml"
 
-    OFF (the default, and the only state at merge) makes the whole hook inert —
-    it passes every call through unchanged (TB-5: flag-off == byte-identical).
-    An unreadable/absent features file also resolves OFF, so a broken config can
-    never silently turn governance ON.
+
+def _flag_on(features_path: Path | None = None) -> bool:
+    """Read ``ws_a_tool_bridge`` from the features file. Fail-safe to OFF.
+
+    OFF makes the whole hook inert — it passes every call through unchanged
+    (TB-5: flag-off == byte-identical). An unreadable/absent features file also
+    resolves OFF, so a broken config can never silently turn governance ON.
+
+    Resolution is ``features_path`` (the ``--features`` argv option, for tests)
+    else :data:`DEFAULT_FEATURES`. Three earlier sources were removed because for
+    THIS hook "inert" means the tool allow-list stops governing AND no audit line
+    is written — so anything that could silently resolve OFF was a zero-trace
+    bypass of the governance edge. All three were reproduced against the live
+    hook, each returning ``{}`` with an empty audit log where the control denied:
+    a ``DASLAB_WS_A_FLAG=off`` env override, a ``DASLAB_FEATURES`` redirect to an
+    empty file, and — needing no environment at all — a ``Path.cwd()`` walk-up
+    that simply found no ``config/features.yaml`` when the engine ran from
+    another directory.
     """
-    override = os.environ.get("DASLAB_WS_A_FLAG")
-    if override is not None:
-        return override.strip().lower() in {"1", "true", "on", "yes"}
-    path = os.environ.get("DASLAB_FEATURES")
-    p = Path(path) if path else None
-    if p is None:
-        here = Path.cwd()
-        for base in (here, *here.parents):
-            cand = base / "config" / "features.yaml"
-            if cand.is_file():
-                p = cand
-                break
-    if p is None or not p.is_file():
+    p = Path(features_path) if features_path is not None else DEFAULT_FEATURES
+    if not p.is_file():
         return False
     try:
         for line in p.read_text(encoding="utf-8").splitlines():
@@ -207,12 +213,28 @@ def _deny_unidentified(what: str) -> int:
     return 2
 
 
-def main() -> int:
-    # TB-5: with the WS-A flag OFF (the only state at merge) the hook is INERT —
-    # it passes every call through, so a wave is byte-identical to pre-merge and
-    # existing MCP servers (ArcRift/obsidian) are never denied. No audit line is
-    # written in the inert path (no side effect).
-    if not _flag_on():
+def _features_arg(argv: list[str]) -> Path | None:
+    """Parse ``--features <path>`` / ``--features=<path>``, else ``None``.
+
+    The only way to point the hook at a different features file. It is an argv
+    option rather than an env var on purpose: the deployed PreToolUse command in
+    ``.claude/settings.json`` passes no arguments, so an ambient environment
+    cannot reach the flag.
+    """
+    for i, arg in enumerate(argv):
+        if arg == "--features" and i + 1 < len(argv):
+            return Path(argv[i + 1])
+        if arg.startswith("--features="):
+            return Path(arg.split("=", 1)[1])
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    # TB-5: with the WS-A flag OFF the hook is INERT — it passes every call
+    # through, so a wave is byte-identical to pre-merge and existing MCP servers
+    # (ArcRift/obsidian) are never denied. No audit line is written in the inert
+    # path (no side effect).
+    if not _flag_on(_features_arg(sys.argv[1:] if argv is None else argv)):
         _emit_allow()
         return 0
 

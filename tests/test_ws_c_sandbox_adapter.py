@@ -362,34 +362,52 @@ def test_credential_exec_result_stdout_is_not_serialized_into_an_event_by_a_corr
 # ---------------------------------------------------------------------------
 
 
-def test_flag_off_via_env_override(monkeypatch):
-    # The committed config is ON after the 2026-07-26 activation; force the flag
-    # OFF explicitly to keep the inert-path coverage deterministic.
-    monkeypatch.setenv("DASLAB_WS_C_FLAG", "false")
-    monkeypatch.delenv("DASLAB_FEATURES", raising=False)
-    assert flag.flag_on() is False
+def _features(tmp_path: Path, on: bool) -> Path:
+    p = tmp_path / "features.yaml"
+    p.write_text(f"ws_c_langgraph_loop: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
 
 
-def test_flag_reads_tracked_features_file_as_on(monkeypatch):
-    # ACTIVATED 2026-07-26: the tracked config now carries ws_c_langgraph_loop ON.
-    monkeypatch.delenv("DASLAB_WS_C_FLAG", raising=False)
-    monkeypatch.setenv("DASLAB_FEATURES", str(ROOT / "config" / "features.yaml"))
-    assert flag.flag_on() is True
+def test_flag_off_via_an_explicit_features_file(tmp_path):
+    # The committed config is ON after the 2026-07-26 activation; the inert-path
+    # coverage stays deterministic by naming a file, not by setting a variable.
+    assert flag.flag_on(_features(tmp_path, on=False)) is False
 
 
-def test_flag_env_override_can_flip_on(monkeypatch):
-    monkeypatch.setenv("DASLAB_WS_C_FLAG", "true")
-    assert flag.flag_on() is True
-    monkeypatch.setenv("DASLAB_WS_C_FLAG", "false")
-    assert flag.flag_on() is False
+def test_flag_reads_tracked_features_file_as_on():
+    # ACTIVATED 2026-07-26: the tracked config carries ws_c_langgraph_loop ON.
+    assert flag.flag_on(ROOT / "config" / "features.yaml") is True
+    assert flag.flag_on() is True  # the default resolves to that same file
+
+
+def test_no_env_value_can_flip_the_flag(tmp_path, monkeypatch):
+    """This test used to assert the opposite — that DASLAB_WS_C_FLAG could flip
+    the flag outright. Both env doors are shut: the per-flag override and the
+    DASLAB_FEATURES redirect that was a complete substitute for it."""
+    on = _features(tmp_path, on=True)
+    off_dir = tmp_path / "off"
+    off_dir.mkdir()
+    off = _features(off_dir, on=False)
+    for value in ("true", "1", "on", "yes", "false", "0", ""):
+        monkeypatch.setenv("DASLAB_WS_C_FLAG", value)
+        monkeypatch.setenv("DASLAB_FEATURES", str(off))
+        assert flag.flag_on(on) is True, value
+        monkeypatch.setenv("DASLAB_FEATURES", str(on))
+        assert flag.flag_on(off) is False, value
+
+
+def test_flag_file_is_anchored_to_the_package_not_the_cwd(tmp_path, monkeypatch):
+    """The default used to be found by walking up from Path.cwd()."""
+    assert flag.DEFAULT_FEATURES == ROOT / "config" / "features.yaml"
+    monkeypatch.chdir(tmp_path)
+    assert flag.flag_on() is flag.flag_on(ROOT / "config" / "features.yaml")
 
 
 def test_adapter_usable_regardless_of_flag_state(tmp_path, monkeypatch):
     """The adapter itself is a library — it stays importable/usable no matter
     the flag; the flag only gates the (separately flagged-off) WS-C loop that
     would call it. Flag OFF ⇒ no behavior of this module changes."""
-    monkeypatch.setenv("DASLAB_WS_C_FLAG", "false")  # force OFF (config is ON after activation)
-    assert flag.flag_on() is False
+    assert flag.flag_on(_features(tmp_path, on=False)) is False  # config is ON after activation
     backend = LocalStubSandbox()
     scope = _scope("task-f1", tmp_path)
     handle = backend.open(task_id="task-f1", scope=scope)

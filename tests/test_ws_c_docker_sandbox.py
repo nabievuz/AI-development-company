@@ -19,6 +19,9 @@ Drive podman instead:       DASLAB_DOCKER_BIN=podman pytest ...
 """
 from __future__ import annotations
 
+import getpass
+import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -44,6 +47,22 @@ requires_docker = pytest.mark.skipif(
 
 def _scope(task_id: str, mount_root: Path, **kw) -> SandboxScope:
     return SandboxScope(task_id=task_id, workdir_mounts=[Mount(host_path=str(mount_root))], **kw)
+
+
+#: Marker a probe emits when the tool it needs is missing from the image.
+_NO_PROBE = "NOPROBE"
+
+
+def _guarded_probe(tool: str, script: str) -> str:
+    """Wrap an in-container probe so a MISSING tool cannot read as a clean result.
+
+    Every probe here is shaped ``<tool> ... && echo BAD || echo GOOD``, so absence
+    of the tool takes the GOOD branch and the assertion passes without testing
+    anything. Demonstrated: with ``--network none`` swapped for ``bridge`` in
+    ``docker_sandbox.py``, alpine:3.20 fails the egress test while an image with no
+    ``wget`` passes it. The guard turns that into a loud failure instead.
+    """
+    return f"command -v {tool} >/dev/null 2>&1 || {{ echo {_NO_PROBE}; exit 0; }}; {script}"
 
 
 # --------------------------------------------------------------------------- #
@@ -129,16 +148,54 @@ def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
         assert b.exec(h, ["write", "mine.txt", "owned"]).ok is True
         ls = b.exec_in_container(h, ["sh", "-c", "ls /work"])
         assert ls.ok is True and "mine.txt" in ls.stdout
-        # The host repo is NOT mounted — invisible from inside.
+        # Both probes below cover ONE failure mode: an *identity* bind-mount, where
+        # a host path is reachable inside the container under that same path. The
+        # workdir binds at /work, so that is exactly what a regression in open()'s
+        # mount handling would look like. Neither probe can see a host tree exposed
+        # under a DIFFERENT in-container path — the /etc content probe in
+        # test_live_host_etc_is_not_exposed covers that leg, and a full-host mount
+        # at some third path is covered by neither (a known blind spot).
+        # The repo root is resolved at runtime (LAW A: never written down).
         repo = b.exec_in_container(
-            h, ["sh", "-c", "test -e /home/daslab/projects/daslab && echo REACH || echo NONE"]
+            h, ["sh", "-c", f"test -e {shlex.quote(str(ROOT))} && echo REACH || echo NONE"]
         )
         assert "NONE" in repo.stdout, repo.stdout
-        # A real host file path resolves to nothing in the container.
-        passwd_host = b.exec_in_container(
-            h, ["sh", "-c", "grep -q daslab /etc/passwd && echo HOSTUSER || echo isolated"]
+        # Same, for a host file outside the mounted workdir: the sentinel is created
+        # at runtime under tmp_path's parent, which is never granted as a mount.
+        sentinel = tmp_path.parent / f"daslab-host-sentinel-{tmp_path.name}"
+        sentinel.write_text("host-only", encoding="utf-8")
+        probe = f"test -e {shlex.quote(str(sentinel))} && echo HOSTREACH || echo isolated"
+        host_only = b.exec_in_container(h, ["sh", "-c", probe])
+        assert "isolated" in host_only.stdout, host_only.stdout
+    finally:
+        b.close(h)
+
+
+@requires_docker
+@pytest.mark.skipif(
+    os.getuid() < 1000,
+    reason="system-account uid: a stock image carries this account name too, so the probe "
+    "could not tell host /etc from the image's own",
+)
+def test_live_host_etc_is_not_exposed(tmp_path):
+    # The CONTENT leg of the host wall, and the only probe here that sees a host
+    # tree mounted under a different in-container path: a stock image's /etc/passwd
+    # never carries a real host account, so finding this host's user inside means
+    # host /etc leaked in. Verified against a deliberately broken sandbox: with
+    # `-v /etc:/etc:ro` added to open()'s flags this probe reports the leak while
+    # the identity-path probes above still read clean.
+    # The account name is read at runtime — a hardcoded one passes vacuously on
+    # every machine that happens not to have that user.
+    b = DockerSandbox()
+    h = b.open(task_id="live-1b", scope=_scope("live-1b", tmp_path))
+    try:
+        user = getpass.getuser()
+        probe = _guarded_probe(
+            "grep", f"grep -q {shlex.quote(user)} /etc/passwd && echo HOSTETC || echo isolated"
         )
-        assert "isolated" in passwd_host.stdout, passwd_host.stdout
+        etc = b.exec_in_container(h, ["sh", "-c", probe])
+        assert _NO_PROBE not in etc.stdout, "image lacks grep — the /etc probe cannot run"
+        assert "isolated" in etc.stdout, etc.stdout
     finally:
         b.close(h)
 
@@ -150,8 +207,17 @@ def test_live_network_is_off(tmp_path):
     try:
         # --network none: no route out even to a raw IP (avoids DNS).
         net = b.exec_in_container(
-            h, ["sh", "-c", "wget -T2 -qO- http://1.1.1.1 >/dev/null 2>&1 && echo REACH || echo NONET"]
+            h,
+            [
+                "sh",
+                "-c",
+                _guarded_probe(
+                    "wget",
+                    "wget -T2 -qO- http://1.1.1.1 >/dev/null 2>&1 && echo REACH || echo NONET",
+                ),
+            ],
         )
+        assert _NO_PROBE not in net.stdout, "image lacks wget — the egress probe cannot run"
         assert "NONET" in net.stdout, net.stdout
     finally:
         b.close(h)

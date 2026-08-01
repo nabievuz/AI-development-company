@@ -68,6 +68,23 @@ def _clean_env(monkeypatch):
     yield
 
 
+def _features(tmp_path: Path, *, parent: bool, ejectpath: bool) -> Path:
+    """A features file selecting both WS-E flags.
+
+    The gateway honours no environment variable. A per-flag override and a
+    DASLAB_FEATURES redirect were both removed: because the parent flag is
+    committed ON, EITHER was enough on its own to open ws_e_openweight_ejectpath
+    — the vLLM/SGLang eject-path ADR-0038 Q9 defers pending a Founder decision.
+    """
+    p = tmp_path / "features.yaml"
+    p.write_text(
+        f"ws_e_tenant_hardening: {'true' if parent else 'false'}\n"
+        f"ws_e_openweight_ejectpath: {'true' if ejectpath else 'false'}\n",
+        encoding="utf-8",
+    )
+    return p
+
+
 # ---------------------------------------------------------------------------
 # G1-G5 — the in-tenant LiteLLM gateway (FR-004, TN-1)
 # ---------------------------------------------------------------------------
@@ -140,22 +157,28 @@ def test_g5_admission_outcome_vocabulary_propagates_unchanged():
 # ---------------------------------------------------------------------------
 
 
-def test_e1_ejectpath_inert_while_subflag_off():
+def test_e1_ejectpath_inert_while_subflag_off(tmp_path):
+    off = _features(tmp_path, parent=True, ejectpath=False)
     gateway = gw.default_gateway()
     with pytest.raises(ep.EjectPathInactiveError):
-        ep.register_ejectpath(gateway)
+        ep.register_ejectpath(gateway, features_path=off)
     # Never registered -> resolving it fails as "no such route", not TN-1.
     with pytest.raises(gw.GatewayConfigError, match="no such gateway route"):
         gateway.resolve(ep.EJECTPATH_ROUTE_NAME)
 
     with pytest.raises(ep.EjectPathInactiveError):
-        ep.mock_call(gateway, ticket_id="DAS-1583", role="backend-eng-1", model="local-llm")
+        ep.mock_call(
+            gateway,
+            ticket_id="DAS-1583",
+            role="backend-eng-1",
+            model="local-llm",
+            features_path=off,
+        )
 
 
-def test_e2_ejectpath_mock_call_succeeds_when_subflag_on(monkeypatch):
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "true")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "true")
-    assert gw_flag.openweight_ejectpath_on() is True
+def test_e2_ejectpath_mock_call_succeeds_when_subflag_on(tmp_path):
+    on = _features(tmp_path, parent=True, ejectpath=True)
+    assert gw_flag.openweight_ejectpath_on(on) is True
 
     gateway = gw.default_gateway()
     backend = ep.OpenWeightBackend(url=ep.DEFAULT_MOCK_URL, engine="vllm")
@@ -165,6 +188,7 @@ def test_e2_ejectpath_mock_call_succeeds_when_subflag_on(monkeypatch):
         role="backend-eng-1",
         model="local-open-weight-model",
         backend=backend,
+        features_path=on,
     )
     assert isinstance(call, gw.GatewayCall)
     assert call.route.name == ep.EJECTPATH_ROUTE_NAME
@@ -175,34 +199,31 @@ def test_e2_ejectpath_mock_call_succeeds_when_subflag_on(monkeypatch):
     assert gateway.resolve(ep.EJECTPATH_ROUTE_NAME).url == ep.DEFAULT_MOCK_URL
 
 
-def test_e3_ejectpath_external_target_blocked_even_with_subflag_on(monkeypatch):
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "true")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "true")
+def test_e3_ejectpath_external_target_blocked_even_with_subflag_on(tmp_path):
+    on = _features(tmp_path, parent=True, ejectpath=True)
 
     gateway = gw.default_gateway()
     external_backend = ep.OpenWeightBackend(url=EXTERNAL_EJECTPATH_URL, engine="sglang")
     with pytest.raises(gw.GatewayConfigError, match="TN-1 BLOCK"):
-        ep.register_ejectpath(gateway, backend=external_backend)
+        ep.register_ejectpath(gateway, backend=external_backend, features_path=on)
     assert ep.EJECTPATH_ROUTE_NAME not in {r.name for r in gateway.routes()}
 
 
-def test_e4_parent_flag_off_keeps_ejectpath_inert_even_if_subflag_env_on(monkeypatch):
-    # Sub-flag override alone, WITHOUT the parent, must not open the eject-path.
-    # The committed parent flag is ON after activation, so force it OFF here to
+def test_e4_parent_flag_off_keeps_ejectpath_inert_even_if_subflag_on(tmp_path):
+    # Sub-flag ON alone, WITHOUT the parent, must not open the eject-path. The
+    # committed parent flag is ON after activation, so it is forced OFF here to
     # test the nesting invariant deterministically.
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "true")
-    assert gw_flag.tenant_hardening_on() is False
-    assert gw_flag.openweight_ejectpath_on() is False
+    nested = _features(tmp_path, parent=False, ejectpath=True)
+    assert gw_flag.tenant_hardening_on(nested) is False
+    assert gw_flag.openweight_ejectpath_on(nested) is False
 
     gateway = gw.default_gateway()
     with pytest.raises(ep.EjectPathInactiveError):
-        ep.register_ejectpath(gateway)
+        ep.register_ejectpath(gateway, features_path=nested)
 
 
-def test_e5_ejectpath_call_shape_matches_claude_route_shape(monkeypatch):
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "true")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "true")
+def test_e5_ejectpath_call_shape_matches_claude_route_shape(tmp_path):
+    on = _features(tmp_path, parent=True, ejectpath=True)
 
     gateway = gw.default_gateway()
     claude_call = gateway.call(
@@ -212,7 +233,11 @@ def test_e5_ejectpath_call_shape_matches_claude_route_shape(monkeypatch):
         model="claude-sonnet-5",
     )
     eject_call = ep.mock_call(
-        gateway, ticket_id="DAS-1583", role="backend-eng-1", model="local-open-weight-model"
+        gateway,
+        ticket_id="DAS-1583",
+        role="backend-eng-1",
+        model="local-open-weight-model",
+        features_path=on,
     )
     # Same dataclass shape/fields — swapping routes is a config change, not a
     # caller-visible type change (design §4.2 item (c)).
@@ -225,13 +250,57 @@ def test_e5_ejectpath_call_shape_matches_claude_route_shape(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_f1_default_gateway_is_flag_independent(monkeypatch):
+def test_f2_no_ambient_value_can_open_the_deferred_ejectpath(tmp_path, monkeypatch):
+    """ADR-0038 Q9 DEFERS the eject-path pending a Founder decision, and the
+    parent flag is committed ON — so a single ambient value used to be enough to
+    open it on its own. Both doors are asserted shut, in both directions."""
+    off = _features(tmp_path, parent=True, ejectpath=False)
+    evil_dir = tmp_path / "evil"
+    evil_dir.mkdir()
+    evil = _features(evil_dir, parent=True, ejectpath=True)
+
+    for value in ("true", "1", "on", "yes"):
+        monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", value)
+        monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", value)
+        assert gw_flag.openweight_ejectpath_on(off) is False, value
+        with pytest.raises(ep.EjectPathInactiveError):
+            ep.register_ejectpath(gw.default_gateway(), features_path=off)
+
+    # A DASLAB_FEATURES redirect was a complete substitute for the flag override.
+    monkeypatch.setenv("DASLAB_FEATURES", str(evil))
+    assert gw_flag.openweight_ejectpath_on(off) is False
+    # …and it cannot suppress a genuinely ON file either.
+    monkeypatch.setenv("DASLAB_FEATURES", str(off))
+    assert gw_flag.openweight_ejectpath_on(evil) is True
+
+
+def test_f2_flag_file_is_anchored_to_the_package_not_the_cwd(tmp_path, monkeypatch):
+    """The default used to be found by walking up from Path.cwd(), so the flag a
+    caller saw depended on where the process happened to start."""
+    assert gw_flag.DEFAULT_FEATURES == ROOT / "config" / "features.yaml"
+    monkeypatch.chdir(tmp_path)
+    assert gw_flag.tenant_hardening_on() is gw_flag._read_flag(
+        gw_flag.TENANT_HARDENING_FLAG, ROOT / "config" / "features.yaml"
+    )
+
+
+def test_f2_parent_and_subflag_always_read_the_same_file(tmp_path):
+    """Nesting is only meaningful if both legs come from one source — otherwise a
+    mixed parent/sub read could satisfy the invariant from two different files."""
+    nested = _features(tmp_path, parent=False, ejectpath=True)
+    assert gw_flag.openweight_ejectpath_on(nested) is False
+    both_dir = tmp_path / "both"
+    both_dir.mkdir()
+    both = _features(both_dir, parent=True, ejectpath=True)
+    assert gw_flag.openweight_ejectpath_on(both) is True
+
+
+def test_f1_default_gateway_is_flag_independent(tmp_path):
     # Force both WS-E flags OFF explicitly — the committed config now carries
     # ws_e_tenant_hardening ON after the 2026-07-26 Founder-authorized activation.
-    monkeypatch.setenv("DASLAB_WS_E_TENANT_HARDENING_FLAG", "false")
-    monkeypatch.setenv("DASLAB_WS_E_OPENWEIGHT_EJECTPATH_FLAG", "false")
-    assert gw_flag.tenant_hardening_on() is False
-    assert gw_flag.openweight_ejectpath_on() is False
+    off = _features(tmp_path, parent=False, ejectpath=False)
+    assert gw_flag.tenant_hardening_on(off) is False
+    assert gw_flag.openweight_ejectpath_on(off) is False
     # Constructing/using the near-term default gateway does not depend on
     # either flag — it is a plain library call (mirrors ws_b_admission.py).
     gateway = gw.default_gateway()

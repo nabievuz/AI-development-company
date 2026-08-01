@@ -51,8 +51,13 @@ a2a_outbound: false          # A2A outbound surface (ADR-0040, extends ADR-0036 
 ```
 
 `tools/a2a/endpoint.py:is_enabled()` reads this key with a fail-safe-to-OFF
-line-scan (mirrors `scripts/rbac.is_enabled`): a missing file, a malformed
-line, or an absent env override all resolve to OFF, never to ON. With the flag
+line-scan (mirrors `scripts/rbac.is_enabled`): a missing file or a malformed
+line resolves to OFF, never to ON. The file is the only source — a
+`DASLAB_A2A_OUTBOUND_FLAG` override used to be read ahead of it and was removed,
+since publishing this edge is a Founder-only double-lock (QONUN-5) that no
+ambient value may decide, and since the override let this reader disagree with
+the canonical `scripts/feature_flags.enabled` that
+`scripts/ws_a2a_health_check.py` reads through. With the flag
 OFF, `handle_call`'s very first check returns `CallOutcome.UNAVAILABLE` before
 any TN-1 check, any admission call, or any audit-event write — "the endpoint
 does not exist; no call reaches it, no event is emitted" (SC-005). No

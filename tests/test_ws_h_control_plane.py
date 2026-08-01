@@ -41,13 +41,25 @@ def _load_rbac():
     return mod
 
 
-def _load_app():
+def _features(tmp_path: Path, on: bool) -> Path:
+    p = tmp_path / "features.yaml"
+    p.write_text(f"ws_h_control_plane: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
+
+
+def _load_app(features_path: Path | None = None):
+    """Load a fresh app module. ``features_path`` selects the flag state — the
+    module honours no environment variable for it (an ambient value used to be
+    able to OPEN a config-OFF surface). Each call builds its own module object
+    and never registers it in sys.modules, so the setting cannot leak."""
     pytest.importorskip("fastapi")
     spec = importlib.util.spec_from_file_location(
         "cp_app", ROOT / "tools" / "control_plane" / "app.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    if features_path is not None:
+        mod.FEATURES_PATH = Path(features_path)
     return mod
 
 
@@ -91,7 +103,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
     monkeypatch.setenv("DASLAB_CP_RBAC", str(rbac))
     monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
-    monkeypatch.setenv("DASLAB_WS_H_FLAG", "1")
+    _features(tmp_path, on=True)  # the flag comes from a file, not the env
     return tmp_path
 
 
@@ -124,9 +136,9 @@ def test_founder_only_gate_approve_and_run_trigger_by_construction():
 # ---------------------------------------------------------------------------
 def test_flag_off_is_inert_and_degrades_to_static(tmp_path, monkeypatch):
     monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
-    monkeypatch.setenv("DASLAB_WS_H_FLAG", "0")
     monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
-    client = _client(_load_app())
+    off = _features(tmp_path, on=False)  # committed config is ON after activation
+    client = _client(_load_app(off))
     # /api/* do not exist (inert), not even a 503/401 — the control surface is absent.
     assert client.get("/api/board").status_code == 404
     assert client.post("/api/goals", json={"title": "x y z"}).status_code == 404
@@ -144,7 +156,6 @@ def test_flag_off_is_inert_and_degrades_to_static(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 def test_unconfigured_token_map_is_503_and_shell_is_data_free(tmp_path, monkeypatch):
     monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
-    monkeypatch.setenv("DASLAB_WS_H_FLAG", "1")
     monkeypatch.delenv("DASLAB_CP_RBAC", raising=False)
     client = _client(_load_app())
     assert client.get("/api/board").status_code == 503
@@ -420,9 +431,9 @@ def test_das1601_gate5_open_stays_machine_blocked_after_trigger(env, monkeypatch
 # ---------------------------------------------------------------------------
 def test_das1601_flag_off_new_endpoints_are_inert(tmp_path, monkeypatch):
     monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
-    monkeypatch.setenv("DASLAB_WS_H_FLAG", "0")
     monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
-    client = _client(_load_app())
+    off = _features(tmp_path, on=False)
+    client = _client(_load_app(off))
     assert client.post("/api/runs", json={"target": "x"}).status_code == 404
     assert client.post("/api/gates/DAS-9/approve", json={"category": _GATE5}).status_code == 404
     assert client.post("/api/gates/DAS-9/deny", json={"category": _GATE5}).status_code == 404
@@ -446,7 +457,6 @@ def test_sc001_every_data_and_action_endpoint_fail_closed_503_when_unconfigured(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
-    monkeypatch.setenv("DASLAB_WS_H_FLAG", "1")
     monkeypatch.delenv("DASLAB_CP_RBAC", raising=False)
     monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
     client = _client(_load_app())
@@ -579,3 +589,49 @@ def test_sc005_ruff_module_invocation_also_clean_when_available():
         [sys.executable, "-m", "ruff", "check", *targets], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Flag resolution — config/features.yaml is the only source
+#
+# The direction that matters here is OPENING. With ws_h_control_plane OFF the
+# surface is a 404; an ambient DASLAB_WS_H_FLAG=1 used to turn it into a live
+# one serving real board data with a reachable gate-approve endpoint. The
+# deployed unit carries no such variable, so the override could only ever widen
+# the surface, never narrow it.
+# --------------------------------------------------------------------------- #
+
+def test_no_env_value_can_open_a_config_off_control_plane(tmp_path, monkeypatch):
+    monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
+    monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    off = _features(tmp_path, on=False)
+    for value in ("1", "true", "on", "yes"):
+        monkeypatch.setenv("DASLAB_WS_H_FLAG", value)
+        mod = _load_app(off)
+        assert mod.flag_on() is False, value
+        client = _client(mod)
+        assert client.get("/api/board").status_code == 404, value
+        assert client.post("/api/gates/GATE-1/approve", json={}).status_code == 404, value
+
+
+def test_no_env_value_can_close_a_config_on_control_plane(tmp_path, monkeypatch):
+    monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
+    monkeypatch.setenv("DASLAB_CP_AUDIT_LOG", str(tmp_path / "audit.jsonl"))
+    on = _features(tmp_path, on=True)
+    for value in ("0", "false", "off", ""):
+        monkeypatch.setenv("DASLAB_WS_H_FLAG", value)
+        assert _load_app(on).flag_on() is True, value
+
+
+def test_flag_reads_through_the_canonical_feature_flags_reader(tmp_path, monkeypatch):
+    """ADR-0019's reader is the SSOT; a side-band override would let the surface
+    disagree with what every other consumer believes the flag says."""
+    monkeypatch.setenv("DASLAB_ROOT", str(tmp_path))
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import feature_flags  # noqa: PLC0415
+
+    mod = _load_app()
+    assert mod.FEATURES_PATH is None  # default: the canonical reader's own default
+    for value in ("1", "0"):
+        monkeypatch.setenv("DASLAB_WS_H_FLAG", value)
+        assert mod.flag_on() is feature_flags.enabled("ws_h_control_plane"), value

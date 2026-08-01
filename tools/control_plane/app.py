@@ -41,7 +41,8 @@ Vault token map (``$DASLAB_CP_RBAC``) — a per-token **principal**, never a ran
 Env: DASLAB_ROOT (tenant data root, default cwd), DASLAB_CP_RBAC (vault token map,
 required), DASLAB_CP_RBAC_CONFIG (optional override of the SSOT grant matrix path;
 defaults to the engine ``config/rbac.yaml``), DASLAB_CP_AUDIT_LOG (default
-<root>/board/.control-plane-audit.jsonl), DASLAB_WS_H_FLAG (optional flag override).
+<root>/board/.control-plane-audit.jsonl). The ws_h_control_plane flag itself is
+read from config/features.yaml only — there is no environment override.
 Run: ``python3 -m uvicorn app:app --host 127.0.0.1 --port 8899`` (loopback by default).
 """
 from __future__ import annotations
@@ -102,13 +103,23 @@ def repo_root() -> Path:
     return Path(os.environ.get("DASLAB_ROOT", ".")).resolve()
 
 
+#: Optional features-file override, set by tests on the loaded module. Not an
+#: environment variable on purpose: a ``DASLAB_WS_H_FLAG`` override used to
+#: precede the config, and the direction that matters is OPENING — with the
+#: config OFF, an ambient "1" turned a 404 surface into a live one serving real
+#: board data and a reachable gate-approve endpoint. The deployed unit has no
+#: such variable in its environment, so this only ever widened the surface.
+FEATURES_PATH: Path | None = None
+
+
 def flag_on() -> bool:
     """True iff the WS-H control plane is enabled (ADR-0019). Default OFF ⇒ inert surface.
-    ``DASLAB_WS_H_FLAG`` overrides the config for tests/tenant probes."""
-    override = os.environ.get("DASLAB_WS_H_FLAG")
-    if override is not None:
-        return override.strip().lower() in {"1", "true", "on", "yes"}
-    return bool(_flags.enabled(FLAG))
+
+    Resolved from ``config/features.yaml`` through ADR-0019's canonical reader —
+    :data:`FEATURES_PATH` when a caller has set it, else that reader's default.
+    No environment variable participates.
+    """
+    return bool(_flags.enabled(FLAG, FEATURES_PATH))
 
 
 def audit_path() -> Path:

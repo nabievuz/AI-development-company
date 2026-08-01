@@ -137,12 +137,28 @@ def _redaction_mod() -> Any:
 # ---------------------------------------------------------------------------
 # Feature flag (FR-008). Fail-safe to OFF — a broken/absent config never turns
 # enforcement ON. Line-scan (no YAML dependency), matching tools/sandbox/flag.py.
+#
+# The config file is the ONLY source. There used to be a ``DASLAB_WS_E_FLAG``
+# environment override here, read BEFORE the ``features_path`` argument, and it
+# was wrong in both directions: an ambient ``=false`` silently disabled a security
+# posture that ``config/features.yaml`` commits as ON (activated 2026-07-26), and
+# an explicitly passed ``features_path`` could not be reached at all. FR-008 places
+# this flag in ``config/features.yaml``, and ADR-0019's canonical reader
+# (``scripts/feature_flags.enabled``) honours no env var either — so neither the
+# spec nor the SSOT reader ever sanctioned the override. Its docstring called it a
+# test affordance; no test needs it (the two that set it also pass an explicit
+# path, or rely on the committed value).
+#
+# The line-scan stays rather than delegating to ``feature_flags.enabled``: that
+# reader falls back to all-OFF DEFAULTS when PyYAML is absent, which for a security
+# flag would just be a different silent weakening.
 # ---------------------------------------------------------------------------
 def is_enabled(features_path: Path | None = None) -> bool:
-    """True iff ``ws_e_tenant_hardening`` resolves truthy. Default OFF ⇒ enforcement inert."""
-    override = os.environ.get("DASLAB_WS_E_FLAG")
-    if override is not None:
-        return override.strip().lower() in {"1", "true", "on", "yes"}
+    """True iff ``ws_e_tenant_hardening`` resolves truthy. Default OFF ⇒ enforcement inert.
+
+    Resolved from the features file only: ``features_path`` when given, else
+    :data:`DEFAULT_FEATURES`. No environment variable can flip it.
+    """
     path = Path(features_path) if features_path is not None else DEFAULT_FEATURES
     if not path.is_file():
         return False

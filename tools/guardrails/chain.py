@@ -35,7 +35,6 @@ the allow-list evaluator, so a wave/dispatch with the flag off is unaffected
 from __future__ import annotations
 
 import importlib.util
-import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -93,26 +92,28 @@ def _audit_hook():
 # WS-E sub-flag can reuse it without a second implementation).
 # --------------------------------------------------------------------------- #
 
-def flag_on(name: str = _FLAG_NAME) -> bool:
-    """Read a boolean feature flag from ``config/features.yaml``. Fails safe
-    to OFF: an unreadable/absent file, or an env override that is not a truthy
-    token, always resolves OFF — a broken config can never silently turn a
-    guardrail chain on (or, symmetrically, silently believe it is protected
-    when it is not; callers must not treat "on" as a security boundary on its
-    own — the ADR-0033 edge + allow-list is the actual boundary)."""
-    override = os.environ.get("DASLAB_WS_E_FLAG")
-    if override is not None:
-        return override.strip().lower() in {"1", "true", "on", "yes"}
-    path = os.environ.get("DASLAB_FEATURES")
-    p = Path(path) if path else None
-    if p is None:
-        here = Path.cwd()
-        for base in (here, *here.parents):
-            candidate = base / "config" / "features.yaml"
-            if candidate.is_file():
-                p = candidate
-                break
-    if p is None or not p.is_file():
+#: Anchored to THIS file's location (LAW A), matching how ``_BRIDGES_DIR`` above
+#: is resolved. The env doors that used to precede it — ``DASLAB_WS_E_FLAG``
+#: (shared with the RBAC surface) and a ``DASLAB_FEATURES`` redirect — are gone,
+#: along with a ``Path.cwd()`` walk-up: with the flag resolved OFF this chain
+#: fails OPEN, passing text through unredacted, so an ambient value could strip
+#: redaction from a live guardrail without any caller asking for it.
+DEFAULT_FEATURES = _HERE.parent.parent / "config" / "features.yaml"
+
+
+def flag_on(name: str = _FLAG_NAME, features_path: Path | None = None) -> bool:
+    """Read a boolean feature flag from the features file. Fails safe to OFF:
+    an unreadable/absent file always resolves OFF — a broken config can never
+    silently turn a guardrail chain on (or, symmetrically, silently believe it
+    is protected when it is not; callers must not treat "on" as a security
+    boundary on its own — the ADR-0033 edge + allow-list is the actual
+    boundary).
+
+    Resolution is ``features_path`` when given, else :data:`DEFAULT_FEATURES`.
+    No environment variable participates.
+    """
+    p = Path(features_path) if features_path is not None else DEFAULT_FEATURES
+    if not p.is_file():
         return False
     try:
         for line in p.read_text(encoding="utf-8").splitlines():

@@ -563,17 +563,36 @@ def test_is_enabled_reads_the_features_file(paths):
     assert is_enabled(paths["off"]) is False
 
 
-def test_is_enabled_env_override(monkeypatch, paths):
-    monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", "true")
-    assert is_enabled(paths["off"]) is True
-    monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", "false")
-    assert is_enabled(paths["on"]) is False
+def test_no_env_value_can_flip_the_flag(monkeypatch, paths):
+    """This test used to assert the opposite — that DASLAB_A2A_OUTBOUND_FLAG
+    outranked the file. Publishing the A2A edge is a Founder-only double-lock
+    (QONUN-5), so an ambient value must not decide it; and the override made this
+    reader disagree with ADR-0019's canonical feature_flags.enabled, which
+    scripts/ws_a2a_health_check.py reads through — so the divergence was
+    invisible to the health check."""
+    for value in ("true", "1", "on", "yes", "false", "0", "off", ""):
+        monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", value)
+        assert is_enabled(paths["off"]) is False, value
+        assert is_enabled(paths["on"]) is True, value
+
+
+def test_flag_reader_agrees_with_the_canonical_feature_flags_reader(monkeypatch):
+    """The health check reads a2a_outbound through scripts/feature_flags.enabled;
+    if this reader can be moved independently, the check reports a state the edge
+    does not have."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import feature_flags  # noqa: PLC0415
+
+    features = REPO_ROOT / "config" / "features.yaml"
+    for value in ("false", "true"):
+        monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", value)
+        assert is_enabled(features) is feature_flags.enabled("a2a_outbound", features), value
 
 
 def test_real_repo_features_yaml_has_a2a_outbound_on_after_activation():
     """ACTIVATED 2026-07-26 (Founder-authorized): the A2A governed edge is live
     (loopback-only, TN-1) after the WS-G proof shipped. The flag reader still
-    defaults OFF fail-safe (see the DASLAB_A2A_FLAG / absent-file tests). This
+    defaults OFF fail-safe (see the absent-file / malformed-line tests). This
     test only reads the tracked config, never writes."""
     assert is_enabled(REPO_ROOT / "config" / "features.yaml") is True
 

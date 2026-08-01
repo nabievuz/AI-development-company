@@ -74,10 +74,12 @@ hosted SaaS project:
 3. Flip `ws_d_langfuse_lens` **ON** in `config/features.yaml`. This is a
    `security_sensitive` + `governance_or_policy` change (QONUN-5) — it must
    never carry `approval: auto*`; it is a **Founder/governance act**, not
-   something a role subagent does unilaterally. Scope it to one shell/session
-   first if a narrow shadow test is wanted (`DASLAB_WS_D_FLAG=on`, read before
-   the file, same override pattern as WS-A's `DASLAB_WS_A_FLAG`), then widen
-   to the tracked config once proven.
+   something a role subagent does unilaterally. `config/features.yaml` is the
+   only source: there is no `DASLAB_WS_D_FLAG` (this line used to describe one —
+   `tools/observability/otlp_exporter.py` reads the flag through
+   `scripts/feature_flags.enabled` and has never honoured an env var), and WS-A's
+   `DASLAB_WS_A_FLAG` override it cross-referenced has since been removed as a
+   zero-trace bypass of the governance edge.
 
 ### 3. Admit the eval/guardrail tools (if needed)
 

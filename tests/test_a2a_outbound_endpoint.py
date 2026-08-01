@@ -550,3 +550,54 @@ def test_redact_payload_runs_before_the_real_wired_intake_handler(tmp_path, monk
     )
     assert result.outcome is endpoint.CallOutcome.ADMITTED
     assert order == ["redact", "intake"], "ADR-0012 redaction must run strictly before the intake handler"
+
+
+# --------------------------------------------------------------------------- #
+# Flag resolution — the features file is the only source
+#
+# Publishing this edge is a Founder-only double-lock (QONUN-5, ADR-0040 A2-6),
+# so an ambient value must not decide whether the endpoint exists. The reader
+# also has to agree with ADR-0019's canonical scripts/feature_flags.enabled,
+# which honours no env var: scripts/ws_a2a_health_check.py reads the flag
+# through that one, so a reader that could be moved independently would leave
+# the health check reporting a state the edge does not have.
+# --------------------------------------------------------------------------- #
+
+def _features_file(tmp_path: Path, on: bool) -> Path:
+    p = tmp_path / f"features_{'on' if on else 'off'}.yaml"
+    p.write_text(f"a2a_outbound: {'true' if on else 'false'}\n", encoding="utf-8")
+    return p
+
+
+def test_no_env_value_can_flip_the_endpoint_flag(tmp_path, monkeypatch):
+    on = _features_file(tmp_path, True)
+    off = _features_file(tmp_path, False)
+    for value in ("true", "1", "on", "yes", "false", "0", "off", ""):
+        monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", value)
+        assert endpoint.is_enabled(off) is False, value
+        assert endpoint.is_enabled(on) is True, value
+
+
+def test_endpoint_flag_agrees_with_the_canonical_reader(monkeypatch):
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import feature_flags  # noqa: PLC0415
+
+    features = ROOT / "config" / "features.yaml"
+    for value in ("false", "true"):
+        monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", value)
+        assert endpoint.is_enabled(features) is feature_flags.enabled("a2a_outbound", features)
+
+
+def test_an_ambient_value_cannot_make_the_endpoint_answer_a_call(tmp_path, monkeypatch):
+    """The flag read is the endpoint's very first check, so the harm is concrete:
+    with the file OFF no ambient value may get a call past it."""
+    monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", "true")
+    result = endpoint.handle_call(
+        _valid_proposal(),
+        principal="agent-system:peer",
+        events_path=tmp_path / "events.jsonl",
+        features_path=_features_file(tmp_path, False),
+    )
+    assert result.outcome is endpoint.CallOutcome.UNAVAILABLE
+    # SC-005: the flag read precedes every side effect — no event is even written.
+    assert not (tmp_path / "events.jsonl").exists()

@@ -27,6 +27,7 @@ ticket (the BLOCKED Deployment ticket DAS-1586) — this module talks to a
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 # Fully-qualified package imports (NOT bare `import flag`/`import gateway`):
 # several sibling `tools/*` packages ship their own same-named `flag.py`
@@ -105,7 +106,9 @@ def build_route(backend: OpenWeightBackend | None = None) -> ModelRoute:
 
 
 def register_ejectpath(
-    gw: LiteLLMGateway, backend: OpenWeightBackend | None = None
+    gw: LiteLLMGateway,
+    backend: OpenWeightBackend | None = None,
+    features_path: Path | None = None,
 ) -> ModelRoute:
     """Register the eject-path route onto an existing gateway.
 
@@ -115,7 +118,7 @@ def register_ejectpath(
     the route is never registered, so it can never be selected by
     ``gw.call(route_name=...)`` regardless of caller intent.
     """
-    if not openweight_ejectpath_on():
+    if not openweight_ejectpath_on(features_path):
         raise EjectPathInactiveError(
             "ws_e_openweight_ejectpath is OFF — the vLLM/SGLang eject-path is "
             "DEFERRED and inert; flip only on an explicit Founder decision."
@@ -132,6 +135,7 @@ def mock_call(
     role: str,
     model: str,
     backend: OpenWeightBackend | None = None,
+    features_path: Path | None = None,
 ) -> GatewayCall:
     """Register the eject-path (if the sub-flag is ON) and run one call
     against the mock endpoint, proving the call shape end-to-end without a
@@ -141,7 +145,7 @@ def mock_call(
     identically to :func:`register_ejectpath` — so a caller cannot "call
     through" a disabled eject-path by any other door.
     """
-    register_ejectpath(gw, backend)
+    register_ejectpath(gw, backend, features_path)
     try:
         return gw.call(
             route_name=EJECTPATH_ROUTE_NAME,
