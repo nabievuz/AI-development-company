@@ -52,20 +52,27 @@ siz uchun tekshirib beradi.
 Terminalni oching va DasLab papkasiga kiring:
 
 ```bash
-cd /home/daslab/projects/daslab
+cd ~/projects/daslab
 ```
+
+> **`~` belgisi nima?** Bu — sizning uy papkangiz (home). Ya'ni `~/projects/daslab`
+> degani "uy papkamdagi `projects` ichidagi `daslab`". Agar siz DasLab'ni boshqa
+> joyga ko'chirgan bo'lsangiz, o'sha manzilni yozing.
 
 > **Nega bu muhim?** Barcha buyruqlar **shu papka ichida** ishlaydi. Boshqa
 > joyda tursangiz, "fayl topilmadi" degan xato chiqadi. Adashib qolsangiz,
 > yuqoridagi buyruqni yana bir marta yozing.
 
-Qayerda turganingizni tekshirish:
+To'g'ri joyda ekaningizni tekshirish — bu buyruq papka ichidagi fayllarni
+ko'rsatadi:
 
 ```bash
-pwd
+ls README.md AGENTS.md board scripts
 ```
 
-Ekranda `/home/daslab/projects/daslab` chiqishi kerak.
+Agar to'rttasi ham ro'yxatda chiqsa — siz to'g'ri papkadasiz. ✅
+Agar "No such file or directory" chiqsa — noto'g'ri joydasiz, `cd` buyrug'ini
+qayta yozing.
 
 ---
 
@@ -293,7 +300,7 @@ Buni shunday o'qing: `status` — ish qay bosqichda; `assignee` — kim bajaryap
 ## 9. Har kuni qiladigan ish (qisqacha shpargalka)
 
 ```bash
-cd /home/daslab/projects/daslab
+cd ~/projects/daslab
 python3 scripts/doctor.py          # sog'lommi?
 claude                             # oynani ochish
 ```
@@ -313,7 +320,7 @@ Tamom. Kunlik ish shu.
 | Ekranda ko'rgan narsangiz | Ma'nosi | Nima qilasiz |
 |---|---|---|
 | `command not found: claude` | Claude Code o'rnatilmagan | Claude Code'ni o'rnating |
-| `No such file or directory` | Noto'g'ri papkadasiz | `cd /home/daslab/projects/daslab` |
+| `No such file or directory` | Noto'g'ri papkadasiz | `cd ~/projects/daslab` |
 | `doctor` da REQUIRED `FAIL` | Shart dastur yo'q | O'sha qatorda nima yetishmayotgani yozilgan — o'shani o'rnating |
 | `SCORE = 97/100` | Nimadir buzilgan | Yuqoridagi `FAIL` qatorini o'qing — sabab o'sha yerda |
 | `board_lint: ... violations` | Vazifa fayli noto'g'ri to'ldirilgan | Xabarda qaysi fayl va nima xato ekani aniq yozilgan |
@@ -355,7 +362,7 @@ Bu qo'llanmani tushunib bo'lgach:
 ## Eng qisqa xulosa
 
 ```bash
-cd /home/daslab/projects/daslab   # 1. Papkaga kir
+cd ~/projects/daslab   # 1. Papkaga kir
 python3 scripts/bootstrap.py      # 2. Uyg'ot (bir marta)
 python3 scripts/doctor.py         # 3. Sog'liqni tekshir
 python3 scripts/diagnostics.py    # 4. 100/100 bo'lsin
