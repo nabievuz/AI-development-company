@@ -221,6 +221,23 @@ def _first_image_url(payload: dict) -> tuple[str, str]:
     return "", "error: provider returned no image"
 
 
+def _summary(relative: Path, size_bytes: int, model: str, note: str) -> str:
+    """Build the success line.
+
+    Deliberately NOT run through ``redact_then_truncate``: every part is a value
+    this module constructed — a containment-checked relative path, a file size
+    and a pinned model id — so there is nothing to scrub, and the scrubber's
+    PHONE shape happily eats a 7-digit byte count ("1468306" → ``[REDACTED:pii]``),
+    destroying the one number the caller needs. Sizes are printed with a unit,
+    which also keeps them out of digit-run territory. Only a length cap remains.
+    """
+    if size_bytes >= 1024 * 1024:
+        size = f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        size = f"{size_bytes / 1024:.0f} KB"
+    return f"imagegen: wrote {relative} ({size}, {model}){note}"[:500]
+
+
 def generate_image(prompt: str, out_path: str, model: str = "", aspect_ratio: str = "") -> str:
     """Generate an image from *prompt* and write it to *out_path*.
 
@@ -233,7 +250,11 @@ def generate_image(prompt: str, out_path: str, model: str = "", aspect_ratio: st
             ``..`` escapes are refused.
         model: Optional. ``google/gemini-3-pro-image-preview`` (default, quality)
             or ``google/gemini-2.5-flash-image`` (cheap drafts).
-        aspect_ratio: Optional hint appended to the prompt, e.g. ``16:9``.
+        aspect_ratio: Optional, e.g. ``16:9``. A PROMPT HINT ONLY — it is
+            appended as text, not passed as a generation parameter, and the
+            model is free to ignore it. Verified 2026-08-01: a ``16:9`` hint to
+            ``gemini-2.5-flash-image`` still returned 1024×1024. Resize or crop
+            downstream if the aspect ratio has to be exact.
 
     Returns a one-line ``imagegen: wrote <path> (<n> bytes, <model>)`` summary,
     or an ``error: ...`` string. Never raises — a failure must not kill the wave.
@@ -323,7 +344,7 @@ def generate_image(prompt: str, out_path: str, model: str = "", aspect_ratio: st
         return f"error: could not write {destination.name} — {exc.strerror or exc}"
 
     relative = destination.relative_to(_repo_root())
-    return redact_then_truncate(f"imagegen: wrote {relative} ({len(raw)} bytes, {chosen}){note}", 500)
+    return _summary(relative, len(raw), chosen, note)
 
 
 def build_server():
