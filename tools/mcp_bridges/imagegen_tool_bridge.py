@@ -221,6 +221,24 @@ def _first_image_url(payload: dict) -> tuple[str, str]:
     return "", "error: provider returned no image"
 
 
+def _display_path(destination: Path) -> Path:
+    """Path to show the caller — repo-relative when possible, else out-root-relative.
+
+    ``DASLAB_IMAGEGEN_OUT_ROOT`` may legitimately point outside the repo (a
+    worktree writing into the main checkout's ``projects/``, for instance). The
+    containment guarantee is against the OUT ROOT, not the repo root, so a
+    destination outside the repo is valid — but ``relative_to(_repo_root())``
+    raises on it, which would break this module's never-raises contract AFTER
+    the bytes were already paid for and written. Fall back, never throw.
+    """
+    for base in (_repo_root(), _out_root()):
+        try:
+            return destination.relative_to(base)
+        except ValueError:
+            continue
+    return destination
+
+
 def _summary(relative: Path, size_bytes: int, model: str, note: str) -> str:
     """Build the success line.
 
@@ -343,8 +361,7 @@ def generate_image(prompt: str, out_path: str, model: str = "", aspect_ratio: st
     except OSError as exc:
         return f"error: could not write {destination.name} — {exc.strerror or exc}"
 
-    relative = destination.relative_to(_repo_root())
-    return _summary(relative, len(raw), chosen, note)
+    return _summary(_display_path(destination), len(raw), chosen, note)
 
 
 def build_server():
