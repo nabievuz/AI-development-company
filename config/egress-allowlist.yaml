@@ -38,6 +38,21 @@ profiles:
   # governance_or_policy, QONUN-5) — this profile is never widened in place.
   browser-deny-all: []
 
+  # Image generation via OpenRouter (Founder-authorized 2026-08-01). ONE host,
+  # no wildcard: the sidecar posts to openrouter.ai/api/v1/chat/completions and
+  # reaches nothing else. This is the first profile in the repo that carries a
+  # production credential (OPENROUTER_API_KEY) and the first that reaches a
+  # third-party MODEL provider rather than a document source — the reasons it is
+  # scoped to the three design roles that declared the grant, and never widened
+  # in place. Provider-facing rules:
+  # governance/policies/third-party-model-tools.md.
+  #
+  # Note the disclosure direction: unlike research-read, this profile SENDS
+  # caller-authored text out. The sidecar refuses prompts carrying ADR-0012 §2
+  # secret/PII shapes rather than scrubbing them.
+  imagegen-openrouter:
+    - openrouter.ai
+
   # WS-D eval/guardrail tool shortlist — promptfoo, AgentShield, Presidio
   # (DAS-1574, ADR-0033 TB-4 reused verbatim, design doc §5.1). DENY-ALL by
   # design: these are in-process eval/guardrail utilities operating on local

@@ -2,6 +2,11 @@
   "mcp__agentshield__scan_action": [
     "security-lead"
   ],
+  "mcp__imagegen__generate_image": [
+    "cdo",
+    "design-lead",
+    "product-designer"
+  ],
   "mcp__presidio__analyze_text": [
     "security-lead"
   ],
