@@ -107,3 +107,26 @@ Filed `in_review` to `security-lead` rather than `done`: the egress surface and 
 first production credential are that role's call, and the per-role-injection finding
 above is a real architectural gap that a reviewer — not the author — should accept or
 reject.
+
+### 2026-08-02 — platform unification (worktree merge)
+Renumbered `DAS-1644` → **DAS-1645**. The id collided with
+`DAS-1644-infra-mcp-carveout-ssot` (created 2026-07-30, the earlier claim, which
+keeps the number); both branches had allocated the next free id off the same base
+and git merged them without a conflict because only the filenames differ. New
+`board_lint` R14 now fails on a duplicate id, so the next one cannot reach a clean
+board.
+
+Added `tests/test_imagegen_tool_bridge.py` (53 cases, no network, no key). The
+2026-08-01 entry above verified these invariants **by hand**; nothing pinned them,
+which made this the only bridge in `tools/mcp_bridges/` without a regression test —
+and the only one carrying a production credential. Now covered: prompt refusal on
+each ADR-0012 §2 shape (and that the refusal never echoes the secret it refused),
+out-path containment, the pinned model set (including the env override path), the
+credential travelling as a header and never reaching the transcript on any path,
+the egress gate running pre-flight against the pinned endpoint, redirect refusal,
+never-raises on malformed/oversized/text-only provider answers, and mime retarget.
+Mutation-checked: disabling the prompt filter, the containment check, the egress
+gate, the model allow-list, or the redirect refusal each turns the suite red.
+
+Status stays `in_review` — the two open reviewer decisions (server-scoped vs
+role-scoped egress, cost metering) are unchanged and remain `security-lead`'s call.
