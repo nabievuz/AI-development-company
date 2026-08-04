@@ -137,6 +137,30 @@ Buni shunday o'qing:
 
 Bu — kompaniyaning **imtihoni**. 7 ta yo'nalish bo'yicha ball qo'yadi.
 
+> **AVVAL BUNI O'QING — aks holda 85/100 chiqadi va bejizga qo'rqasiz.**
+>
+> Imtihonning `Code-quality` bo'limi `ruff` degan dasturni chaqiradi. U
+> `requirements-dev.txt` ichida bor, lekin **avtomatik o'rnatilmaydi**, va
+> `doctor.py` uni tekshirmaydi ham. Topolmasa, bo'lim **0/15** oladi (ataylab —
+> "tekshirib bo'lmadi" degani "o'tdi" degani emas), umumiy ball esa **85/100**
+> bo'ladi.
+>
+> Bir marta o'rnatib qo'ying:
+>
+> ```bash
+> python3 -m venv .venv
+> .venv/bin/pip install -r requirements-dev.txt
+> ```
+>
+> Va bundan keyin har safar terminalni ochganda **avval** buni yozing:
+>
+> ```bash
+> source .venv/bin/activate
+> ```
+>
+> Buni yozganingizni bilish oson — terminal satri boshida `(.venv)` paydo
+> bo'ladi. Shundan keyingina `diagnostics` to'liq 100/100 bera oladi.
+
 ```bash
 python3 scripts/diagnostics.py
 ```
