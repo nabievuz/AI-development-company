@@ -64,8 +64,39 @@ DIMENSIONS: list[tuple[str, str, int]] = [
     ("git_hygiene", "Git-hygiene", 5),
 ]
 
-# The status enum a valid ticket frontmatter must use.
-VALID_STATUS = {"backlog", "todo", "in_progress", "blocked", "in_review", "done"}
+# --------------------------------------------------------------------------- #
+# Status enum — derived from board_lint's SSOT (DAS-1646)
+# --------------------------------------------------------------------------- #
+# This file used to redeclare the ticket-status enum as its own literal set,
+# which silently drifted from scripts/board_lint.py's VALID_STATUSES (the real
+# SSOT) when "interrupted" was added there — a validly-formed interrupted
+# ticket then zeroed the whole Consistency dimension while board_lint passed
+# the same board clean. Derive from board_lint instead so the two definitions
+# cannot disagree again.
+#
+# `scripts/` is normally sys.path[0] when this file runs as `python3
+# scripts/diagnostics.py`, but a white-box importer (e.g. a test that loads
+# this module via importlib.util.spec_from_file_location, or a subprocess
+# launched with a different cwd) may not have scripts/ on sys.path — so make
+# the import self-sufficient rather than assuming a bare `import board_lint`
+# resolves.
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+try:
+    import board_lint as _board_lint  # noqa: E402 - needs sys.path patched above
+except Exception:  # noqa: BLE001 - fail-closed, never let an import error crash the gate
+    _board_lint = None  # type: ignore[assignment]
+
+# The status enum a valid ticket frontmatter must use. Sourced from
+# board_lint.VALID_STATUSES; empty only when board_lint could not be imported
+# at all, in which case every status fails closed (see check_consistency,
+# which also reports the import failure as its own check) rather than
+# silently accepting anything.
+VALID_STATUS: frozenset[str] = (
+    frozenset(_board_lint.VALID_STATUSES) if _board_lint is not None else frozenset()
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -524,6 +555,21 @@ def check_consistency() -> list[CheckResult]:
             CheckResult("board-valid", True, "live board empty (platform-only); nothing to lint")
         )
         return results
+
+    # DAS-1646: the status enum is derived from board_lint.VALID_STATUSES at
+    # import time (see module top). Surface a failed import as its own check
+    # rather than letting every ticket fail-closed on "status-enum" with no
+    # explanation of why.
+    results.append(
+        CheckResult(
+            "status-enum-ssot-importable",
+            _board_lint is not None,
+            "board_lint.VALID_STATUSES imported (single source of truth)"
+            if _board_lint is not None
+            else "could not import scripts/board_lint.py — status enum "
+            "fails closed (empty set) until this is fixed",
+        )
+    )
 
     bad_status: list[str] = []
     missing_fields: list[str] = []
