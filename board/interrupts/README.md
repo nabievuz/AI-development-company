@@ -88,6 +88,21 @@ ticket:
 4. **`board/ROUTING.md` (in_review reviewer routing)** — `interrupted` has **no
    reviewer semantics**. The reviewer map applies only to `in_review` tickets, so
    an `interrupted` ticket is never routed to a reviewer.
+5. **`scripts/diagnostics.py` `status-enum` check (Consistency dimension)** —
+   **missed by this sweep originally** (DAS-1646): it redeclared its own copy
+   of the status enum instead of reading `board_lint.VALID_STATUSES`, so it
+   silently fell out of sync the moment `interrupted` was added here. A
+   validly-formed `interrupted` ticket then zeroed the whole 15-point
+   Consistency dimension while `board_lint` passed the same board clean — the
+   sweep was the control meant to catch exactly this, and the control had a
+   hole. Fixed by deriving `diagnostics.VALID_STATUS` from
+   `board_lint.VALID_STATUSES` (one definition, not two agreeing by luck) and
+   pinned by `tests/test_diagnostics_status_enum.py`, which fails on ANY
+   future divergence between the two, not just a repeat of this specific value.
 
 **Invariant:** no consumer may reject a validly-formed `interrupted` ticket or
-silently drop it.
+silently drop it. **Process note:** any status-enum addition/removal must
+re-check this list AND grep the repo for other status-value literals before
+closing the ticket — `scripts/diagnostics.py` was missed once already because
+the sweep was written by inspecting known call sites, not by searching for
+independent redeclarations of the enum.
