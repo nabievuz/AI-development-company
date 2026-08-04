@@ -2,14 +2,14 @@
 id: DAS-1645
 title: Admit image generation (OpenRouter) through the ADR-0033 edge, scoped to design roles
 status: in_review
-assignee: security-lead
+assignee: ceo
 author: cto
 dept: engineering
 priority: p1
 labels: [governance, security]
 zone: tools/mcp_bridges
 created: 2026-08-01
-updated: 2026-08-01
+updated: 2026-08-04
 ---
 
 ## Description
@@ -90,8 +90,12 @@ credential out of the environment into config or a tool argument.
 - [x] Missing credential and provider errors return a clean `error:` string, never a traceback.
 - [x] Binding policy landed covering disclosure, provenance, cost and provider terms.
 - [x] `check_agents_sync` green; `board_lint`/validators green; no `project:` field (R9).
-- [ ] **Reviewer decision** on server-scoped vs role-scoped egress (see above).
-- [ ] Cost metering wired into `config/budgets.yaml` before the grant widens beyond design.
+- [x] **Reviewer decision** on server-scoped vs role-scoped egress — ACCEPTED as
+      shipped, bounded; reasoning and the four voiding conditions recorded in
+      policy §5a and in the 2026-08-04 log entry below.
+- [x] Cost metering — adjudicated: NOT wired, and NOT accepted. Converted from a
+      note into a hard gate: the grant does not widen beyond the three design
+      roles until metering lands (policy §5). Wiring routed as follow-up.
 
 ## Log
 ### 2026-08-01 — CTO
@@ -130,3 +134,90 @@ gate, the model allow-list, or the redirect refusal each turns the suite red.
 
 Status stays `in_review` — the two open reviewer decisions (server-scoped vs
 role-scoped egress, cost metering) are unchanged and remain `security-lead`'s call.
+
+### 2026-08-04 — Security Lead
+Security sign-off. Reviewed the sidecar, the egress guard, the TB-2 hook, the
+compiled allow-list, the three overlays, the policy and the 53-case suite.
+
+**1. Server-scoped egress — ACCEPTED, bounded. Per-role injection is NOT required
+before this grant goes live.**
+
+The exposure a server-scoped profile creates is that any caller of the server
+inherits its reach; the severity turns on whether a caller can *steer* that reach.
+Here it cannot. `_ENDPOINT` is a module constant, `generate_image`'s parameters
+are exactly `(prompt, out_path, model, aspect_ratio)`, and nothing derived from
+caller input reaches the opener — so the profile grants one host and the code
+grants one URL on it, with redirects refused (C4) so the target cannot be bounced
+after the gate. A caller of this server has precisely the intended caller's reach.
+
+Per-role injection would additionally be a **no-op here**: ungranted roles never
+reach the module (TB-2 denies pre-execution), and all three granted roles declare
+the identical profile string. Requiring it first would be ceremony, not risk
+reduction. I verified the enforcement layer rather than taking it on trust —
+`ws_a_tool_bridge: true`, the PreToolUse hook wired in `.claude/settings.json`
+with `DASLAB_TOOL_ALLOWLIST`, `decide()` with no default-allow, wildcards rejected
+at both load and decide, unidentified caller fail-closed (exit 2), grants compiled
+to exactly `[cdo, design-lead, product-designer]`. It also bit me live: my own
+`mcp__ccd_session__mark_chapter` call was denied mid-review with
+`[WS-A governance] ... not allow-listed (TB-2: no default-allow)`.
+
+Also confirmed `DASLAB_EGRESS_PROFILE` is set inside the imagegen server's own
+`env` block in `.mcp.json`, so it does not widen any other bridge's profile.
+
+**Bound — the acceptance is void, and per-role injection (or equivalent) must land
+first, if:** (a) the destination stops being a compile-time constant, i.e. caller
+input can influence the request target; (b) a role is granted `mcp__imagegen` with
+a different declared `egress_profile`; (c) `imagegen-openrouter` gains a second
+host or a second server; (d) a non-empty profile ships on a server whose
+destinations ARE caller-steerable — `web_fetch` is the standing example, where the
+URL is a tool argument and this reasoning inverts. **(d) gets its own review and
+does not inherit this acceptance.**
+
+Condition (a) was relying on nobody noticing. `test_the_key_is_never_accepted_as_a_
+tool_argument` pins the parameter set, so a URL argument turns the suite red — but
+it was written for the credential invariant, and a future author could have
+"relaxed" it as a test fix and silently voided this acceptance with no signal. Its
+second load-bearing role is now documented in the test itself. That comment is the
+only code change in this review.
+
+**2. Cost metering — NOT accepted; upgraded from a note to a hard gate.**
+
+Security posture does not depend on it, so it does not block the current grant,
+but the framing was too soft. `config/budgets.yaml` prices Claude tiers per
+million tokens and has no home for a per-call third-party line; nothing in the
+repo rate-limits calls, caps calls per wave, or ceilings spend. The bound today is
+social (three roles), not mechanical — a retry loop bills a real account and no
+repo control stops it. Accepted at three roles only because the blast radius is
+small and the provider account carries its own credit ceiling. Policy §5 now reads
+that the grant **does not widen for any role, for any reason** until metering
+lands — blocked on that work, not merely accompanied by it. Wiring routed below.
+
+**3. `-preview` vs GA model ids — deliberately NOT settled. Keep `-preview` as
+shipped.** I will not swap ids I cannot verify: pinning a GA id that does not
+resolve on the account in use converts every call into a provider error, trading a
+working tool for a broken one on an assumption. And the pinned set is a reviewed
+surface (policy §7), not a config bump. Leaving `-preview` is not free either —
+providers retire preview ids on short notice — but that failure mode is safe (the
+tool errors closed, it does not mis-egress). Routed as follow-up: verify against
+the live account, then swap as a reviewed change.
+
+Gates: full suite 2754 passed / 4 skipped; imagegen 53/53; `board_lint` 202
+tickets, 0 violations; `diagnostics.py` 100/100. (Note for whoever runs this
+worktree: it has no `.venv`, so a bare `diagnostics.py` scores 85/100 on
+`ruff-clean` "ruff unavailable" — a missing-toolchain artifact, not a regression.
+With the main checkout's venv on `PATH` it is 100/100.) No feature flag touched,
+no egress profile widened, no grant changed.
+
+Routing: `in_review` → `ceo`, to land this review record (policy §5/§5a, the test
+comment, this log) on `main`. Not `cto`: the author IS my manager, so the standard
+reviewer map would produce a self-review — `board_lint` rejects
+`assignee == author` on `in_review`, and ROUTING.md's rule for that case is to
+escalate one level (CTO → CEO). The security sign-off itself is granted and is
+NOT contingent on that merge; what remains is landing the record, not re-deciding
+it. Branch `feat/das-1645-imagegen-security-review`.
+
+Two follow-ups for the orchestrator to route as new tickets (out of scope here —
+this dispatch was adjudication, not implementation): **(1)** wire `mcp__imagegen`
+cost metering into `config/budgets.yaml` + `scripts/check_cost.py` — blocks any
+widening of the grant; **(2)** verify the GA image-model ids against the live
+OpenRouter account and swap `-preview` as a reviewed change to the pinned set.

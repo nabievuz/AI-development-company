@@ -71,26 +71,70 @@ in-process sidecar before them.
 - The reviewed model set is pinned **in the sidecar**, not passed freely by the
   caller — an agent cannot select an arbitrary (or arbitrarily expensive) model.
 - Spend belongs in `config/budgets.yaml` and the `scripts/check_cost.py` path
-  like any other cost line. **Open:** metering for `mcp__imagegen` is not yet
-  wired; until it is, the grant is limited to the three design roles.
+  like any other cost line.
 
-## 5a. Open follow-up — per-role egress injection
+**Open, and a hard gate (Security Lead, 2026-08-04).** Metering for
+`mcp__imagegen` is not wired. `config/budgets.yaml` prices Claude tiers per
+million tokens; a per-call third-party line has no home there yet, and nothing in
+the repo rate-limits calls, caps calls per wave, or ceilings spend. The current
+bound is therefore *social* (three design roles drafting assets), not mechanical:
+a retry loop bills a real account and no repo control stops it. The residual is
+accepted at three roles only because the blast radius is small and the provider
+account carries its own credit ceiling.
 
-Overlays declare `egress_profile:` per role, but nothing yet injects
+**Until metering lands, the grant does not widen beyond `cdo`, `design-lead` and
+`product-designer` — for any role, for any reason.** A widening request is
+blocked on the metering work, not merely accompanied by it.
+
+## 5a. Server-scoped egress — reviewed decision (Security Lead, 2026-08-04)
+
+Overlays declare `egress_profile:` per role, but nothing injects
 `DASLAB_EGRESS_PROFILE` at sidecar launch from the invoking role — today it is
-set only in tests. Every profile shipped before `imagegen-openrouter` was
-deny-all, so the gap was inert.
+set only in tests and in the server's own `.mcp.json` `env` block. Every profile
+shipped before `imagegen-openrouter` was deny-all, so the gap was inert.
+`mcp__imagegen` is the first non-empty profile, so it is pinned per-server and
+applies to **any caller of that server**.
 
-`mcp__imagegen` is the first non-empty profile, so it is pinned in `.mcp.json`
-and applies to **any caller of that server**. Role granularity is still enforced,
-by the TB-2 PreToolUse allow-list (fail-closed, explicit roles, no wildcards) —
-but the egress layer is host-scoped only, not role-scoped.
+**Decision: accepted for `mcp__imagegen` as currently shaped. Per-role injection
+is NOT required before this grant goes live.**
 
-Until per-role injection lands, treat the overlay `egress_profile:` field as
-**declared intent, not an enforced control**, and keep non-empty profiles scoped
-to a server whose full grant list is acceptable as a single unit. Widening a
-non-empty profile to a server with a broader grant list is not safe under the
-current wiring.
+The exposure a server-scoped profile creates is that any caller of the server
+inherits the profile's network reach. Its severity depends entirely on whether a
+caller can *steer* that reach. In this sidecar it cannot: the destination is a
+module-level constant (`_ENDPOINT`), and `generate_image`'s parameters are
+exactly `(prompt, out_path, model, aspect_ratio)` — no URL, host, path or
+base-url argument, and nothing derived from caller input reaches the opener. The
+profile grants one host; the code grants one URL on that host, with redirects
+refused (C4) so the target cannot be bounced after the gate runs. A caller of
+this server therefore has precisely the reach the intended caller has.
+
+Per-role injection would also be a **no-op here**: ungranted roles never reach
+the module at all (the TB-2 PreToolUse hook denies before execution, fail-closed,
+no default-allow, wildcards rejected), and all three granted roles declare the
+identical profile string. The control would add no reduction in reach.
+
+**Bound — what voids this acceptance.** It is scoped to this sidecar in this
+shape. Per-role injection, or an equivalent control, must land BEFORE any of:
+
+- **(a)** the outbound destination stops being a compile-time constant — i.e. any
+  caller-supplied value can influence the request target;
+- **(b)** a role is granted `mcp__imagegen` whose declared `egress_profile`
+  differs from `imagegen-openrouter`;
+- **(c)** `imagegen-openrouter` gains a second host, or is attached to a second
+  server;
+- **(d)** a non-empty profile ships on a server whose destinations ARE
+  caller-steerable — `web_fetch` is the standing example, where the URL is a tool
+  argument and a server-scoped non-empty profile would let any caller steer
+  anywhere inside the profile. **That case gets its own review and does not
+  inherit this acceptance.**
+
+Condition (a) is machine-enforced: `tests/test_imagegen_tool_bridge.py::
+test_the_key_is_never_accepted_as_a_tool_argument` pins the parameter set, so
+adding a URL argument turns the suite red.
+
+Outside those bounds the earlier rule stands: treat overlay `egress_profile:` as
+**declared intent, not an enforced control**, and never widen a non-empty profile
+onto a server with a broader grant list.
 
 ## 6. Provider terms
 
