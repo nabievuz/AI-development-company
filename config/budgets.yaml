@@ -111,3 +111,89 @@ mustaqil:
   # [NEEDS VERIFICATION at WS-B go-live] the credit-based subscription model was
   # announced 2026-06-15 then paused; confirm the live plan's Agent-SDK terms,
   # per-plan credit, and headless-use policy before the runner goes live.
+
+# ---------------------------------------------------------------------------
+# Third-party per-call spend (DAS-1647, routed from DAS-1645's security
+# sign-off — governance/policies/third-party-model-tools.md §5)
+# ---------------------------------------------------------------------------
+# SHAPE DECISION, recorded per the ticket's explicit instruction: this is a
+# NEW top-level section, not a generalisation of `tiers:` above.
+#
+#   `tiers:` prices Claude models in USD PER 1,000,000 TOKENS — that unit is
+#   the SI-5-metered Anthropic rail every prior spend line in this org bills
+#   through (see the file header). An image call from mcp__imagegen bills a
+#   REAL EXTERNAL ACCOUNT (OPENROUTER_API_KEY) and is priced PER IMAGE, a
+#   different, non-token unit. Reusing a `tiers:` entry for it — e.g. writing
+#   a per-image dollar figure into an `input_per_1m` field, or adding a
+#   fractional "tokens per image" fudge factor to force the shape to fit —
+#   would make a field's meaning depend on which model reads it, which is
+#   exactly the kind of rot this file's own header warns against ("re-verify
+#   these numbers when model IDs or list prices change" only works if a
+#   reader can trust what unit a number is already in). `third_party_tools:`
+#   is a parallel section, `usd_per_image` a distinct unit name — nothing
+#   here can be misread as a token price, and nothing in `tiers:` had to
+#   change shape to accommodate it.
+third_party_tools:
+  imagegen:
+    # Sidecar: tools/mcp_bridges/imagegen_tool_bridge.py (mcp__imagegen),
+    # admitted via the ADR-0033 edge. Grant today: cdo, design-lead,
+    # product-designer only (governance/policies/third-party-model-tools.md
+    # §5) — widening is blocked until this ceiling is mechanically enforced.
+    provider: openrouter
+    unit: usd_per_image
+    models:
+      # google/gemini-3-pro-image-preview ("Nano Banana Pro") — the
+      # sidecar's default/quality model.
+      #   PRICE: $0.134 per image (<=2K resolution; $0.24 at 4K — this uses
+      #   the cheaper/standard figure, i.e. NOT the conservative one for an
+      #   individual call, see the per_day cap note below for how that's
+      #   compensated).
+      #   SOURCE: https://ai.google.dev/gemini-api/docs/pricing — Google's
+      #   direct-API list price ("$120.00 per 1M output tokens ... equivalent
+      #   to $0.134 per 1K/2K image"). Read 2026-08-04.
+      #   ASSUMPTION, recorded per the ticket's instruction: the sidecar
+      #   calls this model THROUGH OpenRouter, not Google's direct API.
+      #   OpenRouter's own model page
+      #   (https://openrouter.ai/google/gemini-3-pro-image-preview, read
+      #   2026-08-04) publishes only token pricing ("$2 / $12 per 1M") — no
+      #   per-image figure — and that token rate does not match Google's
+      #   direct rate, so it is not a simple pass-through. Absent a published
+      #   OpenRouter per-image number, Google's direct-API list price is used
+      #   as the best available documented figure, not a confirmed OpenRouter
+      #   invoice line. Re-verify against a real OpenRouter invoice/receipt
+      #   before relying on this for anything tighter than the conservative
+      #   per_day cap below.
+      google/gemini-3-pro-image-preview:
+        usd_per_image: 0.134
+        source: "https://ai.google.dev/gemini-api/docs/pricing"
+        source_read_date: 2026-08-04
+        pricing_basis: "google_direct_api_list_price_used_as_openrouter_stand_in"
+
+      # google/gemini-2.5-flash-image ("Nano Banana") — the sidecar's cheap
+      # draft model.
+      #   PRICE: $0.039 per image (<=1024x1024; Google states a standard
+      #   image is 1290 output tokens at $30/1M output tokens = $0.039).
+      #   SOURCE: https://ai.google.dev/gemini-api/docs/pricing — read
+      #   2026-08-04.
+      #   Same OpenRouter caveat as above: OpenRouter's page
+      #   (https://openrouter.ai/google/gemini-2.5-flash-image, read
+      #   2026-08-04) shows "$0.30 / $2.50 per 1M" token pricing, not a
+      #   per-image figure, and does not match Google's direct rate.
+      google/gemini-2.5-flash-image:
+        usd_per_image: 0.039
+        source: "https://ai.google.dev/gemini-api/docs/pricing"
+        source_read_date: 2026-08-04
+        pricing_basis: "google_direct_api_list_price_used_as_openrouter_stand_in"
+
+    # Mechanical ceiling — governance/policies/third-party-model-tools.md §5
+    # requires that exceeding this DENIES (scripts/check_cost.py exits 1),
+    # never just warns. Deliberately conservative rather than tightly tuned:
+    # the reviewer's framing is that today's grant (3 design roles) is
+    # bounded, not urgent — the provider account already carries its own
+    # credit ceiling, so this is a repo-side backstop against a runaway
+    # retry loop, not an attempt to predict real design-wave volume.
+    caps:
+      per_day:
+        max_calls: 40        # generous vs. 3 roles' realistic daily draft volume
+        max_cost_usd: 6.00    # >= 40 calls at the pricier model's rate (40 * 0.134 = 5.36)
+    on_breach: deny            # exceeding EITHER field above = deny, not a warning
