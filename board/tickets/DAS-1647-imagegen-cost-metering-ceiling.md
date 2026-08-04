@@ -133,6 +133,11 @@ orchestrator):** a ticket is needed to (a) instrument
 `--check-imagegen` into an automatic gate. Only after both land should §5's
 widening block actually be lifted.
 
-Committed on branch `feat/das-1647-imagegen-cost-ceiling` (pre-existing
-worktree branch); pushing and opening PR next. Status → `in_review`,
-assignee → `coo` (per `board/ROUTING.md`, my reviewer).
+Committed and pushed to `feat/das-1647-imagegen-cost-ceiling` (pre-existing
+worktree branch, tracking `origin/feat/das-1647-imagegen-cost-ceiling`).
+`gh` CLI is not installed in this worktree environment, so the PR could not be
+opened from here — GitHub's push output gave the manual PR-creation link:
+`https://github.com/nabievuz/daslab/pull/new/feat/das-1647-imagegen-cost-ceiling`.
+Flagging this so the orchestrator/COO can open the PR (or re-run `gh pr create`
+where `gh` is available) before treating `done` as reachable. Status →
+`in_review`, assignee → `coo` (per `board/ROUTING.md`, my reviewer).
