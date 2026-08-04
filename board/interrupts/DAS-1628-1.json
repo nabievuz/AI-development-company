@@ -1,0 +1,26 @@
+{
+  "question": "DAS-1625 added `**/features.yaml` to the `governance_or_policy` never-auto-approve matcher in config/risk_taxonomy.yaml. That edit landed on main inside commit 5ecd46d, but no record shows you were ever presented with it: 5ecd46d is a 91-file / 18823-insertion omnibus commit whose message never mentions the risk taxonomy, it carries a `Co-Authored-By: Claude` trailer (agent-produced), it is not a merge commit so no PR and no CODEOWNERS review ever fired, and every commit in this repo is authored under your git identity regardless of who wrote it. DAS-1625's own log explicitly declined to self-approve the edit and escalated it for Founder/CTO ratification; that escalation has no recorded answer. DAS-1628 (adding four MORE config paths to the same matcher) is gated on that ratification. Did you ratify the features.yaml matcher edit, and may DAS-1628 proceed?",
+  "options": [
+    "ratified",
+    "not-ratified-hold",
+    "not-ratified-revert"
+  ],
+  "ticket": "DAS-1628",
+  "payload": {
+    "gate": "DAS-1628 acceptance criterion 1 — DAS-1625's risk_taxonomy.yaml edit confirmed ratified before any work starts",
+    "adjudication": "Security Lead 2026-08-04: gate NOT satisfied. Presence of the edit on main is not ratification. Founder git authorship is the default identity for all 57 commits in this repo (50 carry Co-Authored-By agent trailers), so it has zero discriminating power; CODEOWNERS is a PR-review mechanism that never fired (5ecd46d has a single parent, no PR) and pins `*` to @nabievuz anyway; no interrupt card or other artifact records a Founder decision on this line.",
+    "option_meanings": {
+      "ratified": "You confirm the features.yaml matcher edit is ratified. DAS-1628 resumes and adjudicates config/rbac.yaml, config/tenant_boundary.yaml, config/egress-allowlist.yaml, config/budgets.yaml on their individual merits.",
+      "not-ratified-hold": "Not ratified yet; leave the features.yaml line in place on main but DAS-1628 stays parked until you decide.",
+      "not-ratified-revert": "Not ratified; the features.yaml line should be reverted pending your review, and DAS-1628 stays parked."
+    },
+    "no_side_effects": "Nothing was applied. No config file was edited, no flag flipped, no branch pushed. Resuming this ticket is safe to re-run from a clean state.",
+    "not_urgent": "This is defence-in-depth, not a live hole. `approval:` and `paths:` are optional frontmatter and 0 live tickets declare either, so the path-glob layer binds nothing on the real board; rbac.decide() is founder-only default-deny on `config.edit.security`; CODEOWNERS pins /config/. No exposure is created by leaving this parked.",
+    "related": [
+      "DAS-1625 (done) — the ratification-pending edit",
+      "config/risk_taxonomy.yaml:60 — the changed line",
+      "commit 5ecd46d — where it landed"
+    ]
+  },
+  "created_by": "security-lead"
+}
