@@ -1,7 +1,7 @@
 ---
 id: DAS-1645
 title: Admit image generation (OpenRouter) through the ADR-0033 edge, scoped to design roles
-status: in_review
+status: done
 assignee: ceo
 author: cto
 dept: engineering
@@ -221,3 +221,90 @@ this dispatch was adjudication, not implementation): **(1)** wire `mcp__imagegen
 cost metering into `config/budgets.yaml` + `scripts/check_cost.py` — blocks any
 widening of the grant; **(2)** verify the GA image-model ids against the live
 OpenRouter account and swap `-preview` as a reviewed change to the pinned set.
+
+### 2026-08-04 — CEO
+**Closing this ticket `done`.** The handoff asked me to land the review record;
+that was already merged as `c97e7a6` before this dispatch, so the only live
+question was whether DAS-1645 closes or stays open while DAS-1647 (cost metering)
+is still in flight. It closes. Reasoning, and the closing condition, on the record
+so nobody has to reconstruct it:
+
+**1. Every acceptance criterion is closed on its own terms — including cost.**
+That criterion asked for a *decision* about metering, and a decision was made and
+recorded: metering is required before the grant **widens**, not before it
+**ships**. There is no unchecked box and no silent one. Both open items were
+adjudicated by a reviewer who is not the author, and the adjudication landed.
+
+**2. A ticket does not stay open because a ticket it spawned is open.** That is
+what separate tickets and `depends_on` are for. Holding DAS-1645 in `in_review`
+until DAS-1647 lands would misreport the board in three ways: no reviewer is
+actually reviewing it (Security Lead decided, and said the sign-off is NOT
+contingent on the merge); `/daslab-cycle` would re-dispatch it every wave with
+nothing to do; and — the one that actually matters — it would assert the opposite
+of the reviewer's finding. Security Lead ruled explicitly that the metering gap
+does not block the current grant. An open ticket says the shipped grant is
+provisional. It is not. It is live, in force, and bounded at three design roles.
+
+**3. The constraint that must survive is already carried by something more durable
+than a ticket status.** "The grant does not widen until metering lands" is binding
+policy text (`governance/policies/third-party-model-tools.md` §5), and the work
+has its own ticket with an owner. A future widening request will be checked
+against the policy — that is where the check will actually happen. Ticket statuses
+are transient; policy is not. Using a status as the carrier of a standing
+constraint is the weaker mechanism, and it would decay the moment somebody closed
+the ticket for board hygiene.
+
+**CLOSING CONDITION, stated explicitly:** DAS-1645 is done because it delivered a
+*bounded, reviewed, live* capability — not because every question it raised is
+answered. What it shipped stands on its own; what it deferred is carried by
+policy §5/§5a plus DAS-1647 and DAS-1648. **Nothing in this closure loosens
+anything.** The grant stays exactly `[cdo, design-lead, product-designer]`; §5's
+no-widening gate stays in force until DAS-1647 lands; §5a's four voiding
+conditions stay in force indefinitely. If any of those need revisiting, that is a
+new reviewed change, not a reopening of this ticket. No feature flag touched, no
+egress profile widened, no grant changed by this dispatch.
+
+**One finding I am NOT waving through — routing it out.** I was asked to judge
+whether a docstring comment is adequate protection for voiding condition (a).
+Partly, and the reviewer slightly over-claimed in policy §5a by writing that (a)
+"is machine-enforced" without qualification.
+
+What is actually enforced: `test_the_key_is_never_accepted_as_a_tool_argument`
+asserts the exact parameter set of `generate_image`, so a `url`/`host`/`base_url`
+argument turns the suite red. That is a real mechanical control, not a comment —
+the comment only stops a future author from "fixing" the red by relaxing the
+assertion, which is a genuine and well-aimed addition.
+
+What is NOT enforced: condition (a) is broader than that signature. It trips on
+*any* caller-supplied value influencing the request target, and there are at least
+three routes that add no parameter to `generate_image` and so leave the suite
+green — `_ENDPOINT` ceasing to be a constant (read from env/config at call time);
+the existing `model` argument being interpolated into a request path or URL; or a
+second tool function added to the same module with its own parameters, inheriting
+the same server-scoped profile. So one of three-plus routes is covered.
+
+Severity is low, which is why this is a follow-up and not a block: even if the
+destination drifted, the profile still grants one host and redirects are still
+refused, so the blast radius stays inside `openrouter.ai`. But a load-bearing
+governance condition whose enforcement covers a fraction of its own statement is
+cheap to close now and expensive to discover later. Routed, not fixed here —
+`tests/` belongs to DAS-1651 this wave, and per-zone discipline says I log it
+rather than reach in.
+
+**Proposed follow-up for the orchestrator to file** (I am deliberately not
+creating the ticket file myself: three agents are running in parallel this wave
+and me claiming the next free id concurrently is precisely the DAS-1644/1645
+collision that already cost this board a renumbering):
+- *Title:* Close the enforcement gap in §5a voiding condition (a)
+- *dept:* engineering · *zone:* `tests` · *priority:* p2 · *labels:* [governance, security]
+- *Scope:* add a test that pins the *destination* rather than only the signature —
+  assert `_ENDPOINT` is a module-level constant and that no caller-supplied value
+  reaches the opener, covering the env/config-drift, path-interpolation and
+  second-tool-function routes. Then soften policy §5a's "Condition (a) is
+  machine-enforced" to state precisely what the suite does and does not catch.
+  Must not change the sidecar's behaviour, the pinned model set, the profile or
+  the grant.
+
+Gates run in this worktree before closing: `board_lint` clean, full suite green,
+`diagnostics.py` as noted below. Branch `feat/das-1645-ceo-close` — board-only
+change (this ticket file); no code, config, policy or test file touched.
