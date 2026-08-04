@@ -259,11 +259,27 @@ def test_the_key_is_sent_as_a_bearer_header_and_never_returned(mod, sandbox, mon
 
 
 def test_the_key_is_never_accepted_as_a_tool_argument(mod):
+    """Pins the tool signature. LOAD-BEARING TWICE — do not relax it.
+
+    1. P4, its original purpose: a credential must never be a tool argument.
+    2. The security review's egress risk acceptance
+       (``governance/policies/third-party-model-tools.md`` §5a, 2026-08-04).
+       Server-scoped egress was accepted INSTEAD of per-role
+       ``DASLAB_EGRESS_PROFILE`` injection on the grounds that a caller of this
+       server cannot steer the destination: ``_ENDPOINT`` is a module constant
+       and no parameter influences the request target. A ``url`` / ``host`` /
+       ``endpoint`` / ``base_url`` argument would make the destination
+       caller-controlled and VOID that acceptance (bound (a)) — per-role
+       injection would have to land first.
+
+    So widening this parameter set is not a test fix; it is a governance change.
+    """
     import inspect
 
     params = set(inspect.signature(mod.generate_image).parameters)
     assert params == {"prompt", "out_path", "model", "aspect_ratio"}, (
-        "the tool signature grew a parameter — a credential must never be one"
+        "the tool signature grew a parameter — a credential must never be one, "
+        "and a caller-steerable destination voids the §5a egress acceptance"
     )
 
 
