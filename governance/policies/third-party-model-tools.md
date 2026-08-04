@@ -86,6 +86,41 @@ account carries its own credit ceiling.
 `product-designer` — for any role, for any reason.** A widening request is
 blocked on the metering work, not merely accompanied by it.
 
+**Status update (Finance / Billing Analyst, DAS-1647, 2026-08-04) — block NOT
+yet lifted; partial delivery.**
+
+`config/budgets.yaml` now carries a `third_party_tools.imagegen` section:
+per-image pricing for both `_ALLOWED_MODELS` ids, each sourced and dated
+(`https://ai.google.dev/gemini-api/docs/pricing`, read 2026-08-04, used as a
+documented stand-in for OpenRouter's own per-image charge — OpenRouter's model
+pages publish only token pricing for these two ids, with no separate per-image
+figure, so this is a recorded assumption, not a confirmed OpenRouter invoice
+line), plus a `caps.per_day` ceiling (`max_calls`, `max_cost_usd`).
+`scripts/check_cost.py --check-imagegen` reads that section and denies
+(non-zero exit) when either field is breached — proven by probe in both
+directions (under cap passes, over cap denies; both the direct `--imagegen-calls`
+probe path and real `span` events read from the DGO-X event store were
+exercised). This is a real mechanical ceiling in the sense the reviewer
+described: exceeding it denies, not warns.
+
+**What is still missing, and why the widening block stays in place:**
+
+1. **No live pre-call enforcement.** `tools/mcp_bridges/imagegen_tool_bridge.py`
+   does not call `check_cost.py --check-imagegen` (or an equivalent) before
+   sending a request, and does not emit a `span` event after one. A retry loop
+   inside a design wave today still bills the account before anything in this
+   repo evaluates the ceiling — the mechanism exists, but nothing calls it at
+   the moment that matters. Wiring that is `tools/mcp_bridges/` work, out of
+   this ticket's zone (`config` + `scripts/check_cost.py` only); tracked as
+   follow-up.
+2. **No automatic gate.** `--check-imagegen` is a flag a human or a CI step
+   must invoke; it is not yet wired into `diagnostics.py` or another
+   always-run gate, so a breach is only caught if something calls it.
+
+Widening beyond `cdo`, `design-lead` and `product-designer` stays blocked
+until both of the above land. The pricing and the ceiling LOGIC are done and
+provable; the ceiling is not yet load-bearing at call time.
+
 ## 5a. Server-scoped egress — reviewed decision (Security Lead, 2026-08-04)
 
 Overlays declare `egress_profile:` per role, but nothing injects
