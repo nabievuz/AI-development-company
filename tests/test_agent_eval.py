@@ -18,6 +18,7 @@ Coverage (DAS-1487 acceptance criteria):
 
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -82,9 +83,12 @@ def test_score_task_coverage_gap() -> None:
     assert result.accuracy == pytest.approx(0.6667, abs=1e-3)
 
 
-def test_evaluate_role_qa_eng_end_to_end() -> None:
+def test_evaluate_role_qa_eng_end_to_end(inert_store_path: Path) -> None:
     """The example role is scored deterministically without dispatching an agent."""
-    card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=None)
+    # DAS-1651: an explicitly-absent store, not store_path=None — None reads the
+    # real ambient board/.events.jsonl and flips cost_usd to 0.0 once any wave has
+    # run on the box (see tests/conftest.py: inert_store_path).
+    card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
     assert card.task_count == 3
     # mean of 1.0 (boundary-values), 0.6667 (coverage-gap), 0.8333 (detect-flaky).
     assert card.accuracy == pytest.approx(0.8333, abs=1e-3)
@@ -295,8 +299,11 @@ def _span(agent: str, model: str, in_tok: int, out_tok: int) -> dict:
     }
 
 
-def test_role_cost_inert_without_store() -> None:
-    assert ae.role_cost("qa-eng", store_path=None) is None
+def test_role_cost_inert_without_store(inert_store_path: Path) -> None:
+    # DAS-1651: store_path=None is NOT "no store" — it defaults to the real
+    # ambient board/.events.jsonl (dgox.events.DEFAULT_STORE_PATH). This test's
+    # whole point is the store being absent, so it must say so explicitly.
+    assert ae.role_cost("qa-eng", store_path=inert_store_path) is None
 
 
 def test_role_cost_from_spans(tmp_path: Path) -> None:
@@ -325,8 +332,8 @@ def test_evaluate_role_pairs_accuracy_with_cost(tmp_path: Path) -> None:
 # 7. Scorecard rendering
 # --------------------------------------------------------------------------- #
 
-def test_scorecard_markdown_has_rows() -> None:
-    cards = ae.evaluate_all("sonnet", EVALS, store_path=None)
+def test_scorecard_markdown_has_rows(inert_store_path: Path) -> None:
+    cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
     md = ae.scorecard_markdown(cards)
     assert "| Role | Tier | Tasks | Accuracy | Pass (>=80%) | Est. cost (USD) |" in md
     assert "`qa-eng`" in md
@@ -335,8 +342,8 @@ def test_scorecard_markdown_has_rows() -> None:
     assert "n/a (inert)" in md  # cost inert without a span store
 
 
-def test_scorecard_to_dict_shape() -> None:
-    card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=None)
+def test_scorecard_to_dict_shape(inert_store_path: Path) -> None:
+    card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
     d = card.to_dict()
     assert d["role"] == "qa-eng"
     assert d["tier"] == "sonnet"
@@ -349,6 +356,52 @@ def test_scorecard_to_dict_shape() -> None:
     }
 
 
+def test_no_store_path_none_literal_in_this_file() -> None:
+    """DAS-1651 guard: ``store_path=None`` (or a positional ``None`` in that slot)
+    passed to ``role_cost``/``evaluate_role``/``evaluate_all`` reads the REAL
+    ambient ``board/.events.jsonl`` — it is not "no store". Every call in this
+    file must go through the ``inert_store_path`` fixture instead.
+
+    This is a hermetic-test defect, not a source defect (``store_path=None`` is a
+    legitimate, documented public default for callers of ``agent_eval.py`` itself
+    — a CLI invocation with no ``--events`` flag, say). The guard is scoped to
+    THIS file's calls, mirroring the AST self-checks in test_wave_runner.py and
+    test_dgox_phase1_shadow.py, because this is the third time a test asserted an
+    ambient-store value by accident (test_ws_a2a_health_check.py, twice, then
+    this file) and a silent per-file fix invites a fourth — in a *different*
+    file. A repo-wide version of this guard would need to know which callers
+    intend "the real store" (health-check-in-prod scripts do, legitimately) vs.
+    "inert", which this file cannot judge on another file's behalf; each test
+    file that touches a store-accepting function is expected to carry its own
+    copy of this guard, the same way the two precedents above do not share one.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    guarded = {"role_cost", "evaluate_role", "evaluate_all"}
+    offenders: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+        if name not in guarded:
+            continue
+        # Keyword form only (every call in this file passes store_path by keyword,
+        # never positionally) — see the docstring above for why a positional-arg
+        # index guard was deliberately not attempted here.
+        for kw in node.keywords:
+            if kw.arg == "store_path" and _is_none(kw.value):
+                offenders.append(node.lineno)
+    assert not offenders, (
+        f"store_path=None passed to {sorted(guarded)} at line(s) {offenders} — "
+        "use the inert_store_path fixture instead (DAS-1651); None reads the "
+        "real ambient board/.events.jsonl, not an inert store."
+    )
+
+
+def _is_none(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
+
+
 # --------------------------------------------------------------------------- #
 # 7b. Release-blocking >=80% bar (GATE-4 mechanism, DAS-1488)
 # --------------------------------------------------------------------------- #
@@ -357,20 +410,22 @@ def test_pass_bar_default_is_80pct() -> None:
     assert ae.PASS_BAR == 0.80
 
 
-def test_meets_bar_uses_custom_threshold() -> None:
+def test_meets_bar_uses_custom_threshold(inert_store_path: Path) -> None:
     card = ae.RoleScorecard(role="x", tier="sonnet", tasks=[])  # accuracy 0.0
     assert not card.meets_bar()
     empty = ae.RoleScorecard(role="y", tier="sonnet", tasks=[])
     assert empty.accuracy == 0.0
-    # qa-eng (0.8333) clears 0.80 but not a hypothetical 0.90 bar.
-    qa = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=None)
+    # qa-eng (0.8333) clears 0.80 but not a hypothetical 0.90 bar. Neither
+    # assertion reads cost_usd, but store_path is still fixtured (not None) for
+    # consistency — see inert_store_path (DAS-1651).
+    qa = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
     assert qa.meets_bar(0.80)
     assert not qa.meets_bar(0.90)
 
 
-def test_all_covered_roles_meet_bar() -> None:
+def test_all_covered_roles_meet_bar(inert_store_path: Path) -> None:
     """DAS-1488 demonstration: every covered role clears the >=80% bar."""
-    cards = ae.evaluate_all("sonnet", EVALS, store_path=None)
+    cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
     covered = {"qa-eng", "tech-writer", "backend-eng-1", "security-eng",
                "product-analyst", "sre-eng"}
     scored = {c.role for c in cards}

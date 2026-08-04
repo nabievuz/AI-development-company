@@ -46,6 +46,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: Resolved to the tree these tests live in, overriding any ambient value.
@@ -99,3 +101,22 @@ def scrubbed_env_vars(environ: dict[str, str] | None = None) -> list[str]:
 for _name in scrubbed_env_vars():
     del os.environ[_name]
 os.environ[PINNED_ROOT_VAR] = str(REPO_ROOT)
+
+
+@pytest.fixture
+def inert_store_path(tmp_path: Path) -> Path:
+    """A definitely-absent event-store path — the "no wave has ever run" state.
+
+    DAS-1651: functions that accept a ``store_path`` (``cost_ledger.aggregate_spans``,
+    ``agent_eval.role_cost``/``evaluate_role``/``evaluate_all``, ...) treat
+    ``store_path=None`` as "use the default", which resolves — via
+    ``dgox.events.iter_events`` — to the REAL ambient ``board/.events.jsonl``, not
+    to "no store". On a freshly cloned repo that file doesn't exist yet, so
+    ``store_path=None`` and "inert" happen to coincide; the moment any wave with
+    ``organism_emit`` on has run on the box, the ambient file is populated and a
+    test that meant "inert" silently starts reading real production data instead.
+
+    A test that wants the inert/no-store behaviour must ask for it explicitly by
+    passing this fixture, never by passing (or defaulting to) ``None``.
+    """
+    return tmp_path / "inert" / ".events.jsonl"
