@@ -408,6 +408,14 @@ def org_model_from_mapping(data: Mapping[str, object]) -> OrgModel:
                 model = spec or ""
             if str(model).strip():
                 role_models[str(role)] = str(model).strip()
+    elif isinstance(roles, Sequence) and not isinstance(roles, str):
+        for spec in roles:
+            if not isinstance(spec, Mapping):
+                continue
+            role = spec.get("key") or spec.get("role") or spec.get("name") or ""
+            model = spec.get("model") or spec.get("model_cap") or ""
+            if str(role).strip() and str(model).strip():
+                role_models[str(role).strip()] = str(model).strip()
     allocation = data.get("model_allocation")
     if isinstance(allocation, Mapping):
         for role, model in allocation.items():

@@ -25,7 +25,7 @@ from _paths import ROOT
 from dgox.created_at import CREATED_AT_FORMAT
 
 DEFAULT_JOURNAL_PATH: Path = ROOT / "board" / ".dispatch-journal.jsonl"
-DEFAULT_ORG_PATH: Path = ROOT / "org" / "schema.daslab.yaml"
+DEFAULT_ORG_PATH: Path = ROOT / "config" / "org.yaml"
 DEFAULT_BOARD_DIR: Path = ROOT / "board" / "tickets"
 
 JOURNAL_SCHEMA = "daslab.dispatch.v1"

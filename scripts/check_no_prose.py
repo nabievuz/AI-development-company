@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import ast
 import io
 import sys
@@ -42,10 +43,34 @@ def comment_violations(path: Path, text: str) -> list[str]:
     return out
 
 
+EXIT_OK = 0
+EXIT_VIOLATIONS = 1
+EXIT_USAGE = 2
+EXIT_EMPTY_SCAN = 3
+MIN_EXPECTED_FILES = 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
-    root = Path(args[0]).resolve() if args else ROOT
+    parser = argparse.ArgumentParser(
+        description="check_no_prose.py — fail if any first-party .py carries a comment or docstring"
+    )
+    parser.add_argument("root", nargs="?", type=Path, default=ROOT)
+    parser.add_argument("--min-files", type=int, default=MIN_EXPECTED_FILES)
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+
+    root = args.root.resolve()
+    if not root.is_dir():
+        print(f"not a directory: {root}", file=sys.stderr)
+        return EXIT_USAGE
+
     files = source_files(root)
+    if len(files) < args.min_files:
+        print(
+            f"scan surface collapsed: {len(files)} .py files under {root}, expected >= {args.min_files}",
+            file=sys.stderr,
+        )
+        return EXIT_EMPTY_SCAN
+
     violations: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")
@@ -63,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     for v in violations:
         print(v)
     print(f"violations: {len(violations)}")
-    return 1 if violations else 0
+    return EXIT_VIOLATIONS if violations else EXIT_OK
 
 
 if __name__ == "__main__":

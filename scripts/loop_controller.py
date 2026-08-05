@@ -294,7 +294,7 @@ def _monthly_credit_exhausted(
 
 
 DEFAULT_BOARD_DIR = ROOT / "board" / "tickets"
-DEFAULT_ORG_PATH = ROOT / "org" / "schema.daslab.yaml"
+DEFAULT_ORG_PATH = ROOT / "config" / "org.yaml"
 
 
 def actionable_work_exists(
