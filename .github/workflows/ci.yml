@@ -31,13 +31,20 @@ jobs:
           pip install --require-hashes -r requirements-dev.txt
 
       - name: Lint (ruff)
-        run: ruff check scripts tests
+        run: ruff check .
 
       - name: Compile all tracked Python
         run: python -m py_compile $(git ls-files '*.py')
 
       - name: Board lint
         run: python3 scripts/board_lint.py
+
+      - name: Wave planning is executable — orchestrator plans the live board and writes nothing
+        run: |
+          journal="${RUNNER_TEMP:-/tmp}/orchestrator-dry-run-must-not-exist.jsonl"
+          rm -f "$journal"
+          python3 scripts/orchestrator.py --dry-run --json --journal "$journal"
+          test ! -e "$journal"
 
       - name: Agents in sync
         run: python3 scripts/gen_subagents.py && python3 scripts/check_agents_sync.py
@@ -271,5 +278,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements-dev.txt
+      - name: Test suite — records the evidence the gate scores
+        run: python -m pytest -q --junitxml=board/.pytest-report.xml
       - name: Diagnostics — must print SCORE = 100/100
         run: python3 scripts/diagnostics.py

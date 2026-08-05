@@ -68,3 +68,4 @@ board/.tool-audit.jsonl
 
 # WS-E RBAC gate_approval audit ledger (append-only runtime state — ADR-0038 TN-3/TN-4)
 board/.rbac-audit.jsonl
+/board/.pytest-report.xml

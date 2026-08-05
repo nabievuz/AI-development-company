@@ -35,12 +35,15 @@ def test_script_runs_and_emits_per_dimension_json() -> None:
 
     assert payload["maximum"] == 100
     assert {d["key"] for d in payload["dimensions"]} == {
-        "docs",
         "architecture",
         "code_quality",
         "consistency",
         "portability",
         "security",
+        "prose_freedom",
+        "test_suite",
+        "cli_contracts",
+        "runtime_integrity",
         "git_hygiene",
     }
 

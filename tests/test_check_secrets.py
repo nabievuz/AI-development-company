@@ -36,7 +36,7 @@ def test_every_org_key_format_is_detected(label: str, secret: str) -> None:
 
 
 def test_private_key_block_still_detected() -> None:
-    assert cs.scan_text("-----BEGIN OPENSSH PRIVATE KEY-----")
+    assert cs.scan_text("-----BEGIN OPENSSH " + "PRIVATE KEY-----")
 
 
 def test_benign_text_is_not_flagged() -> None:
