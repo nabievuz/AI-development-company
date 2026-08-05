@@ -1,18 +1,10 @@
-"""Deterministic verifier — finance-analyst / cost-decision.
-
-Grades a build-vs-buy call: half credit for picking the cheaper option over
-the horizon, half credit (linearly decaying over a 6-month window) for the
-breakeven month. Both expected values are derived from the same fixture the
-agent was given. Deterministic (no clock/model). An empty submission scores
-0.0.
-"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-MONTH_DECAY_WINDOW = 6  # month-difference beyond which breakeven credit is 0
+MONTH_DECAY_WINDOW = 6
 
 
 def clamp01(value: float) -> float:
@@ -41,7 +33,6 @@ def _cumulative_costs(fixtures: Path) -> tuple[str, int | None, int]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected_cheaper, expected_month, horizon = _cumulative_costs(fixtures)
 
     option_credit = 1.0 if submission.get("cheaper_option") == expected_cheaper else 0.0

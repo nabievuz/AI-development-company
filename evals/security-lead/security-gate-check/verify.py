@@ -1,13 +1,3 @@
-"""Deterministic verifier — security-lead / security-gate-check.
-
-Recomputes the GATE-2/4/5 security sign-off verdict and missing-evidence set
-per RFC in ``fixtures/reviews.json`` from the cumulative gate requirements
-stated in ``task.md``. The expected answer is derived from the SAME fixture
-the agent was given — applying the gate checklist correctly reproduces it, so
-nothing is leaked. Deterministic (no clock/model). An empty submission scores
-0.0 because the `pass` verdict must be matched before any partial credit for
-`missing` is awarded (a blank/omitted `pass` never matches `True` or `False`).
-"""
 
 from __future__ import annotations
 
@@ -61,7 +51,6 @@ def _rfc_credit(exp_pass: bool, exp_missing: set[str], entry: object) -> float:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

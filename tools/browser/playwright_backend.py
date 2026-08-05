@@ -1,27 +1,5 @@
 #!/usr/bin/env python3
-"""Optional real browser backend for the WS-A governed browser bridge (DAS-1548).
 
-Absent-by-default (ADR-0033 TB-1): ``browser_bridge.py`` imports this module
-ONLY when ``DASLAB_BROWSER_BACKEND=playwright`` and the optional ``playwright``
-package is installed (``tools/browser/requirements-browser.txt``). With the env
-var unset the bridge never touches this file and its stdlib reference backend
-runs — so CI and every existing test are unaffected.
-
-Design constraints honoured (ADR-0010 C1 — consume, don't rebuild):
-
-  * **Governance is NOT re-implemented here.** The C8 action gate and the
-    C4/C5/C6 egress DECISION stay in ``browser_bridge.py``; this module only
-    acts on a URL the bridge already vetted. As defence-in-depth it also
-    installs a per-request route guard (:func:`set_guard`) that ABORTS any
-    request the same egress function denies — covering every subresource a real
-    browser would otherwise fetch (the stdlib stub only vetted the top URL).
-    The guard defaults to deny-all, so an un-wired backend reaches nothing.
-  * **Sync Playwright, off the event loop.** FastMCP serves tools on an asyncio
-    loop and the Playwright *sync* API refuses to run inside one. So a single
-    headless Chromium lives in a dedicated worker thread and every operation is
-    marshalled to it through a queue. The live page persists across MCP calls,
-    so a granted ``click`` acts on the page a prior ``navigate`` loaded.
-"""
 from __future__ import annotations
 
 import queue
@@ -32,18 +10,15 @@ _UA = "DasLab-WS-A-browser-bridge/0.1 (+playwright)"
 _NAV_TIMEOUT_MS = 20_000
 _MAX_TEXT = 4000
 
-# Governance callback: ``url -> bool``. Fail-closed: deny-all until the bridge
-# wires in its egress decision via :func:`set_guard`.
+
 _GUARD: Callable[[str], bool] = lambda _url: False
 
 
 def set_guard(fn: Callable[[str], bool]) -> None:
-    """Install the bridge's egress decision as the per-request route guard."""
     global _GUARD
     _GUARD = fn
 
 
-# --- worker thread that owns the sync Playwright session -------------------- #
 _CMD_Q: "queue.Queue" = queue.Queue()
 _STARTED = threading.Event()
 _START_LOCK = threading.Lock()
@@ -52,8 +27,6 @@ _WORKER: threading.Thread | None = None
 
 
 def _route(route) -> None:
-    """Re-check egress on EVERY request the real browser attempts (C4/C5/C6 at
-    the network layer). Deny => abort; the browser never reaches that host."""
     try:
         if _GUARD(route.request.url):
             route.continue_()
@@ -72,7 +45,7 @@ def _worker() -> None:
         context = browser.new_context(user_agent=_UA)
         page = context.new_page()
         page.route("**/*", _route)
-    except Exception as exc:  # start failed — record so callers get a clear error
+    except Exception as exc:
         _START_ERR.append(str(exc))
         _STARTED.set()
         return
@@ -115,7 +88,6 @@ def _call(op: Callable[[Any], Any], timeout: float = 45.0) -> Any:
     return val
 
 
-# --- public operations (each runs on the worker's live page) ---------------- #
 def navigate(url: str) -> dict:
     def op(page):
         resp = page.goto(url, wait_until="domcontentloaded", timeout=_NAV_TIMEOUT_MS)

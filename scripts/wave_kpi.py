@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""
-wave_kpi.py — DasLab wave throughput KPI
 
-Parses the wave/idle markers written by /daslab-cycle and /daslab-run to
-board/.wave-log and reports real numbers: active vs idle waves, per-wave
-active duration, tickets dispatched, model mix, and tickets-per-active-hour.
-This is the baseline you measure "10x" against.
-
-Log format (append-only, written by /daslab-cycle + /daslab-run):
-  ===== wave YYYY-MM-DD HH:MM:SS =====
-  | DAS-xxxx  slug  old-status → new-status  assignee  model |
-  nothing actionable — YYYY-MM-DD HH:MM:SS
-  [idle Ns before next wave — HH:MM:SS]
-
-Default log path : board/.wave-log   (live log from /daslab-run / /daslab-cycle)
-Legacy log path  : board/.night-waves.log  (archived; accepted via path arg)
-
-Usage:
-    python3 scripts/wave_kpi.py                           # reads board/.wave-log
-    python3 scripts/wave_kpi.py board/.night-waves.log    # legacy archived log
-    python3 scripts/wave_kpi.py /path/to/any.log          # explicit path
-"""
 from __future__ import annotations
 
 import datetime as dt
@@ -32,8 +11,8 @@ from dgox.created_at import parse_created_at
 
 WAVE = re.compile(r"^===== wave (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) =====")
 IDLE = re.compile(r"^\[idle (\d+)s before next wave — (\d{2}:\d{2}:\d{2})\]")
-# A dispatch table row: starts with |, names a DAS ticket, has a status arrow,
-# and names the model the agent ran on. Blocked/skipped tables lack the arrow+model.
+
+
 DISPATCH = re.compile(r"^\|\s*DAS-\d+.*→.*\b(opus|sonnet|haiku)\b", re.I)
 NONE_ACT = re.compile(r"nothing actionable", re.I)
 
@@ -78,28 +57,14 @@ def fmt(sec):
 
 LIVE_LOG = "board/.wave-log"
 LEGACY_LOG = "board/.night-waves.log"
-EVENTS_LOG = "board/.events.jsonl"   # DGO-X event store (gitignored runtime)
+EVENTS_LOG = "board/.events.jsonl"
 
-
-# --------------------------------------------------------------------------- #
-# DGO-X event-store reader: wave_kpi reads the live event store too.
-# Additive — the .wave-log parser above is untouched. These helpers let
-# check_busy_fraction.py read T1 from board/.events.jsonl when real run events
-# exist, and return None (inert) when they do not — never a fabricated number.
-# --------------------------------------------------------------------------- #
 
 def _parse_iso(ts: str) -> dt.datetime | None:
-    """Parse a ``created_at`` timestamp against the shared write-seam contract.
-
-    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
-    source of truth shared with ``cost_ledger``/``metrics_history_feeder``/
-    ``metrics_lib``/``trends``) instead of a locally re-implemented ``strptime``.
-    """
     return parse_created_at(ts)
 
 
 def read_events(path: str = EVENTS_LOG) -> list[dict]:
-    """Read the DGO-X JSONL event store; [] if absent (no live waves yet)."""
     events: list[dict] = []
     try:
         with open(path, encoding="utf-8") as fh:
@@ -117,7 +82,6 @@ def read_events(path: str = EVENTS_LOG) -> list[dict]:
 
 
 def _union_seconds(intervals: list[tuple[dt.datetime, dt.datetime]]) -> float:
-    """Total seconds covered by the union of [start, end] datetime intervals."""
     total = 0.0
     cur_s: dt.datetime | None = None
     cur_e: dt.datetime | None = None
@@ -135,13 +99,6 @@ def _union_seconds(intervals: list[tuple[dt.datetime, dt.datetime]]) -> float:
 
 
 def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
-    """T1 busy fraction from the event store, or (None, stats) if insufficient.
-
-    Active time = union of [run_start, run_end] intervals paired by ``run_id``.
-    Span = wall-clock between the first and last event. Returns the ratio in
-    [0, 1], or None when there are no paired runs or zero span (loop-off / no
-    live waves — the gate is inert, not failing). Never fabricates a value.
-    """
     starts: dict[str, dt.datetime] = {}
     ends: dict[str, dt.datetime] = {}
     all_ts: list[dt.datetime] = []
@@ -152,8 +109,8 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
         if ts is not None:
             all_ts.append(ts)
         else:
-            # DAS-1633 — surfaced instead of a silent skip; this event is
-            # excluded from both the T1 span and any run_start/run_end pairing.
+
+
             dropped_undated += 1
         rid = ev.get("run_id")
         et = ev.get("event_type")
@@ -161,11 +118,8 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
             starts[str(rid)] = ts
         elif et == "run_end" and rid and ts is not None:
             ends[str(rid)] = ts
-            # T4 model_mix: the model lives on the ``run_end`` completion event
-            # (ADR-0023 §4 — ``run_start`` carries no ``model`` field). Counting it
-            # off ``run_start`` here left model_mix all-zero even for real opus/sonnet
-            # runs (ORGANISM audit F-2). One run has exactly one ``run_end``, so this
-            # tallies each run's model once.
+
+
             mdl = str(ev.get("model", "")).lower()
             if mdl in model_mix:
                 model_mix[mdl] += 1
@@ -175,7 +129,7 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
         "runs_started": len(starts),
         "runs_completed": len(intervals),
         "model_mix": model_mix,
-        "dropped_undated": dropped_undated,  # DAS-1633
+        "dropped_undated": dropped_undated,
     }
     if not intervals or len(all_ts) < 2:
         return None, stats

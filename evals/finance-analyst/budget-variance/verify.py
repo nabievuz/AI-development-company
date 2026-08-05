@@ -1,14 +1,3 @@
-"""Deterministic verifier — finance-analyst / budget-variance.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ over_budget| - |reported \\ over_budget|) / |over_budget| )
-
-The over-budget set (variance > 10%) is derived from the SAME budget report the
-agent was given — doing the task correctly reproduces it — so nothing is
-leaked: the fixture is the input, and grading it is the graded skill.
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -33,7 +22,6 @@ def _over_budget(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _over_budget(fixtures)
     if not expected:
         return 0.0

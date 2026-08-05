@@ -1,14 +1,3 @@
-"""Guardrail for the ``backend-eng-2`` role (R4 rollout 2->32).
-
-INPUT: the shared scope screen (wrong-dept / missing-consumes / gate-open) is
-sufficient for an engineer; a backend ticket is any engineering-dept ticket.
-
-OUTPUT: a backend change is only accepted when the produced work shows test
-evidence and does not self-report a red / failing build. This encodes the
-engineer's Definition of Done ("delivered as a reviewed PR with green CI, every
-acceptance criterion checked") — LAW 5, "green CI = done" — at the guardrail
-layer so an untested or broken change never passes the tripwire.
-"""
 from __future__ import annotations
 
 import re
@@ -24,15 +13,13 @@ from guardrails import (
 
 ROLE = "backend-eng-2"
 
-# Positive evidence that tests were written / run and CI is green.
+
 _TEST_EVIDENCE = re.compile(
     r"\b(test|tests|pytest|passed|passing|green|coverage|assert|ci)\b",
     re.IGNORECASE,
 )
 
-# A CURRENT failing/red state the output must not carry. Scoped to state-asserting
-# phrases rather than any occurrence of "failed"/"broken", so a green change that
-# merely narrates the bug it fixed ("fixed the failing test; CI green") is NOT rejected.
+
 _RED_BUILD = re.compile(
     r"(?i)\b("
     r"ci (?:is )?red|build (?:is )?(?:failing|broken|red)|"
@@ -43,12 +30,10 @@ _RED_BUILD = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Backend engineers accept any in-department, gate-clear ticket."""
     return default_input_guardrail(ctx)
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only a tested, green backend change (LAW 5 — green CI = done)."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

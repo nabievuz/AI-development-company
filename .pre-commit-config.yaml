@@ -1,14 +1,8 @@
-# DasLab pre-commit hooks
-# Install: pip install pre-commit && pre-commit install
-# Run manually: pre-commit run --all-files
 ---
 default_language_version:
   python: python3
 
 repos:
-  # ---------------------------------------------------------------------------
-  # Standard file hygiene
-  # ---------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
@@ -24,9 +18,6 @@ repos:
       - id: check-merge-conflict
         name: Detect merge-conflict markers
 
-  # ---------------------------------------------------------------------------
-  # Ruff — fast Python linter + import sorter
-  # ---------------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.10
     hooks:
@@ -36,9 +27,6 @@ repos:
       - id: ruff-format
         name: Ruff format check
 
-  # ---------------------------------------------------------------------------
-  # Black — opinionated Python formatter
-  # ---------------------------------------------------------------------------
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
@@ -46,19 +34,12 @@ repos:
         name: Black formatter
         language_version: python3
 
-  # ---------------------------------------------------------------------------
-  # Gitleaks — secret / credential leak detector
-  # ---------------------------------------------------------------------------
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks:
       - id: gitleaks
         name: Gitleaks — detect secrets
 
-  # ---------------------------------------------------------------------------
-  # DasLab drift guard — subagent definitions must stay in sync with overlays.
-  # Regenerates .claude/agents/ + board/ROUTING.md; fails if git detects drift.
-  # ---------------------------------------------------------------------------
   - repo: local
     hooks:
       - id: gen-subagents-drift-check

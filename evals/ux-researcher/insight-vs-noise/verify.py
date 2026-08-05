@@ -1,14 +1,3 @@
-"""Deterministic verifier — ux-researcher / insight-vs-noise.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ insights| - |reported \\ insights|) / |insights| )
-
-A quote's topic is an "insight" iff two or more DISTINCT participants raised it
-in the same fixture the agent was given — the answer key is derived from the
-input, never leaked separately. Deterministic (no clock/model). An empty
-submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -34,7 +23,6 @@ def _insight_quote_ids(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _insight_quote_ids(fixtures)
     if not expected:
         return 0.0

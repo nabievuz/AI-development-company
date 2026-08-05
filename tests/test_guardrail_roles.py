@@ -1,9 +1,3 @@
-"""tests/test_guardrail_roles.py — per-role guardrails + runner (DAS-1471).
-
-Covers the shared base guardrails (default_input / default_output), the two
-example role modules (security-lead, backend-eng-1), and the runner's module
-loading + context assembly + default fallback.
-"""
 from __future__ import annotations
 
 import sys
@@ -14,21 +8,16 @@ _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "governance"))
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from guardrails import (  # noqa: E402
+from guardrails import (
     GuardrailContext,
     default_input_guardrail,
     default_output_guardrail,
     ok_result,
-    runner,  # noqa: E402
+    runner,
     trip,
 )
 
 GUARDRAILS_DIR = _REPO_ROOT / "governance" / "guardrails"
-
-
-# ---------------------------------------------------------------------------
-# Helpers / results
-# ---------------------------------------------------------------------------
 
 
 def test_ok_and_trip_helpers():
@@ -42,11 +31,6 @@ def test_trip_requires_feedback():
 
     with pytest.raises(ValueError):
         trip("   ")
-
-
-# ---------------------------------------------------------------------------
-# default_input_guardrail — the three canonical scope failure modes
-# ---------------------------------------------------------------------------
 
 
 def _eng_ctx(**kw) -> GuardrailContext:
@@ -107,11 +91,6 @@ def test_input_clean_passes():
     assert default_input_guardrail(ctx) == (True, "")
 
 
-# ---------------------------------------------------------------------------
-# default_output_guardrail
-# ---------------------------------------------------------------------------
-
-
 def test_output_empty_trips():
     ok, fb = default_output_guardrail(_eng_ctx(output="   "))
     assert ok is False and "empty output" in fb
@@ -124,11 +103,6 @@ def test_output_unresolved_marker_trips():
 
 def test_output_clean_passes():
     assert default_output_guardrail(_eng_ctx(output="all done and shipped")) == (True, "")
-
-
-# ---------------------------------------------------------------------------
-# Example role modules via the runner
-# ---------------------------------------------------------------------------
 
 
 def _sec_ctx(**kw) -> GuardrailContext:
@@ -162,8 +136,8 @@ def test_security_lead_output_no_signoff_trips():
 
 
 def test_security_lead_output_leaked_secret_trips():
-    # A fake credential shaped to trip the guardrail's own regex, deliberately
-    # NOT matching any real-provider secret pattern (no AKIA/sk-ant/ghp prefix).
+
+
     ctx = _sec_ctx(output="Signed-off. Note api_key=notarealkey1234 in config.")
     ok, fb = runner.run_output("security-lead", ctx, GUARDRAILS_DIR)
     assert ok is False and "secret" in fb.lower()
@@ -210,29 +184,19 @@ def test_backend_output_green_passes():
     assert ok is True
 
 
-# ---------------------------------------------------------------------------
-# Runner: module loading + default fallback
-# ---------------------------------------------------------------------------
-
-
 def test_load_hyphenated_module_by_path():
     mod = runner.load_guardrail_module("security-lead", GUARDRAILS_DIR)
     assert mod is not None and mod.ROLE == "security-lead"
 
 
 def test_unknown_role_falls_back_to_default():
-    # A role with no bespoke module still gets a working guardrail (the default).
-    # Every real ROUTING role now ships a bespoke module (R4: 2->32), so this
-    # exercises the fallback path with a deliberately unknown role key.
+
+
     ctx = _eng_ctx(role="nonexistent-role", output="TODO finish")
     assert runner.load_guardrail_module("nonexistent-role", GUARDRAILS_DIR) is None
     ok, fb = runner.run_output("nonexistent-role", ctx, GUARDRAILS_DIR)
-    assert ok is False and "unresolved" in fb.lower()  # default_output_guardrail ran
+    assert ok is False and "unresolved" in fb.lower()
 
-
-# ---------------------------------------------------------------------------
-# Runner: build_context from a ticket + board + ROUTING
-# ---------------------------------------------------------------------------
 
 _ROUTING_FIXTURE = textwrap.dedent(
     """\

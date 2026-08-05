@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""degrade.py — WS-H NOT-a-daemon / degrade-to-static launcher (ADR-0039 CP-5, FR-006).
 
-Decides, on every launch attempt, whether the optional control-plane process is
-eligible to run or the surface degrades to the ADR-0028 static read cockpit — the
-always-available base case. This module is the DAS-1602 install-path decision
-layer; `tools/control_plane/app.py` itself (DAS-1600/1601) is not touched here.
-
-Degrade triggers (first match wins — structurally fail-open-to-static, never a
-crash):
-  1. `ws_h_control_plane` feature flag OFF (`config/features.yaml`, default OFF).
-  2. Optional deps (fastapi/uvicorn) not importable — e.g. no vendored bundle on
-     `PYTHONPATH` and no `pip install` done yet. Absence degrades; it never raises.
-  3. `--force-static` explicit override.
-
-When neither trigger fires this module reports the control plane ELIGIBLE — it
-never execs uvicorn itself. Starting the real process stays a deliberate,
-Founder-initiated act (a foreground `uvicorn` run, or the opt-in
-systemd/launchd unit under `install/systemd/` and `install/launchd/`); a
-launcher that could silently start a server on its own would reintroduce the
-daemon this design forbids (CP-5).
-"""
 from __future__ import annotations
 
 import argparse
@@ -37,36 +17,25 @@ OPTIONAL_DEPS: tuple[str, ...] = ("fastapi", "uvicorn")
 
 @dataclass(frozen=True)
 class Decision:
-    mode: str  # "control-plane" | "static"
+    mode: str
     reason: str
 
 
 def _flag_on(features_path: Path | None = None) -> bool:
-    """Read `ws_h_control_plane` via `scripts/feature_flags.py` (read-only)."""
     if str(SCRIPTS_DIR) not in sys.path:
         sys.path.insert(0, str(SCRIPTS_DIR))
-    import feature_flags  # local import: scripts/ owns this module, we only read it
+    import feature_flags
 
     return feature_flags.enabled(FEATURE_FLAG, features_path)
 
 
 def _deps_importable(deps: tuple[str, ...] = OPTIONAL_DEPS) -> bool:
-    """True iff every optional dep resolves on `sys.path` — WITHOUT importing
-    it. `find_spec` only inspects `sys.path`/`PYTHONPATH`; it never fetches
-    anything, so this check is itself no-network by construction. A vendored
-    bundle becomes visible the moment its `site-packages` dir is on the path —
-    no `pip install` required at runtime.
-    """
     return all(importlib.util.find_spec(name) is not None for name in deps)
 
 
 def resolve_surface(
     *, features_path: Path | None = None, force_static: bool = False
 ) -> Decision:
-    """The single routing decision this module makes. Flag-OFF short-circuits
-    before any dependency probe — a disabled control plane never even asks
-    whether fastapi/uvicorn are importable.
-    """
     if force_static:
         return Decision("static", "forced by --force-static")
     if not _flag_on(features_path):
@@ -80,12 +49,6 @@ def resolve_surface(
 
 
 def render_static_cockpit(repo_root: Path, out: Path | None = None) -> Path:
-    """Render the ADR-0028 static read cockpit via `scripts/cockpit_html.py`.
-
-    Subprocess call — the same CP-1 reuse pattern `tools/control_plane/app.py`
-    already uses for its cockpit embed. This module re-implements no panel and
-    holds no cockpit logic of its own.
-    """
     out = out or (repo_root / "board" / ".cockpit.html")
     cmd = [sys.executable, str(repo_root / "scripts" / "cockpit_html.py"), "--out", str(out)]
     subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True, text=True)
@@ -93,7 +56,7 @@ def render_static_cockpit(repo_root: Path, out: Path | None = None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='degrade.py — WS-H NOT-a-daemon / degrade-to-static launcher (ADR-0039 CP-5, FR-006).')
     ap.add_argument("--repo-root", type=Path, default=ROOT)
     ap.add_argument("--features", type=Path, default=None)
     ap.add_argument("--force-static", action="store_true")

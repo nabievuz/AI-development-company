@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""check_loop_mode.py — the self-optimizing loop stays OFF (PRD §6).
 
-``config/loop.yaml`` is the SSOT for the loop's mode. The loop ships
-its levers (registry, validators, GATE-6) but does NOT act: the mode must be
-shadow (or at most measured) and no tuning may auto-apply. The live-promotion
-modes (limited_live / full) are forbidden here — they require a GATE-6 record
-plus a week of clean live T1-T7. This is how "no auto-apply path is reachable in
-P1" and "no fake KPIs" are enforced as code. Editing config/loop.yaml is
-governance/policy -> never-auto-approve (QONUN-5).
-
-Exit codes: 0 = loop safely off, 1 = unsafe loop config, 2 = usage/IO error.
-
-Usage:
-    python3 scripts/check_loop_mode.py [--config config/loop.yaml]
-"""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +10,7 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -32,7 +18,6 @@ LIVE_MODES = {"limited_live", "full"}
 
 
 def check_loop(cfg: dict) -> list[str]:
-    """Return a list of problems with the loop config; empty == safely off."""
     problems: list[str] = []
     ladder = cfg.get("ladder") or []
     mode = cfg.get("mode")
@@ -48,7 +33,7 @@ def check_loop(cfg: dict) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_loop_mode.py — the self-optimizing loop stays OFF (PRD §6).')
     ap.add_argument("--config", type=Path, default=ROOT / "config" / "loop.yaml")
     args = ap.parse_args(argv)
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_break_glass.py — BREAK-GLASS override mechanism (R-8 / ADR-008).
 
-Proves: 60-min auto-expiry, single-rollback scope enforcement, the 24h review
-deadline stamp, append-only logging to the audit store, and the CLI.
-"""
 from __future__ import annotations
 
 import sys
@@ -16,7 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import break_glass as bg  # noqa: E402  (import after path manipulation)
+import break_glass as bg
 
 T0 = "2026-06-22T10:00:00Z"
 
@@ -27,10 +23,6 @@ def _activate(store: Path, created: str = T0, aid: str = "BG-1") -> None:
         store,
     )
 
-
-# --------------------------------------------------------------------------- #
-# Builder: expiry, review deadline, scope
-# --------------------------------------------------------------------------- #
 
 def test_activation_expiry_is_60_minutes():
     ev = bg.build_activation(activation_id="BG-1", reason="x", operator="cto", created_at=T0)
@@ -55,10 +47,6 @@ def test_bad_timestamp_rejected():
     with pytest.raises(ValueError):
         bg.build_activation(activation_id="BG-1", reason="x", operator="cto", created_at="not-a-time")
 
-
-# --------------------------------------------------------------------------- #
-# Append-only log + auto-expiry
-# --------------------------------------------------------------------------- #
 
 def test_append_is_append_only(tmp_path):
     store = tmp_path / ".events.jsonl"
@@ -92,10 +80,10 @@ def test_no_store_means_inactive(tmp_path):
 
 
 def test_forged_expires_at_is_ignored(tmp_path):
-    # liveness is recomputed from created_at + 60min, NOT a forged expires_at
+
     store = tmp_path / ".events.jsonl"
     ev = bg.build_activation(activation_id="BG-1", reason="x", operator="cto", created_at=T0)
-    ev["expires_at"] = "2126-06-22T10:00:00Z"  # forged far-future expiry
+    ev["expires_at"] = "2126-06-22T10:00:00Z"
     bg.append_event(ev, store)
     assert bg.is_active(bg.parse_ts("2026-06-22T12:00:00Z"), store) is False
 
@@ -103,14 +91,10 @@ def test_forged_expires_at_is_ignored(tmp_path):
 def test_non_single_rollback_scope_never_active(tmp_path):
     store = tmp_path / ".events.jsonl"
     ev = bg.build_activation(activation_id="BG-1", reason="x", operator="cto", created_at=T0)
-    ev["scope"] = "full_access"  # tampered scope in the log
+    ev["scope"] = "full_access"
     bg.append_event(ev, store)
     assert bg.is_active(bg.parse_ts("2026-06-22T10:30:00Z"), store) is False
 
-
-# --------------------------------------------------------------------------- #
-# CLI
-# --------------------------------------------------------------------------- #
 
 def test_cli_activate_logs_event(tmp_path):
     store = tmp_path / ".events.jsonl"

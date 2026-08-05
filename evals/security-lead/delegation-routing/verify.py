@@ -1,15 +1,3 @@
-"""Deterministic verifier — security-lead / delegation-routing.
-
-Recomputes the expected (action, route) pair for each request in
-``fixtures/requests.json`` from the escalation policy stated in ``task.md``
-(org-wide blast radius, a policy-exception grant, or a remediation cost past
-the delegated ceiling all force escalation to `cto`; otherwise delegate to
-`security-eng`, the role's only delegation route). The expected answer is
-derived from the SAME fixture the agent was given — doing the escalation
-judgment correctly reproduces it — so nothing is leaked: the fixture is the
-input, and applying the policy is the graded skill. Deterministic (no
-clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -37,7 +25,6 @@ def _expected(fixtures: Path) -> dict[str, tuple[str, str]]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

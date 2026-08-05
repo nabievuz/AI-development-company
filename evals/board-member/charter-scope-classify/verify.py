@@ -1,4 +1,3 @@
-"""Deterministic verifier — board-member / charter-scope-classify."""
 from __future__ import annotations
 
 import json
@@ -21,7 +20,7 @@ def _expected(fixtures: Path) -> dict[str, dict]:
         if owner is not None:
             out[prop["id"]] = {"status": "escalate", "escalate_to": owner}
         else:
-            # Not in either list under our fixture design — should not occur.
+
             out[prop["id"]] = {"status": "unknown", "escalate_to": None}
     return out
 

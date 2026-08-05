@@ -1,10 +1,9 @@
-"""Deterministic verifier — support-lead / canned-response-match."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-# Answer key — never exposed in fixtures/, only here.
+
 _ANSWERS = {
     "M-1": "TPL-REFUND",
     "M-2": "TPL-PWRESET",

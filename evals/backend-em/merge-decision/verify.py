@@ -1,4 +1,3 @@
-"""Deterministic verifier — backend-em / merge-decision."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,9 +21,8 @@ def _normalize(value: object) -> str:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    # fixtures/pr_review.md is read for parity with other verifiers (and to
-    # keep this deterministic against the recorded scenario) even though the
-    # expected answer is fixed for this task instance.
+
+
     _ = (fixtures / "pr_review.md").read_text(encoding="utf-8")
 
     credit = 0.0

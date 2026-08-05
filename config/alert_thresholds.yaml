@@ -1,7 +1,3 @@
-# DasLab — Alert thresholds (SSOT).
-# Threshold-based proactive notifications turn the passive cockpit into an active
-# one. Quiet Mode emits anomalies (warning/critical) only. Alerts fire only once
-# live evidence exists (the loop is off until then).
 version: 1
 thresholds:
   t1_busy_min: 0.60

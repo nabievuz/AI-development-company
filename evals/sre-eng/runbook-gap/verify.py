@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-eng / runbook-gap."""
 from __future__ import annotations
 
 import json

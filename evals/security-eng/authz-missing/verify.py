@@ -1,4 +1,3 @@
-"""Deterministic verifier — security-eng / authz-missing."""
 from __future__ import annotations
 
 import json

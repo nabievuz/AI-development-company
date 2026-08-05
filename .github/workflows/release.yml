@@ -1,12 +1,5 @@
 name: Release wheel
 
-# Build the sdist + wheel on every version tag and attach them to that tag's
-# GitHub Release. GitHub Packages has no Python (PyPI) registry, so the Release
-# assets ARE the published, pip-installable artifacts:
-#   pip install https://github.com/nabievuz/daslab/releases/download/vX.Y.Z/daslab-X.Y.Z-py3-none-any.whl
-#
-# The release is created if it does not exist yet, so this works whether the tag
-# is pushed before or after the manual `gh release create` step.
 
 on:
   push:
@@ -14,15 +7,15 @@ on:
       - "v*"
 
 permissions:
-  contents: write # create/edit the Release and upload assets
+  contents: write
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.11"
 

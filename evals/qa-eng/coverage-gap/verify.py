@@ -1,14 +1,3 @@
-"""Deterministic verifier — qa-eng / coverage-gap.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ uncovered| - |reported \\ uncovered|) / |uncovered| )
-
-The uncovered set is derived from the SAME coverage report the agent was given —
-doing the task correctly reproduces it — so nothing is leaked: the fixture is the
-input, and grading it is the graded skill. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -26,7 +15,6 @@ def _uncovered(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _uncovered(fixtures)
     if not expected:
         return 0.0

@@ -1,50 +1,5 @@
 #!/usr/bin/env python3
-"""DasLab WS-H — self-hosted web control plane (ADR-0039), RBAC bound to the WS-E SSOT.
 
-A FastAPI app a tenant runs on its own Ubuntu/macOS server to operate DasLab from a
-browser. It is a **controller layer** wrapped around the read-only cockpit — it is NOT a
-new cockpit and NOT a new dispatch path. Every read/write is authorized against the WS-E
-RBAC SSOT and audited. It honours the ADR-0039 invariants (design docs/design/
-ws-h-control-plane.md):
-
-* CP-1 — reuses the REAL cockpit via its own CLI (``scripts/cockpit.py``, subprocess, its
-  argparse owns the defaults) and embeds its text output; unavailable -> honest NODATA
-  line. This app adds a controller layer; it re-implements no cockpit panel.
-* CP-2 — no anonymous data access. Authorization is bound to the **WS-E RBAC SSOT**
-  (``config/rbac.yaml`` + ``scripts/rbac.decide()``), NOT to any ad-hoc tier: the spike's
-  ``viewer < operator < founder`` ``ROLE_RANK`` is **retired** (DAS-1600). A bearer token
-  maps (in the tenant vault, ``$DASLAB_CP_RBAC``) to an SSOT **principal** string
-  (``founder`` / ``audit-team`` / ``orchestrator`` / ``agent:<role>``); ``decide()``
-  default-DENIES. **Fail-closed:** RBAC unconfigured/unloadable -> 503 (only ``/healthz``
-  and the data-free HTML shell answer); bad/missing token -> 401 (audited deny); a
-  ``decide()`` deny -> 403 (audited deny). ``gate.approve`` / ``run.trigger`` are
-  Founder-only *by construction* — the SSOT refuses to load a config that grants them to a
-  non-founder kind, so no token, role string, or request body promotes a non-Founder into
-  them (the approve-gate / trigger-run *endpoints* land in DAS-1601 on this foundation).
-* CP-3 — ONE governed write ships here (CP-3a): **submit a goal proposal** (Founder-
-  authorized in the near-term matrix, Q6 — the small team is read-only). It writes a file
-  into ``board/goal-inbox/`` for ``/daslab-plan`` triage — it creates NO ticket, approves
-  NO gate, dispatches NOTHING. Every request/decision (allow AND deny) is appended to the
-  append-only audit trail, its free-text ``detail`` scrubbed through the single ADR-0012
-  scrubber (``tools/mcp_bridges/redaction.py``) — the record is Tier-M by construction.
-* CP-4 — all state lives in repo files (board/goal-inbox, audit JSONL); no parallel store.
-* CP-5/CP-6 — optional, ``ws_h_control_plane``-OFF-by-default process (config/features.
-  yaml). With the flag OFF the control surface is **inert** (the ``/api/*`` endpoints do
-  not exist) and ``GET /`` degrades to the ADR-0028 static read cockpit; the server
-  dispatches NOTHING on its own; loopback bind by default (a network bind is a deliberate
-  tenant act per ADR-0038 TN-5).
-
-Vault token map (``$DASLAB_CP_RBAC``) — a per-token **principal**, never a rank tier::
-
-    {"tokens": {"<token>": {"user": "akmal", "principal": "founder"}}}
-
-Env: DASLAB_ROOT (tenant data root, default cwd), DASLAB_CP_RBAC (vault token map,
-required), DASLAB_CP_RBAC_CONFIG (optional override of the SSOT grant matrix path;
-defaults to the engine ``config/rbac.yaml``), DASLAB_CP_AUDIT_LOG (default
-<root>/board/.control-plane-audit.jsonl). The ws_h_control_plane flag itself is
-read from config/features.yaml only — there is no environment override.
-Run: ``python3 -m uvicorn app:app --host 127.0.0.1 --port 8899`` (loopback by default).
-"""
 from __future__ import annotations
 
 import hmac
@@ -69,17 +24,13 @@ STATUSES = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"]
 NODATA = "(no data — cockpit unavailable in this environment; see scripts/cockpit.py)"
 FLAG = "ws_h_control_plane"
 
-# The engine checkout that owns this file — resolved from __file__, INDEPENDENT of
-# DASLAB_ROOT (the tenant data root). The WS-E RBAC SSOT, the ADR-0012 scrubber, and the
-# feature-flag reader live here and are REUSED verbatim (never forked, never re-implemented).
+
 _ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _engine_module(mod_name: str, rel: str) -> Any:
-    """Path-load an engine module so we reuse the SSOT/scrubber without a sys.path edit
-    (which would trip ruff E402) and without duplicating their logic here."""
     spec = importlib.util.spec_from_file_location(mod_name, _ENGINE_ROOT / rel)
-    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+    if spec is None or spec.loader is None:
         raise ImportError(f"cannot load engine module {rel}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[mod_name] = module
@@ -94,31 +45,14 @@ _safe_scrub: Callable[[object], str] = _engine_module(
 ).safe_scrub
 
 
-# ---------------------------------------------------------------------------
-# Paths, feature flag & config (self-locating; no hardcoded absolute paths — ADR-0003)
-# ---------------------------------------------------------------------------
 def repo_root() -> Path:
-    """The tenant DATA root (board/goal-inbox/audit live here). Distinct from the engine
-    checkout ``_ENGINE_ROOT`` that owns the SSOT + scrubber code."""
     return Path(os.environ.get("DASLAB_ROOT", ".")).resolve()
 
 
-#: Optional features-file override, set by tests on the loaded module. Not an
-#: environment variable on purpose: a ``DASLAB_WS_H_FLAG`` override used to
-#: precede the config, and the direction that matters is OPENING — with the
-#: config OFF, an ambient "1" turned a 404 surface into a live one serving real
-#: board data and a reachable gate-approve endpoint. The deployed unit has no
-#: such variable in its environment, so this only ever widened the surface.
 FEATURES_PATH: Path | None = None
 
 
 def flag_on() -> bool:
-    """True iff the WS-H control plane is enabled (ADR-0019). Default OFF ⇒ inert surface.
-
-    Resolved from ``config/features.yaml`` through ADR-0019's canonical reader —
-    :data:`FEATURES_PATH` when a caller has set it, else that reader's default.
-    No environment variable participates.
-    """
     return bool(_flags.enabled(FLAG, FEATURES_PATH))
 
 
@@ -128,17 +62,11 @@ def audit_path() -> Path:
 
 
 def _rbac_config_path() -> Path | None:
-    """SSOT grant-matrix path. ``None`` ⇒ scripts/rbac's default (engine config/rbac.yaml)."""
     override = os.environ.get("DASLAB_CP_RBAC_CONFIG")
     return Path(override) if override else None
 
 
 def load_token_map() -> dict | None:
-    """The vault token→principal map, or ``None`` when unconfigured/unreadable (fail-closed).
-
-    Kept OUT of the repo (``$DASLAB_CP_RBAC``, tenant vault, ADR-0038 TN-5). Each entry
-    carries an SSOT ``principal`` string — NOT the retired ad-hoc ``role`` tier.
-    """
     path = os.environ.get("DASLAB_CP_RBAC")
     if not path:
         return None
@@ -151,12 +79,6 @@ def load_token_map() -> dict | None:
 
 
 def load_grants() -> dict | None:
-    """The SSOT permission grant matrix, or ``None`` when unconfigured/unloadable.
-
-    Fail-closed like ``scripts/rbac.load_grants``: an ABSENT config yields ``{}`` (→ None
-    here, treated as unconfigured 503) and a STRUCTURALLY invalid config raises
-    ``RbacConfigError`` (a tampered security surface is a loud refusal) → None → 503.
-    """
     try:
         grants = _rbac.load_grants(_rbac_config_path())
     except _rbac.RbacConfigError:
@@ -165,7 +87,6 @@ def load_grants() -> dict | None:
 
 
 def rbac_configured() -> bool:
-    """Both halves present: the vault token map AND a non-empty, loadable grant matrix."""
     return load_token_map() is not None and load_grants() is not None
 
 
@@ -177,10 +98,6 @@ def audit(
     reason: str = "",
     detail: str = "",
 ) -> None:
-    """Append-only audit trail (ADR-0039 CP-3), Tier-M by construction. The free-text
-    ``detail`` (a reference: goal path / ticket id) is scrubbed through the SINGLE ADR-0012
-    scrubber before it is written; a secret/PII value can never enter the ledger. The
-    write must never crash a request (best-effort append)."""
     record = {
         "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "action": action,
@@ -199,15 +116,7 @@ def audit(
         pass
 
 
-# ---------------------------------------------------------------------------
-# AuthN/AuthZ (CP-2) — bound to the WS-E RBAC SSOT; fail-closed 503/401/403.
-# ---------------------------------------------------------------------------
 def _match_token(tokens: dict, token: str) -> dict | None:
-    """Constant-time bearer-token resolution (defence-in-depth vs a timing side-channel on
-    the auth secret). Instead of a dict-hash ``tokens.get(token)`` lookup, compare the
-    presented token against every stored token with ``hmac.compare_digest`` and never
-    short-circuit on a first-byte / first-entry mismatch (the loop always visits every
-    candidate). An empty/None token resolves to no entry — still fail-closed 401 upstream."""
     if not token:
         return None
     found: dict | None = None
@@ -222,8 +131,6 @@ def _match_token(tokens: dict, token: str) -> dict | None:
 
 
 def _identify(request: Request) -> dict:
-    """Resolve the bearer token to an SSOT principal. 503 if the token map is unconfigured;
-    401 (audited deny) if the token is absent/unknown or its principal resolves to no kind."""
     tokens = load_token_map()
     if tokens is None:
         raise HTTPException(503, "control plane not configured: set DASLAB_CP_RBAC (fail-closed)")
@@ -239,13 +146,6 @@ def _identify(request: Request) -> dict:
 
 
 class RequirePermission:
-    """FastAPI dependency: flag-gate → fail-closed RBAC → identified principal on allow.
-
-    Bound to a module-level ``Annotated`` alias so no function-call sits in an argument
-    default (ruff B008 clean, per the design §6.2 preferred pattern). Fail-closed order:
-    flag OFF ⇒ 404 (inert); RBAC unconfigured/unloadable ⇒ 503; bad/missing token ⇒ 401
-    (audited); ``decide()`` deny ⇒ 403 (audited). The allow path is audited by the route.
-    """
 
     def __init__(self, permission: str, action: str) -> None:
         self.permission = permission
@@ -267,28 +167,17 @@ class RequirePermission:
         return {**who, "reason": reason}
 
 
-# The read endpoints check ``audit.read``; the goal-proposal write checks ``board.work``
-# (an EXISTING SSOT permission the Founder holds unconditionally while the near-term team
-# is denied — Founder-authorized without reintroducing an ``operator`` tier, design §3.5).
-# Widening the proposer beyond Founder is a reviewed ``config.edit.security`` grant edit,
-# NOT a hardcoded rank baked into the app.
 BoardRead = Annotated[dict, Depends(RequirePermission("audit.read", "board.read"))]
 CockpitRead = Annotated[dict, Depends(RequirePermission("audit.read", "cockpit.read"))]
 AuditRead = Annotated[dict, Depends(RequirePermission("audit.read", "audit.read"))]
 GoalWrite = Annotated[dict, Depends(RequirePermission("board.work", "goal.submit"))]
-# The two governed writes DAS-1601 adds — both Founder-only *by construction* (the SSOT
-# refuses to load an rbac.yaml that grants either to a non-founder kind, scripts/rbac
-# §1.3). ``run.trigger`` guards the trigger-run intent; ``gate.approve`` guards BOTH the
-# approve and the deny endpoints (deciding a gate — either direction — is a Founder act).
+
+
 RunTrigger = Annotated[dict, Depends(RequirePermission("run.trigger", "run.trigger"))]
 GateApprove = Annotated[dict, Depends(RequirePermission("gate.approve", "gate.approve"))]
 
 
-# ---------------------------------------------------------------------------
-# Board read (CP-4: reads the canonical files; NODATA-honest when absent)
-# ---------------------------------------------------------------------------
 def _frontmatter(text: str) -> dict:
-    """Minimal ``key: value`` frontmatter parser matching board/tickets format."""
     meta: dict[str, str] = {}
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -321,7 +210,6 @@ def board_summary() -> dict:
 
 
 def cockpit_text() -> dict:
-    """CP-1: run the REAL cockpit CLI (it owns its defaults); degrade to NODATA."""
     script = repo_root() / "scripts" / "cockpit.py"
     if script.is_file():
         try:
@@ -336,9 +224,6 @@ def cockpit_text() -> dict:
     return {"source": "unavailable", "text": NODATA}
 
 
-# ---------------------------------------------------------------------------
-# The ONE governed write (CP-3a): submit a goal PROPOSAL to board/goal-inbox/
-# ---------------------------------------------------------------------------
 class GoalIn(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     body: str = Field(default="", max_length=10_000)
@@ -378,14 +263,6 @@ def write_goal(goal: GoalIn, user: str) -> Path:
     return path
 
 
-# ---------------------------------------------------------------------------
-# Governed write (CP-3b): trigger a run — queue an INTENT to board/run-inbox/.
-# The control plane DISPATCHES NOTHING itself (CP-5). It writes a canonical run-intent
-# to the board queue (C2); the ADR-0034 WS-B headless runner / HEARTBEAT is what later
-# picks it up, and that path routes through the board/dispatch chokepoint and honours
-# EVERY AADL gate (C4). A GATE-5-open deployment therefore stays machine-blocked no matter
-# how many times this endpoint is called — the intent is not a dispatch.
-# ---------------------------------------------------------------------------
 class RunIn(BaseModel):
     target: str = Field(min_length=1, max_length=200)
     note: str = Field(default="", max_length=10_000)
@@ -422,27 +299,12 @@ def write_run_intent(run: RunIn, user: str) -> Path:
     return path
 
 
-# ---------------------------------------------------------------------------
-# Governed write (CP-3c): approve / deny an AADL gate or interrupt-card.
-# Approval is a Founder-identity EVENT, not a button-press claim (FR-004 crux). The route
-# calls ``scripts/rbac.append_gate_approval()`` — the ONE canonical producer of a
-# ``gate_approval`` record — which (i) re-checks ``decide(principal,"gate.approve")==allow``
-# and refuses otherwise (nothing written), and (ii) STAMPS ``principal_kind`` from the
-# authenticated session principal, never from request content. So the dashboard can never
-# manufacture a ``principal_kind: founder`` event, and ``is_gate_closed()`` closes a gate
-# ONLY on a matching Founder-identity event — a forged ``approval: human:founder``
-# frontmatter with no backing event closes NO gate. A DENY records the Founder's decision
-# but writes NO ``gate_approval`` event, so the gate stays OPEN.
-# ---------------------------------------------------------------------------
 class GateDecisionIn(BaseModel):
     category: str = Field(min_length=1, max_length=64)
     gate: str = Field(default="", max_length=64)
     note: str = Field(default="", max_length=10_000)
 
 
-# ---------------------------------------------------------------------------
-# Routes — /healthz + / answer always (data-free); /api/* are RBAC-gated & flag-inert.
-# ---------------------------------------------------------------------------
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True, "flag": flag_on(), "rbac_configured": rbac_configured()}
@@ -480,9 +342,6 @@ def api_goals(goal: GoalIn, who: GoalWrite) -> dict:
 
 @app.post("/api/runs", status_code=201)
 def api_runs(run: RunIn, who: RunTrigger) -> dict:
-    """CP-3b trigger-run (Founder-only ``run.trigger``). Queues a canonical run-intent to
-    ``board/run-inbox/`` — it dispatches NOTHING itself (CP-5) and never bypasses an AADL
-    gate (C4). Audited + redacted."""
     path = write_run_intent(run, who["user"])
     rel = str(path.relative_to(repo_root()))
     audit("run.trigger", who["principal"], who["kind"], "allow", who["reason"], rel)
@@ -496,11 +355,6 @@ def api_runs(run: RunIn, who: RunTrigger) -> dict:
 
 @app.post("/api/gates/{ticket_id}/approve", status_code=201)
 def api_gate_approve(ticket_id: str, decision: GateDecisionIn, who: GateApprove) -> dict:
-    """CP-3c approve-gate (Founder-only, structural). Records ONE attributed
-    ``gate_approval`` event via the canonical ``scripts/rbac.append_gate_approval()`` — the
-    ``principal_kind`` is stamped from the session, never from request content. A
-    non-Founder is already refused (403 + audited deny) by the ``gate.approve`` dependency
-    before this runs; the ledger-layer refusal below is defence-in-depth."""
     created_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         record = _rbac.append_gate_approval(
@@ -527,10 +381,6 @@ def api_gate_approve(ticket_id: str, decision: GateDecisionIn, who: GateApprove)
 
 @app.post("/api/gates/{ticket_id}/deny", status_code=201)
 def api_gate_deny(ticket_id: str, decision: GateDecisionIn, who: GateApprove) -> dict:
-    """CP-3c deny-gate (Founder-only). Records the Founder's decision in the control-plane
-    audit trail but writes **NO** ``gate_approval`` event — so ``is_gate_closed()`` stays
-    False and the gate remains OPEN. A deny never closes a never-auto-approve gate; only a
-    Founder approve does."""
     audit("gate.deny", who["principal"], who["kind"], "allow", who["reason"], ticket_id)
     return {
         "gate_approval": False,
@@ -619,9 +469,6 @@ an <b>optional</b>, Founder-enabled process; it dispatches nothing on its own.</
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    """Data-free shell. With the flag OFF the whole control surface is inert and this
-    degrades to the ADR-0028 static read cockpit (CP-5). Either way it carries NO data —
-    all board/cockpit/audit content requires a token via ``/api/*`` (CP-2)."""
     return _PAGE if flag_on() else _STATIC_PAGE
 
 

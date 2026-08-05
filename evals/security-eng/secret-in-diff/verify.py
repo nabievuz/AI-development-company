@@ -1,4 +1,3 @@
-"""Deterministic verifier — security-eng / secret-in-diff."""
 from __future__ import annotations
 
 import re

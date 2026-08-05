@@ -1,7 +1,7 @@
 {
   "attest_chain": {
     "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "self": "sha256:552ba7af854031e93a23630a26ead1bd202c061956701a806896153057830130"
+    "self": "sha256:7f45c8238cb3fe5a5b91dc62385b8204afe706cfbb3e4c11c62a28c455bf3dda"
   },
   "counts": {
     "counted_completions": 2,
@@ -19,8 +19,8 @@
     ]
   },
   "guardrail_verdicts": {
-    "DAS-9001": "passed",
-    "DAS-9002": "passed"
+    "DAS-9001": "error:FileNotFoundError",
+    "DAS-9002": "error:FileNotFoundError"
   },
   "ledger_digest": "sha256:dfef14efa5901d9666bb53f96f538db474a6f733f0e37541ed80aec7595dda13",
   "ledger_hashes": {

@@ -1,4 +1,3 @@
-"""Deterministic verifier — frontend-eng-1 / render-precedence."""
 from __future__ import annotations
 
 import json

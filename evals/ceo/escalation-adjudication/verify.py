@@ -1,16 +1,3 @@
-"""Deterministic verifier — ceo / escalation-adjudication.
-
-Fractional credit is classification accuracy over the fixture's escalation
-records:
-
-    credit = (# ids classified correctly) / (total # ids)
-
-The correct label per id is derived from the SAME fixture the agent was
-given, by re-applying the escalation rule stated in task.md — so nothing is
-leaked into fixtures/: the fixture is the input, and applying the rule
-correctly is the graded skill. Deterministic (no clock/model). An empty
-submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -32,7 +19,6 @@ def _expected(fixtures: Path) -> dict[str, str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

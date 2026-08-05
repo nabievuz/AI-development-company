@@ -1,24 +1,9 @@
 name: Kill-switch drill (WS4 safety rails, scheduled)
 
-# ORGANISM WS4 HEARTBEAT — the EXPENSIVE tier of the kill-switch / safety-rail
-# drill (DAS-1478). The cheap smoke (1 full drill pass) runs on every PR in ci.yml
-# and via tests/test_kill_switch_drill.py; this workflow runs the >=20-pass
-# accumulation on a schedule so the ADR-0027 SI-2..SI-7 envelope accrues real
-# evidence without adding latency to every PR.
-#
-# Each pass exercises all six rails against a LIVE (feature-flag-enabled) tick in
-# an isolated temp workspace — break-glass halt + auto-expiry (SI-3), quiet hours
-# (SI-4), per-day/per-run budget caps (SI-5), max_concurrent_waves (SI-6),
-# never-auto-approve (SI-7: closed decision alphabet + zero gate/approval
-# violations in a synthetic event log + a scanner with teeth + a store the tick
-# never writes), and check_loop_mode staying exit 0 (SI-2). Nothing touches
-# board/.events.jsonl, config/loop.yaml, or the real config/features.yaml.
-#
-# Trigger manually any time via the Actions tab (workflow_dispatch).
 
 on:
   schedule:
-    - cron: "37 4 * * *"   # daily at 04:37 UTC (offset from recovery-drill 04:17)
+    - cron: "37 4 * * *"
   workflow_dispatch:
     inputs:
       iterations:
@@ -37,11 +22,11 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.11"
 

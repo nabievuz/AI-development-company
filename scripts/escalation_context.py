@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""escalation_context.py — Escalation Context Package.
 
-When an agent escalates, attach the decision TRACE (the ticket's routing
-transitions), the recent recallable MEMORY, and the ERROR context, so the operator
-can diagnose confidently instead of staring at a black box. Inert/empty when there
-is no event/memory data yet (the package renders with explicit "(none)" sections).
-
-Usage:
-    python3 scripts/escalation_context.py --ticket DAS-1311
-"""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +14,7 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -88,7 +79,7 @@ def render_package(pkg: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='escalation_context.py — Escalation Context Package.')
     ap.add_argument("--ticket", required=True)
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--memory-store", type=Path, default=ROOT / "board" / ".arcrift-outbox.jsonl")

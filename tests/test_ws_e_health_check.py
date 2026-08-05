@@ -1,10 +1,3 @@
-"""WS-E TENANT Maintenance health/eval tests (GATE-6 / DAS-1587).
-
-Covers ``scripts/ws_e_health_check.py``: the RBAC-drift probe, the gateway
-host-pin drift probe, the in-tenant precondition drift probe, the
-guardrail/golden-set drift probe, and the Maintenance-schedule registration
-(``scripts/stage_gate.py: maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -20,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses need self in sys.modules before exec
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -41,15 +34,11 @@ def test_healthy_repo_reports_no_findings():
     assert result["checks"]["guardrail_eval_drift"]["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 1. RBAC drift
-# --------------------------------------------------------------------------- #
-
 def test_rbac_drift_flags_an_agent_granted_gate_approve(monkeypatch):
     mod = _load_health_check()
     tampered = {
         "founder": {"gate.approve": "allow", "config.edit.security": "allow"},
-        "agent": {"gate.approve": "allow"},  # simulated tamper — never legal in real rbac.yaml
+        "agent": {"gate.approve": "allow"},
     }
     rbac = mod._rbac_mod()
     monkeypatch.setattr(rbac, "load_grants", lambda path: tampered)
@@ -60,7 +49,7 @@ def test_rbac_drift_flags_an_agent_granted_gate_approve(monkeypatch):
 
 def test_rbac_drift_flags_founder_missing_a_founder_only_permission(monkeypatch):
     mod = _load_health_check()
-    tampered = {"founder": {"gate.approve": "allow"}}  # config.edit.security silently dropped
+    tampered = {"founder": {"gate.approve": "allow"}}
     rbac = mod._rbac_mod()
     monkeypatch.setattr(rbac, "load_grants", lambda path: tampered)
     result = mod.check_rbac_drift()
@@ -84,10 +73,6 @@ def test_rbac_drift_ok_on_the_real_tracked_config():
     assert result["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 2. Gateway host-pin drift
-# --------------------------------------------------------------------------- #
-
 def test_gateway_host_pin_drift_flags_a_regression_that_stops_pinning(monkeypatch):
     mod = _load_health_check()
 
@@ -101,7 +86,7 @@ def test_gateway_host_pin_drift_flags_a_regression_that_stops_pinning(monkeypatc
 
         @staticmethod
         def enforce_boundary(route):
-            return None  # simulates a regressed pin that stops refusing
+            return None
 
     monkeypatch.setattr(mod, "_gateway_mod", lambda: _AlwaysAcceptGateway())
     result = mod.check_gateway_host_pin_drift()
@@ -114,10 +99,6 @@ def test_gateway_host_pin_drift_ok_on_the_real_gateway():
     result = mod.check_gateway_host_pin_drift()
     assert result["ok"] is True
 
-
-# --------------------------------------------------------------------------- #
-# 3. In-tenant drift
-# --------------------------------------------------------------------------- #
 
 def test_in_tenant_drift_flags_a_hosted_endpoint(monkeypatch, tmp_path):
     mod = _load_health_check()
@@ -151,10 +132,6 @@ def test_in_tenant_drift_ok_on_the_real_tracked_config():
     assert result["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 4. Guardrail / eval drift
-# --------------------------------------------------------------------------- #
-
 def test_guardrail_eval_drift_flags_a_redaction_miss(monkeypatch):
     mod = _load_health_check()
     chain = mod._guardrail_chain_mod()
@@ -162,7 +139,7 @@ def test_guardrail_eval_drift_flags_a_redaction_miss(monkeypatch):
     class _Passthrough:
         denied = False
         action = "redact"
-        output_text = mod._GUARDRAIL_PROBE_TEXT  # unchanged — simulates a broken chain
+        output_text = mod._GUARDRAIL_PROBE_TEXT
         reason = ""
 
     monkeypatch.setattr(chain, "guard", lambda *a, **k: _Passthrough())
@@ -210,7 +187,7 @@ def test_guardrail_eval_drift_flags_a_false_green_on_the_gaming_fixture(monkeypa
 
     def _fake_run(path):
         class _R:
-            judge_eligible = True  # simulates the anti-gaming probe regressing to a pass
+            judge_eligible = True
 
         return _R()
 
@@ -225,10 +202,6 @@ def test_guardrail_eval_drift_ok_on_the_real_chain_and_golden_set():
     result = mod.check_guardrail_eval_drift()
     assert result["ok"] is True
 
-
-# --------------------------------------------------------------------------- #
-# CLI + schedule registration
-# --------------------------------------------------------------------------- #
 
 def test_cli_exits_zero_when_healthy():
     proc = subprocess.run(

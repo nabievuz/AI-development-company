@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""gen_org.py — generate org constants from the Org Schema.
 
-Prisma's pattern, Python-native: org/schema.daslab.yaml is the single declarative
-SSOT; this emits the GENERATED module scripts/_org_generated.py (NEVER_AUTO_APPROVE,
-GATES, ROLES, GATE_OWNERS) that the validators consume — so enforcement can never
-drift from the schema (push-errors-left). The output is deterministic; the drift
-gate (check_org_drift.py) regenerates and diffs against the committed file.
-
-Usage:
-    python3 scripts/gen_org.py            # write scripts/_org_generated.py
-    python3 scripts/gen_org.py --check    # print the rendered module (no write)
-"""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +10,7 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -53,7 +42,6 @@ def _gate_owners(roles: dict) -> dict[str, tuple]:
 
 
 def render(schema: dict) -> str:
-    """Deterministic source for scripts/_org_generated.py."""
     never = tuple(str(x) for x in schema.get("never_auto_approve", []))
     gates = tuple(str(x) for x in schema.get("gates", []))
     roles = schema.get("roles", {}) or {}
@@ -71,7 +59,7 @@ def render(schema: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='gen_org.py — generate org constants from the Org Schema.')
     ap.add_argument("--schema", type=Path, default=SCHEMA_PATH)
     ap.add_argument("--out", type=Path, default=GENERATED_PATH)
     ap.add_argument("--check", action="store_true", help="print the rendered module, do not write")

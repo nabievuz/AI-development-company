@@ -1,28 +1,5 @@
 #!/usr/bin/env python3
-"""check_metric_gaming.py — anti-gaming rule.
 
-T1-T6 may count a unit of work ONLY if it ended in a merged PR + green CI + a T7
-pass. This flags counted completions that lack that evidence — busy/concurrency
-without delivered value must not inflate the metrics (Goodhart defence). It also
-reports the orthogonal **T1b** high-impact-completion rate (T7 >= 0.90) for HUMAN
-oversight only; T1b is never a target agents see, so it cannot be gamed. Reads the
-event store; inert (exit 0) when there are no completions yet.
-
-Committed-evidence gate (P13 / DAS-1460): a run whose completion is COUNTED
-toward the KPIs must also leave a durable, git-auditable snapshot at
-``metrics/evidence/<run_id>.json`` (written by ``scripts/snapshot_evidence.py``).
-A counted-completion run with **no** committed evidence file FAILS the gate — you
-cannot count work toward the metrics without leaving committed proof (a Goodhart
-defence complementing R-9). Completions without a ``run_id`` cannot be keyed to a
-snapshot and are out of scope for this requirement.
-
-Exit codes: 0 = no gaming OR unmeasured, 1 = counted busywork OR a counted run
-missing committed evidence, 2 = usage error.
-
-Usage:
-    python3 scripts/check_metric_gaming.py [--events board/.events.jsonl]
-                                           [--evidence-dir metrics/evidence]
-"""
 from __future__ import annotations
 
 import argparse
@@ -36,7 +13,7 @@ from _paths import ROOT
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_metric_gaming.py — anti-gaming rule.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument(
         "--evidence-dir",
@@ -64,9 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    # Committed-evidence gate (P13): every counted run must have a committed
-    # metrics/evidence/<run_id>.json snapshot. Missing proof => counted work is
-    # not auditable from git history => fail (non-zero).
+
     missing = snapshot_evidence.missing_evidence_runs(events, args.evidence_dir)
     if missing:
         sys.stderr.write(

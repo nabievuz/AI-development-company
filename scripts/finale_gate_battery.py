@@ -1,43 +1,5 @@
 #!/usr/bin/env python3
-"""finale_gate_battery.py — the FINALE §4-P5 gate battery, a read-only aggregator.
 
-This is the P5 verification backbone. It runs the FINALE §4-P5 gate battery in a
-fixed order, invoking each gate's OWN script and honouring that script's exit
-contract — it invents nothing. Each gate is a real subprocess; the row it prints
-reports ONLY that subprocess's real exit code.
-
-Truth Oath (binding):
-    * The runner reports ONLY real subprocess exit codes.
-    * It NEVER computes a capability score (there is no ``/120`` here, no
-      ``assert Σ = 115`` — that self-scoring belongs to the FINALE *report*
-      writer, not to this gate invoker).
-    * It NEVER fabricates a result and NEVER weakens a gate: a gate passes iff
-      its own script exits 0.
-
-Aggregate semantics:
-    * A gate is PASS when its script exits 0.
-    * A NON-informational gate that exits non-zero is FAIL and forces the
-      aggregate exit code to 1.
-    * An ``informational=True`` gate that exits non-zero is surfaced as an INFO
-      row and does NOT fail the aggregate. ``readiness`` is informational because
-      pre-flip it exits 1 (NOT READY) *by design* — the same reason ci.yml omits
-      ``check_heartbeat_readiness.py`` from its blocking set.
-    * The aggregate exit code is 0 iff every non-informational gate exited 0,
-      else 1.
-
-The battery is expressed as DATA (``build_battery()``) so it is injectable: unit
-tests drive ``run_battery`` with seeded fake gates and never run the real,
-heavy battery (full pytest + kill/fork drills).
-
-Usage::
-
-    python3 scripts/finale_gate_battery.py            # run the battery, print a table
-    python3 scripts/finale_gate_battery.py --list      # print the battery, do not run
-    python3 scripts/finale_gate_battery.py --json       # machine-readable results
-
-Exit code: the aggregate rc (0 = every required gate green, 1 = a required gate
-failed). Informational gates never change it.
-"""
 from __future__ import annotations
 
 import argparse
@@ -48,21 +10,15 @@ from pathlib import Path
 
 from _paths import ROOT as REPO_ROOT
 
-#: Trailing output lines kept per gate (surfaced for failed rows / JSON).
+
 TAIL_LINES = 12
 
-#: Per-gate wall-clock cap (seconds). A gate that exceeds it is a FAIL (rc 124),
-#: never an unbounded battery hang — generous enough for the full pytest + drills.
+
 DEFAULT_GATE_TIMEOUT = 1800
 
 
 @dataclass(frozen=True)
 class Gate:
-    """One battery entry: a name, the exact argv, and its failure policy.
-
-    ``informational`` gates surface a non-zero rc as an INFO row that never
-    fails the aggregate.
-    """
 
     name: str
     argv: list[str]
@@ -71,22 +27,15 @@ class Gate:
 
 @dataclass
 class GateResult:
-    """The outcome of running one :class:`Gate` — real rc only, never fabricated."""
 
     name: str
     rc: int
     informational: bool
-    status: str  # "PASS" | "FAIL" | "INFO"
+    status: str
     tail: str
 
 
 def build_battery() -> list[Gate]:
-    """Return the ordered FINALE §4-P5 gate battery as data (injectable).
-
-    Order mirrors ci.yml and the P5 closer spec. Every argv invokes an existing
-    ``scripts/*.py`` (or ``python3 -m pytest``) and defers entirely to that
-    script's own exit contract — this aggregator adds no logic of its own.
-    """
     return [
         Gate("diagnostics", ["python3", "scripts/diagnostics.py"]),
         Gate("board_lint", ["python3", "scripts/board_lint.py"]),
@@ -103,9 +52,8 @@ def build_battery() -> list[Gate]:
         Gate("kill-fork-drill", ["python3", "scripts/kill_drill.py", "--smoke"]),
         Gate("kill-switch-drill", ["python3", "scripts/kill_switch_drill.py", "--smoke"]),
         Gate("pytest", ["python3", "-m", "pytest", "-q"]),
-        # readiness is INFORMATIONAL: pre-flip it exits 1 (NOT READY) by design,
-        # which is exactly why ci.yml does not gate on it. A non-zero rc here is
-        # an INFO row and must NOT fail the battery.
+
+
         Gate(
             "readiness",
             ["python3", "scripts/check_heartbeat_readiness.py"],
@@ -115,7 +63,6 @@ def build_battery() -> list[Gate]:
 
 
 def _combine(stdout: str | None, stderr: str | None) -> str:
-    """Join a subprocess's stdout and stderr into one text blob."""
     out = stdout or ""
     err = stderr or ""
     if out and err:
@@ -124,7 +71,6 @@ def _combine(stdout: str | None, stderr: str | None) -> str:
 
 
 def _tail(text: str, n: int = TAIL_LINES) -> str:
-    """Return the last *n* non-empty-trimmed lines of *text*."""
     lines = text.strip().splitlines()
     return "\n".join(lines[-n:])
 
@@ -136,16 +82,6 @@ def run_battery(
     stream: bool = True,
     timeout: float = DEFAULT_GATE_TIMEOUT,
 ) -> tuple[list[GateResult], int]:
-    """Run each gate in order and report a PASS/FAIL/INFO table + aggregate rc.
-
-    Each gate runs via ``subprocess.run(argv, cwd=cwd, capture_output=True,
-    text=True)``; the recorded rc is the real ``returncode`` — nothing else.
-    The aggregate rc is 0 iff every non-informational gate exited 0, else 1.
-
-    When *stream* is true (the default) a readable table is printed live, one
-    row per gate as it completes, followed by a verdict footer. Pass
-    ``stream=False`` to run silently (e.g. before emitting JSON).
-    """
     results: list[GateResult] = []
     aggregate_rc = 0
 
@@ -154,7 +90,7 @@ def run_battery(
 
     for idx, gate in enumerate(gates, start=1):
         try:
-            proc = subprocess.run(  # noqa: S603 - fixed, in-repo argv from build_battery
+            proc = subprocess.run(
                 gate.argv,
                 cwd=str(cwd),
                 capture_output=True,
@@ -164,7 +100,7 @@ def run_battery(
             rc = proc.returncode
             tail = _tail(_combine(proc.stdout, proc.stderr))
         except subprocess.TimeoutExpired as exc:
-            # A hanging gate is a FAIL (rc 124), never an unbounded battery hang.
+
             rc = 124
             partial = _combine(exc.stdout or "", exc.stderr or "")
             tail = _tail(f"{partial}\n[timed out after {timeout:g}s]")
@@ -191,10 +127,6 @@ def run_battery(
 
     return results, aggregate_rc
 
-
-# ---------------------------------------------------------------------------
-# Rendering (pure string builders)
-# ---------------------------------------------------------------------------
 
 _WIDTH = 76
 
@@ -246,11 +178,6 @@ def _render_list(gates: list[Gate]) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Serialization
-# ---------------------------------------------------------------------------
-
-
 def _gate_to_dict(gate: Gate) -> dict:
     return {"name": gate.name, "argv": list(gate.argv), "informational": gate.informational}
 
@@ -265,15 +192,9 @@ def _result_to_dict(result: GateResult) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
 def main(argv: list[str] | None = None) -> int:
-    """Entry point. Returns the aggregate rc (0 = all required gates green)."""
     ap = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0] if __doc__ else "FINALE §4-P5 gate battery",
+        description='finale_gate_battery.py — the FINALE §4-P5 gate battery, a read-only aggregator.',
     )
     ap.add_argument("--json", action="store_true", help="emit results as JSON")
     ap.add_argument(
@@ -293,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             print(_render_list(gates))
         return 0
 
-    # --json runs silently then emits one JSON document; otherwise stream a table.
+
     results, aggregate_rc = run_battery(gates, stream=not args.json)
     if args.json:
         print(

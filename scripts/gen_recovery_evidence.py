@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""gen_recovery_evidence.py — commit a REAL interrupted-run recovery proof (R1).
 
-The kill+fork drills prove durable-execution recovery on every PR, but their
-evidence lives in a throwaway temp dir that ``kill_drill.main`` deletes — nothing
-from a REAL interrupted (crash+resume) run is committed, so R1's target ("one REAL
-interrupted run resumed with zero loss, from the production wave_runner path") has
-no git-auditable receipt.
-
-This generator runs ONE real kill+resume drill and ONE time-travel fork drill
-THROUGH the production ``wave_runner.run_wave`` lifecycle (reusing
-``scripts/kill_drill``), then writes the resumed-wave proof to a TRACKED path:
-``board/runs/<run_id>/run-summary.md`` — the one ``board/runs`` path .gitignore
-keeps tracked — with the proof inlined as JSON.
-
-Truth Oath: the summary records the ACTUAL drill result. ``killed`` /
-``zero_lost`` / ``zero_duplicated`` / ``chain_clean`` / ``ledger_reconciles`` are
-the drill's own real assertions, never fabricated. If the drill does NOT hold
-(``ok`` is False) the summary is written as a **MISS** and the CLI exits non-zero.
-It deliberately does NOT write ``metrics/attestations/`` or ``metrics/evidence/``
-entries (those carry their own hash-chain reconciliation gates); the committed
-receipt is the run-summary drill log alone.
-"""
 
 from __future__ import annotations
 
@@ -36,7 +15,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
 
-import kill_drill  # noqa: E402
+import kill_drill
 
 DEFAULT_RUNS_DIR = _ROOT / "board" / "runs"
 
@@ -100,11 +79,6 @@ def _render_summary(kill: dict, fork: dict, generated_at: str) -> str:
 
 
 def generate(runs_dir: Path, *, work_root: Path | None = None) -> dict:
-    """Run one kill+resume drill + one fork drill; write board/runs/<run_id>/run-summary.md.
-
-    Returns ``{run_id, summary_path, overall_ok, kill, fork}``. The scratch drill
-    trees are removed; only the run-summary under *runs_dir* survives.
-    """
     tmp = Path(
         tempfile.mkdtemp(prefix="recovery-evidence-", dir=str(work_root) if work_root else None)
     )
@@ -129,7 +103,7 @@ def generate(runs_dir: Path, *, work_root: Path | None = None) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='gen_recovery_evidence.py — commit a REAL interrupted-run recovery proof (R1).')
     ap.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS_DIR)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)

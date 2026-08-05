@@ -1,4 +1,3 @@
-"""Deterministic verifier — growth-marketer / experiment-prioritization."""
 from __future__ import annotations
 
 import json

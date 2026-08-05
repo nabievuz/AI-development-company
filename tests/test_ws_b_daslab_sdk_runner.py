@@ -1,24 +1,3 @@
-"""WS-B core runner tests (ADR-0034 SR-1/3/4/5 · DAS-1555).
-
-Unit coverage for the ``daslab_sdk`` core headless runner — the part-1 surface
-built by DAS-1555 (the admission gateway's budget/auth internals are DAS-1556;
-the full SC-001…SC-004 negative suite is DAS-1557).  What is proven here:
-
-  flag-off no-op       the runner is inert with ws_b_agent_sdk_runner OFF —
-                       no SDK import, no admission, no model call (SR-5 / SC-003a)
-  absent SDK           SDK not installed ⇒ a clean "unavailable" result,
-                       not a crash (SR-5 / SC-003b)
-  run_wave seam        dispatch_wave is a NEW CALLER of scripts/wave_runner.py:
-                       run_wave with well-formed (plan, results); the wave-ledger
-                       reconciles ⇒ ONE producer, not two (SR-3 / SC-001)
-  load-shape (SR-1)    cwd=repo root + setting_sources=["project"]; no ported-
-                       agent constructor path exists
-  explicit model       absent/empty model rejected before any model call (FR-002)
-  admission seam       no admitter wired ⇒ fail-closed refuse; a HOLD ⇒ no
-                       dispatch — the runner never self-admits (SR-2/SR-3)
-  board/Git law        no self-merge / routing-write path; assembled results
-                       carry no merged_pr and never a merge-`done` (SR-4)
-"""
 
 from __future__ import annotations
 
@@ -31,20 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import daslab_sdk  # noqa: E402
-from daslab_sdk import runner as rn  # noqa: E402
-from daslab_sdk.contracts import (  # noqa: E402
+import daslab_sdk
+from daslab_sdk import runner as rn
+from daslab_sdk.contracts import (
     AdmissionDecision,
     AdmissionOutcome,
     RunnerStatus,
 )
 
 RUNNER_SRC = (ROOT / "daslab_sdk" / "runner.py").read_text(encoding="utf-8")
-
-
-# --------------------------------------------------------------------------- #
-# helpers
-# --------------------------------------------------------------------------- #
 
 
 def _flag_file(tmp_path: Path, *, on: bool) -> Path:
@@ -54,7 +28,6 @@ def _flag_file(tmp_path: Path, *, on: bool) -> Path:
 
 
 class _QuerySpy:
-    """Records calls to the injected SDK boundary; a live call is never made."""
 
     def __init__(self, output: str = "ok") -> None:
         self.calls: list[tuple[str, dict]] = []
@@ -75,11 +48,6 @@ def _admit_hold(*, ticket_id: str, role: str, model: str) -> AdmissionDecision:
     )
 
 
-# --------------------------------------------------------------------------- #
-# SR-5 — flag-off no-op / inert
-# --------------------------------------------------------------------------- #
-
-
 def test_dispatch_ticket_flag_off_is_inert_noop(tmp_path):
     spy = _QuerySpy()
     res = rn.dispatch_ticket(
@@ -93,13 +61,12 @@ def test_dispatch_ticket_flag_off_is_inert_noop(tmp_path):
     )
     assert res.status is RunnerStatus.INERT_FLAG_OFF
     assert res.is_noop and res.dispatched is False
-    assert spy.calls == []  # no model call reached
+    assert spy.calls == []
 
 
 def test_dispatch_ticket_inert_when_flag_off(tmp_path):
-    # Explicit flag-off features file ⇒ inert, no SDK/query call. The inert path
-    # holds regardless of the committed config, which is ON after the 2026-07-26
-    # Founder-authorized activation of the runner.
+
+
     off = tmp_path / "features.yaml"
     off.write_text("ws_b_agent_sdk_runner: false\n", encoding="utf-8")
     spy = _QuerySpy()
@@ -119,7 +86,7 @@ def test_dispatch_ticket_inert_when_flag_off(tmp_path):
 def test_dispatch_wave_flag_off_never_calls_run_wave(tmp_path):
     ledger = tmp_path / "wave-ledger.jsonl"
     res = rn.dispatch_wave(
-        plan=object(),  # never inspected on the inert path
+        plan=object(),
         results=object(),
         created_at="2026-07-24T00:00:00Z",
         ledger_path=ledger,
@@ -127,12 +94,7 @@ def test_dispatch_wave_flag_off_never_calls_run_wave(tmp_path):
     )
     assert res.status is RunnerStatus.INERT_FLAG_OFF
     assert res.attestation is None
-    assert not ledger.exists()  # run_wave was never reached ⇒ no post-decision write
-
-
-# --------------------------------------------------------------------------- #
-# SR-5 — absent SDK ⇒ clean unavailable, not a crash
-# --------------------------------------------------------------------------- #
+    assert not ledger.exists()
 
 
 def test_absent_sdk_is_unavailable_not_broken(tmp_path, monkeypatch):
@@ -143,7 +105,7 @@ def test_absent_sdk_is_unavailable_not_broken(tmp_path, monkeypatch):
         model="claude-x",
         prompt="p",
         admit=_admit_yes,
-        query_fn=None,  # force the real SDK path so availability is consulted
+        query_fn=None,
         flag_path=_flag_file(tmp_path, on=True),
     )
     assert res.status is RunnerStatus.UNAVAILABLE_NO_SDK
@@ -151,13 +113,8 @@ def test_absent_sdk_is_unavailable_not_broken(tmp_path, monkeypatch):
 
 
 def test_sdk_available_never_imports(monkeypatch):
-    # find_spec-based probe returns a bool and never raises, SDK present or not.
+
     assert isinstance(rn.sdk_available(), bool)
-
-
-# --------------------------------------------------------------------------- #
-# FR-002 — explicit model required, rejected before the model call
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("bad_model", ["", "   ", None])
@@ -166,24 +123,19 @@ def test_missing_model_rejected_before_query(tmp_path, bad_model):
     res = rn.dispatch_ticket(
         ticket_id="DAS-9003",
         role="backend-eng-1",
-        model=bad_model,  # type: ignore[arg-type]
+        model=bad_model,
         prompt="p",
         admit=_admit_yes,
         query_fn=spy,
         flag_path=_flag_file(tmp_path, on=True),
     )
     assert res.status is RunnerStatus.REFUSED_NO_MODEL
-    assert spy.calls == []  # fail-closed before any model call
+    assert spy.calls == []
 
 
 def test_build_agent_options_rejects_empty_model():
     with pytest.raises(ValueError, match="explicit"):
         rn.build_agent_options(model="")
-
-
-# --------------------------------------------------------------------------- #
-# SR-2/SR-3 — admission seam: no self-admit; HOLD ⇒ no dispatch
-# --------------------------------------------------------------------------- #
 
 
 def test_no_admitter_wired_is_fail_closed(tmp_path):
@@ -193,7 +145,7 @@ def test_no_admitter_wired_is_fail_closed(tmp_path):
         role="backend-eng-1",
         model="claude-x",
         prompt="p",
-        admit=None,  # DAS-1556 not wired in ⇒ fail-closed
+        admit=None,
         query_fn=spy,
         flag_path=_flag_file(tmp_path, on=True),
     )
@@ -214,12 +166,7 @@ def test_admission_hold_blocks_dispatch(tmp_path):
     )
     assert res.status is RunnerStatus.ADMISSION_HOLD
     assert res.reason == "budget breach"
-    assert spy.calls == []  # a HOLD never reaches query()
-
-
-# --------------------------------------------------------------------------- #
-# SR-1 — load-shape: cwd + setting_sources=["project"], no ported-agent path
-# --------------------------------------------------------------------------- #
+    assert spy.calls == []
 
 
 def test_happy_dispatch_pins_load_shape_and_drops_metered_key(tmp_path):
@@ -240,18 +187,18 @@ def test_happy_dispatch_pins_load_shape_and_drops_metered_key(tmp_path):
     assert len(spy.calls) == 1
     prompt, options = spy.calls[0]
     assert prompt == "envelope"
-    assert options["cwd"] == str(rn.REPO_ROOT)          # SR-1: repo root
-    assert options["setting_sources"] == ["project"]    # SR-1: repo's own agents
-    assert options["model"] == "claude-opus-x"          # explicit, threaded through
-    # SR-5 §4.1/§6.2: metered key dropped, no os.environ passthrough.
+    assert options["cwd"] == str(rn.REPO_ROOT)
+    assert options["setting_sources"] == ["project"]
+    assert options["model"] == "claude-opus-x"
+
     assert "ANTHROPIC_API_KEY" not in options["env"]
     assert options["env"] == {"REPO_SCOPED": "1"}
 
 
 def test_no_ported_agent_constructor_path_exists():
-    # SR-1 structural invariant: the runner has no create_agent / ported-role path.
+
     assert "create_agent" not in RUNNER_SRC
-    # and it DOES pin the repo's own project settings.
+
     assert '["project"]' in RUNNER_SRC
     assert rn.SETTING_SOURCES == ["project"]
 
@@ -260,12 +207,7 @@ def test_isolate_env_is_constructed_not_passthrough():
     assert rn.isolate_env({"ANTHROPIC_API_KEY": "x", "ANTHROPIC_AUTH_TOKEN": "y", "FOO": "bar"}) == {
         "FOO": "bar"
     }
-    assert rn.isolate_env(None) == {}  # floor is empty, never the host environment
-
-
-# --------------------------------------------------------------------------- #
-# SR-4 — board / Git law: no self-merge, no routing writes
-# --------------------------------------------------------------------------- #
+    assert rn.isolate_env(None) == {}
 
 
 def test_runner_has_no_self_merge_or_push_path():
@@ -274,7 +216,7 @@ def test_runner_has_no_self_merge_or_push_path():
 
 
 def test_assembled_results_never_self_merge():
-    import wave_runner as wr  # scripts/ seam
+    import wave_runner as wr
 
     plan = wr.WavePlan(
         run_id="RUNZZZ",
@@ -289,15 +231,10 @@ def test_assembled_results_never_self_merge():
     )
     results = rn.results_from_dispatches(plan, [dispatched], created_at="2026-07-24T00:00:00Z")
     (ticket,) = results.tickets
-    assert ticket.merged_pr is None          # runner never records a merge
+    assert ticket.merged_pr is None
     assert ticket.ci_status == ""
-    assert ticket.final_status == "in_review"  # routing target, never merge-`done`
+    assert ticket.final_status == "in_review"
     assert ticket.outcome == "dispatched"
-
-
-# --------------------------------------------------------------------------- #
-# SR-3 — the run_wave seam: new caller, ONE producer (SC-001)
-# --------------------------------------------------------------------------- #
 
 
 def _hermetic_wave(tmp_path):
@@ -341,15 +278,14 @@ def test_dispatch_wave_calls_run_wave_and_ledger_reconciles(tmp_path):
     att = res.attestation
     assert att is not None and att.run_id == "RUNSEAM01"
 
-    # SC-001b — ONE producer: the wave-ledger reconciles against its attestation
-    # (no orphan, no chain gap) — proving the runner wrote ONLY through run_wave.
+
     problems = wr.verify_wave_ledger(kw["ledger_path"], attest_dir=kw["attest_dir"])
     assert problems == []
 
 
 def test_dispatch_wave_inherits_organism_gate_no_second_toggle(tmp_path):
-    # organism_emit=False ⇒ run_wave is a no-op returning None; the runner inherits
-    # that gate (no second producer/toggle) and writes zero post-decision artifacts.
+
+
     wr, plan, results, kw = _hermetic_wave(tmp_path)
     res = rn.dispatch_wave(
         plan, results, created_at="2026-07-24T00:00:00Z",
@@ -357,4 +293,4 @@ def test_dispatch_wave_inherits_organism_gate_no_second_toggle(tmp_path):
     )
     assert res.status is RunnerStatus.DISPATCHED
     assert res.attestation is None
-    assert not kw["ledger_path"].exists()  # zero post-decision writes
+    assert not kw["ledger_path"].exists()

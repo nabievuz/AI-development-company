@@ -1,9 +1,8 @@
-"""Deterministic verifier — backend-em / escalate-or-delegate."""
 from __future__ import annotations
 
 from pathlib import Path
 
-# scenario -> expected action
+
 EXPECTED_ACTION = {1: "delegate", 2: "escalate", 3: "delegate"}
 
 VALID_DELEGATE_TARGETS = frozenset({"backend-eng-1", "backend-eng-2"})
@@ -35,8 +34,8 @@ def _score_one(decision: dict) -> float:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    # Read the fixture for parity with other verifiers / to keep this tied
-    # to the recorded scenario set rather than a bare constant.
+
+
     _ = (fixtures / "scenarios.md").read_text(encoding="utf-8")
 
     decisions = submission.get("decisions")

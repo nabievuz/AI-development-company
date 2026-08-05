@@ -1,16 +1,3 @@
-"""Guardrail for the ``seo-specialist`` role (marketing — DAS-1471).
-
-INPUT: reuses the shared scope screen (wrong-dept / missing-consumes /
-gate-open), then adds an SEO-relevance refusal: an seo-specialist ticket must
-actually name a search / SEO concern (analogous to security-lead's terms
-screen).
-
-OUTPUT: an SEO deliverable is only accepted when the produced work references a
-concrete SEO artifact (keywords / meta title / meta description / structured
-data / canonical / sitemap …). This encodes the discipline's routine output
-(meta / keyword / structured output): a page that "looks nice" with no SEO
-artifact touched is not done.
-"""
 from __future__ import annotations
 
 import re
@@ -26,7 +13,7 @@ from guardrails import (
 
 ROLE = "seo-specialist"
 
-# An SEO ticket names at least one search / SEO concern somewhere in its scope.
+
 _SEO_TERMS = re.compile(
     r"\b(seo|search|keywords?|meta|serps?|ranking|rankings?|backlinks?|sitemap|"
     r"schema|structured[- ]?data|canonical|index(?:ing)?|crawl|organic|"
@@ -34,7 +21,7 @@ _SEO_TERMS = re.compile(
     re.IGNORECASE,
 )
 
-# Positive evidence that a concrete SEO artifact was produced.
+
 _SEO_ARTIFACT = re.compile(
     r"\b(seo|keywords?|meta[- ]?title|meta[- ]?description|meta[- ]?tags?|"
     r"title[- ]?tag|meta|serps?|schema|structured[- ]?data|json[- ]?ld|"
@@ -45,7 +32,6 @@ _SEO_ARTIFACT = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Shared scope screen + an SEO-relevance screen."""
     ok, feedback = default_input_guardrail(ctx)
     if not ok:
         return (ok, feedback)
@@ -60,7 +46,6 @@ def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only SEO work that references a concrete SEO artifact."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

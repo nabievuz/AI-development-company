@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""board_metrics.py — throughput & effectiveness KPIs for the DasLab board.
 
-Reads every ``DAS-*.md`` under ``board/tickets/`` and (optionally) the archive,
-and reports the org's operating metrics:
-
-- **Status distribution** — how many tickets in each state.
-- **Throughput** — count of ``done`` tickets.
-- **Cycle time** — mean/median days between ``created`` and ``updated`` for done
-  tickets (a proxy for lead time).
-- **Gate pass-rate** — share of epics (no ``parent``) that are ``done``.
-- **Blocked / rework** — count of ``blocked`` tickets (work the org could not
-  self-serve, e.g. external dependencies).
-
-It measures the engine, not a product, so it works for any project on the board.
-
-    python3 scripts/board_metrics.py            # table over board/tickets/ + archive
-    python3 scripts/board_metrics.py --json      # machine-readable
-"""
 from __future__ import annotations
 
 import argparse
@@ -103,9 +86,9 @@ def metrics(tickets: list[dict[str, str]]) -> dict[str, object]:
 def _print_table(m: dict[str, object]) -> None:
     print(f"DasLab board metrics — {m['total']} tickets")
     print("  status:")
-    for s, n in m["by_status"].items():  # type: ignore[union-attr]
+    for s, n in m["by_status"].items():
         print(f"    {s:<12} {n}")
-    ct = m["cycle_time_days"]  # type: ignore[index]
+    ct = m["cycle_time_days"]
     print(f"  throughput (done): {m['throughput_done']}")
     print(f"  cycle time (days): mean={ct['mean']} median={ct['median']} n={ct['n']}")
     print(f"  gate pass-rate:    {m['gate_pass_rate']} ({m['epics']['done']}/{m['epics']['total']} epics)")
@@ -113,7 +96,7 @@ def _print_table(m: dict[str, object]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='board_metrics.py — throughput & effectiveness KPIs for the DasLab board.')
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--no-archive", action="store_true", help="exclude board/archive/")
     parser.add_argument("--root", type=Path, default=None)

@@ -1,4 +1,3 @@
-"""Deterministic verifier — board-member / hire-vote-tally."""
 from __future__ import annotations
 
 import json

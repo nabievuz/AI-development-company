@@ -1,11 +1,3 @@
-"""HONEST suite for impl.py — it genuinely exercises the implementation.
-
-Baseline: green against the real impl. Under the D6 mutant (every body ->
-``return None``), ``counted`` returns None and ``all_gates_closed`` returns None, so
-these assertions turn RED — which is exactly what the mutation probe requires of a
-non-gaming suite. Compare fixtures-only-in-tests/ variants built by the test file for
-the gaming case (a suite that stays green against the mutant).
-"""
 from __future__ import annotations
 
 import impl

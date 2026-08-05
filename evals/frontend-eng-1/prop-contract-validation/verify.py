@@ -1,4 +1,3 @@
-"""Deterministic verifier — frontend-eng-1 / prop-contract-validation."""
 from __future__ import annotations
 
 import json
@@ -7,15 +6,15 @@ from pathlib import Path
 
 def _expected_verdict(props: dict, contract_props: dict) -> str:
     known = set(contract_props.keys())
-    # Missing required prop.
+
     for name, spec in contract_props.items():
         if spec.get("required") and name not in props:
             return "invalid"
-    # Unknown prop not declared in the contract.
+
     for name in props:
         if name not in known:
             return "invalid"
-    # Type mismatch on a declared prop that IS present.
+
     for name, value in props.items():
         spec = contract_props[name]
         expected_type = spec.get("type")

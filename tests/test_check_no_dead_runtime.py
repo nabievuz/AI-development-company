@@ -1,9 +1,3 @@
-"""tests/test_check_no_dead_runtime.py — pytest for check_no_dead_runtime.py.
-
-Hermetic: builds a synthetic engine tree under tmp_path. Proves the dead
-dead legacy-runtime endpoint is detected in an active script, a clean script passes, and a
-historical file (docs/, not in the active surface) is out of scope.
-"""
 from __future__ import annotations
 
 import subprocess
@@ -13,9 +7,9 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from check_no_dead_runtime import offenders, surface_files  # noqa: E402
+from check_no_dead_runtime import offenders, surface_files
 
-# Assemble at runtime so this test file carries no literal dead endpoint.
+
 _DEAD = "http://127.0.0.1:" + "3100"
 
 
@@ -48,6 +42,6 @@ def test_historical_docs_out_of_scope(tmp_path: Path) -> None:
     (repo / "board" / "archive").mkdir(parents=True)
     (repo / "board" / "archive" / "old.md").write_text(f"{_DEAD}\n")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    # docs/ and board/archive/ are not in the active surface.
+
     assert "docs/history.md" not in surface_files(repo)
     assert offenders(repo) == []

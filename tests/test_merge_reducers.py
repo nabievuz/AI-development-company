@@ -1,10 +1,3 @@
-"""tests/test_merge_reducers.py — pytest suite for scripts/merge_reducers.py.
-
-Covers the three merge policies (append-only / owner-exclusive / aggregate),
-their determinism guarantees, and the failure modes required by DAS-1448:
-owner-exclusive FAILS on overlap; aggregate FAILS on an unknown reducer name;
-the policy grammar accepts exactly the allowed forms.
-"""
 
 from __future__ import annotations
 
@@ -14,8 +7,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-import pytest  # noqa: E402
-from merge_reducers import (  # noqa: E402
+import pytest
+from merge_reducers import (
     MergeError,
     aggregate,
     append_only,
@@ -24,10 +17,6 @@ from merge_reducers import (  # noqa: E402
     owner_exclusive,
     parse_policy,
 )
-
-# ---------------------------------------------------------------------------
-# Grammar — parse_policy / is_valid_policy
-# ---------------------------------------------------------------------------
 
 
 def test_grammar_accepts_allowed_forms() -> None:
@@ -47,11 +36,6 @@ def test_grammar_rejects_bad_forms() -> None:
             parse_policy(bad)
 
 
-# ---------------------------------------------------------------------------
-# append-only — deterministic lexical-by-ticket-id concat
-# ---------------------------------------------------------------------------
-
-
 def test_append_only_orders_by_ticket_id() -> None:
     contribs = [
         ("DAS-1002", ["b1", "b2"]),
@@ -67,14 +51,9 @@ def test_append_only_is_input_order_independent() -> None:
 
 
 def test_append_only_preserves_within_block_order() -> None:
-    # Lines inside one contributor's block are never reordered.
+
     contribs = [("DAS-1001", ["z", "y", "x"])]
     assert append_only(contribs) == ["z", "y", "x"]
-
-
-# ---------------------------------------------------------------------------
-# owner-exclusive — disjoint union, FAIL on overlap
-# ---------------------------------------------------------------------------
 
 
 def test_owner_exclusive_unions_disjoint_mappings() -> None:
@@ -103,11 +82,6 @@ def test_owner_exclusive_fails_on_overlap() -> None:
         owner_exclusive(contribs)
 
 
-# ---------------------------------------------------------------------------
-# aggregate — sum / union, FAIL on unknown reducer
-# ---------------------------------------------------------------------------
-
-
 def test_aggregate_sum() -> None:
     contribs = [("DAS-1001", 3), ("DAS-1002", 4), ("DAS-1003", 5)]
     assert aggregate(contribs, "sum") == 12
@@ -131,11 +105,6 @@ def test_aggregate_union_is_input_order_independent() -> None:
 def test_aggregate_fails_on_unknown_reducer() -> None:
     with pytest.raises(MergeError, match="unknown aggregate reducer"):
         aggregate([("DAS-1001", 1)], "max")
-
-
-# ---------------------------------------------------------------------------
-# merge() dispatch
-# ---------------------------------------------------------------------------
 
 
 def test_merge_dispatches_by_policy() -> None:

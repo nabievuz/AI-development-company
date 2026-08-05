@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_blind_review.py — Blind review + rotation (T6 anti-drift)."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_blind_review as cbr  # noqa: E402  (import after path manipulation)
+import check_blind_review as cbr
 
 
 def _review(tid="DAS-1", author="eng-1", reviewer="eng-2", blind=True) -> dict:
@@ -38,7 +38,7 @@ def test_self_review_flagged():
 
 
 def test_over_pairing_flagged():
-    # same reviewer/author pair more than max_same_pair times -> rotation violation
+
     reviews = [_review(tid=f"DAS-{i}", author="eng-1", reviewer="eng-9") for i in range(4)]
     assert any("rotate" in p for p in cbr.violations(reviews, max_same_pair=3))
 
@@ -49,7 +49,7 @@ def test_rotation_ok_within_limit():
 
 
 def test_string_blind_false_is_not_blind():
-    # a non-blind review with blind serialized as the string "false" must NOT pass
+
     for val in ("false", "no", "0", "FALSE"):
         assert any("not blind" in p for p in cbr.violations([_review(blind=val)]))
 
@@ -59,7 +59,7 @@ def test_case_insensitive_self_review():
 
 
 def test_case_split_over_pairing_still_caught():
-    # eng-9 and Eng-9 are the same human reviewing eng-1 four times -> still over-paired
+
     reviews = ([_review(tid=f"a{i}", author="eng-1", reviewer="eng-9") for i in range(2)]
                + [_review(tid=f"b{i}", author="eng-1", reviewer="Eng-9") for i in range(2)])
     assert any("rotate" in p for p in cbr.violations(reviews, max_same_pair=3))
@@ -70,7 +70,7 @@ def test_missing_identity_flagged():
 
 
 def test_non_string_identity_does_not_crash():
-    # a list/dict identity must not raise (unhashable key) — coerced to str
+
     assert cbr.violations([_review(author=["x"], reviewer={"y": 1})]) is not None
 
 

@@ -1,14 +1,3 @@
-"""Deterministic verifier — cto / escalation-routing.
-
-Recomputes the expected (action, route) pair for each scenario in
-``fixtures/scenarios.json`` from the escalation policy stated in ``task.md``
-(budget ceiling, cross-dept conflict, explicit CEO-approval flag; otherwise
-delegate to the domain-owning lead). The expected answer is derived from the
-SAME fixture the agent was given — doing the escalation judgment correctly
-reproduces it — so nothing is leaked: the fixture is the input, and applying
-the policy is the graded skill. Deterministic (no clock/model). An empty
-submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -45,7 +34,6 @@ def _expected(fixtures: Path) -> dict[str, tuple[str, str]]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

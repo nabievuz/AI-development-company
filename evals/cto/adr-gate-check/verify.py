@@ -1,13 +1,3 @@
-"""Deterministic verifier — cto / adr-gate-check.
-
-Recomputes the AADL GATE-2/GATE-3 pass verdict and missing-section set per RFC
-in ``fixtures/rfcs.json`` from the gate requirements stated in ``task.md``.
-The expected answer is derived from the SAME fixture the agent was given —
-applying the gate checklist correctly reproduces it, so nothing is leaked.
-Deterministic (no clock/model). An empty submission scores 0.0 because the
-`pass` gate must be matched before any partial credit for `missing` is
-awarded (a blank/omitted `pass` never matches `True` or `False`).
-"""
 
 from __future__ import annotations
 
@@ -55,7 +45,6 @@ def _rfc_credit(exp_pass: bool, exp_missing: set[str], entry: object) -> float:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

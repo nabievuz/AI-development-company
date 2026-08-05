@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""check_review_eff.py — T6 review-efficiency reader.
 
-T6 = review_cycle_time + rework_rate, target = a downward trend (no hard number).
-This reads the current median review cycle time + rework rate from the event
-store's routing transitions and reports them; inert when no reviews. Because
-"downward trend" needs a stored baseline window, T6 is informational by default
-(exit 0). Pass --max-rework-rate to turn the rework rate into a gate. Guardrail:
-no rubber-stamping (T7 must still hold — enforced by check_t7_quality).
-
-Exit codes: 0 = within bounds OR unmeasured, 1 = rework over --max-rework-rate, 2 = usage.
-
-Usage:
-    python3 scripts/check_review_eff.py [--events board/.events.jsonl] [--max-rework-rate 0.3]
-"""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +12,7 @@ from _paths import ROOT
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_review_eff.py — T6 review-efficiency reader.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--max-rework-rate", type=float, default=None,
                     help="if set, fail when rework_rate exceeds this (default: report only)")

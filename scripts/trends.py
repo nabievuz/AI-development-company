@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""trends.py — Historical Trend Views.
 
-Adds time-series trend analysis to the cockpit's current-state view: it buckets
-the event store into equal time windows and classifies the DIRECTION of a metric
-(improving / degrading / flat) via the sign of a least-squares slope. P5 is Red /
-trigger-gated — with no live waves there is no series, so trends report
-'insufficient' (never a fabricated trend line).
-
-Usage:
-    python3 scripts/trends.py [--events board/.events.jsonl] [--windows 5]
-"""
 from __future__ import annotations
 
 import argparse
@@ -23,17 +13,10 @@ from dgox.created_at import parse_created_at
 
 
 def _parse_iso(ts: str) -> dt.datetime | None:
-    """Parse a ``created_at`` timestamp against the shared write-seam contract.
-
-    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
-    source of truth shared with ``cost_ledger``/``metrics_history_feeder``/
-    ``wave_kpi``/``metrics_lib``) instead of a locally re-implemented ``strptime``.
-    """
     return parse_created_at(ts)
 
 
 def classify_trend(values: list, higher_is_better: bool = True, flat_eps: float = 0.05) -> dict:
-    """Classify a time-ordered (oldest->newest) numeric series by least-squares slope sign."""
     vals: list[float] = []
     for v in values:
         if v is None:
@@ -42,7 +25,7 @@ def classify_trend(values: list, higher_is_better: bool = True, flat_eps: float 
             fv = float(v)
         except (TypeError, ValueError):
             continue
-        if math.isfinite(fv):  # drop NaN / inf so a trend is never fabricated
+        if math.isfinite(fv):
             vals.append(fv)
     if len(vals) < 2:
         return {"direction": "insufficient", "slope": 0.0, "points": len(vals)}
@@ -63,12 +46,6 @@ def classify_trend(values: list, higher_is_better: bool = True, flat_eps: float 
 
 
 def dropped_undated_run_ends(events: list[dict]) -> int:
-    """Count ``run_end`` events with a missing/non-conforming ``created_at`` (DAS-1633).
-
-    ``throughput_series`` silently excludes these from its window buckets
-    (D1/DAS-1618 exclusion semantics unchanged); this makes that count visible
-    to a caller instead of a smaller series reporting with silent confidence.
-    """
     return sum(
         1 for e in events
         if e.get("event_type") == "run_end" and _parse_iso(str(e.get("created_at", ""))) is None
@@ -76,7 +53,6 @@ def dropped_undated_run_ends(events: list[dict]) -> int:
 
 
 def throughput_series(events: list[dict], n_windows: int = 5) -> list[float]:
-    """Completed-runs-per-window series (oldest->newest); [] if too few runs to form windows."""
     ts = sorted(
         t for e in events if e.get("event_type") == "run_end"
         for t in (_parse_iso(str(e.get("created_at", ""))),) if t is not None
@@ -96,7 +72,7 @@ def throughput_series(events: list[dict], n_windows: int = 5) -> list[float]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='trends.py — Historical Trend Views.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--windows", type=int, default=5)
     args = ap.parse_args(argv)

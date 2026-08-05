@@ -1,19 +1,3 @@
-"""Deterministic verifier — qa-lead / test-strategy-gap.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ missing| - |reported \\ missing|) / |missing| )
-
-Required-coverage-by-risk policy (derived from the SAME fixture the agent
-sees — never leaked into the prompt):
-    - "low"    -> {"unit"}
-    - "medium" -> {"unit", "integration"}
-    - "high"   -> {"unit", "integration", "e2e", "security"}
-`missing` = required(risk_level) - existing_test_plan.
-
-Deterministic: no clock, no randomness, no model call. An empty submission
-scores 0.0 (anti-gaming: no reward for degenerate output).
-"""
 
 from __future__ import annotations
 
@@ -35,7 +19,6 @@ def _missing(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _missing(fixtures)
     if not expected:
         return 0.0

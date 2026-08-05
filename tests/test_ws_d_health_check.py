@@ -1,10 +1,3 @@
-"""WS-D LENS Maintenance health/eval tests (ADR-0036/ADR-0033 GATE-6 / DAS-1577).
-
-Covers ``scripts/ws_d_health_check.py``: the redaction-on-export probe, the
-in-tenant target check, the eval-tool allow-list drift check, and the
-Maintenance-schedule registration (``scripts/stage_gate.py:
-maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -20,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses (otlp_exporter.py/stage_gate.py) need self in sys.modules
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -46,7 +39,7 @@ def test_redaction_probe_flags_a_scrubber_that_stops_redacting(monkeypatch):
     class _PassthroughExporter:
         @staticmethod
         def redact_span(span):
-            return dict(span)  # simulates a broken/regressed scrubber path
+            return dict(span)
 
     monkeypatch.setattr(mod, "_load_otlp_exporter_module", lambda: _PassthroughExporter())
     result = mod.check_redaction_probe()
@@ -74,7 +67,7 @@ def test_redaction_probe_flags_a_dropped_span():
     class _AlwaysDropExporter:
         @staticmethod
         def redact_span(span):
-            return None  # simulates the scrubber raising on every attribute
+            return None
 
     result_source = mod
     orig = result_source._load_otlp_exporter_module

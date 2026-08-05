@@ -1,4 +1,3 @@
-"""Deterministic verifier — qa-eng / boundary-values."""
 from __future__ import annotations
 
 import json

@@ -1,9 +1,3 @@
-"""Deterministic verifier — backend-em / api-design-review.
-
-Scores the submitted issue-tag set against the answer key using F1
-(precision + recall), so both missed issues and false-positive tags cost
-credit. An empty/missing submission scores 0.0 (recall is 0, so F1 is 0).
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,8 +14,8 @@ def _normalize(values: object) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    # Read the fixture for parity with other verifiers / to keep this tied
-    # to the recorded scenario rather than a bare constant.
+
+
     _ = (fixtures / "api_proposal.md").read_text(encoding="utf-8")
 
     found = _normalize(submission.get("issues"))

@@ -1,4 +1,3 @@
-"""Deterministic verifier — backend-eng-1 / http-status."""
 from __future__ import annotations
 
 import json

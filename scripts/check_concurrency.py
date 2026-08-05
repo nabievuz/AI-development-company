@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""check_concurrency.py — T3 effective-concurrency gate.
 
-T3 = median & p95 of concurrently-active runs, target >= 6 (on the median).
-Reads the event store run_start/run_end intervals; inert (exit 0) when there are
-no paired run events yet. Guardrail: more concurrency must not raise conflicts /
-rework (watched by T6/T7), never a fabricated number.
-
-Exit codes: 0 = median >= target OR unmeasured, 1 = below target, 2 = usage error.
-
-Usage:
-    python3 scripts/check_concurrency.py [--events board/.events.jsonl] [--target 6]
-"""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +14,7 @@ DEFAULT_TARGET = 6.0
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_concurrency.py — T3 effective-concurrency gate.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET)
     args = ap.parse_args(argv)

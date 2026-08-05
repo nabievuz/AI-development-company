@@ -1,11 +1,3 @@
-"""WS-B runner Maintenance health/eval tests (ADR-0034 GATE-6 / DAS-1559).
-
-Covers ``scripts/ws_b_health_check.py``: the dispatch-equivalence drift check
-(single ``run_wave()`` caller + ledger reconciliation), the budget-ceiling
-drift check (``config/budgets.yaml`` ``mustaqil:`` SI-5 caps + metered-overflow
-sentinel), and the Maintenance-schedule registration
-(``scripts/stage_gate.py:maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -23,7 +15,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses (stage_gate.py / wave_runner.py) need self in sys.modules
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 

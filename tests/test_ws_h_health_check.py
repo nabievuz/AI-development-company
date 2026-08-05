@@ -1,10 +1,3 @@
-"""WS-H CONTROL Maintenance health/eval tests (GATE-6 / DAS-1605).
-
-Covers ``scripts/ws_h_health_check.py``: the RBAC-drift probe, the
-audit-redaction-drift probe, the degrade/flag-drift probe, the
-token-compare-drift probe, and the Maintenance-schedule registration
-(``scripts/stage_gate.py: maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -20,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses need self in sys.modules before exec
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -41,15 +34,11 @@ def test_healthy_repo_reports_no_findings():
     assert result["checks"]["token_compare_drift"]["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 1. RBAC drift
-# --------------------------------------------------------------------------- #
-
 def test_rbac_drift_flags_an_agent_granted_gate_approve(monkeypatch):
     mod = _load_health_check()
     tampered = {
         "founder": {"gate.approve": "allow", "run.trigger": "allow"},
-        "agent": {"gate.approve": "allow"},  # simulated tamper — never legal in real rbac.yaml
+        "agent": {"gate.approve": "allow"},
     }
     rbac = mod._rbac_mod()
     monkeypatch.setattr(rbac, "load_grants", lambda path: tampered)
@@ -62,7 +51,7 @@ def test_rbac_drift_flags_an_agent_granted_run_trigger(monkeypatch):
     mod = _load_health_check()
     tampered = {
         "founder": {"gate.approve": "allow", "run.trigger": "allow"},
-        "orchestrator": {"run.trigger": "allow"},  # simulated tamper
+        "orchestrator": {"run.trigger": "allow"},
     }
     rbac = mod._rbac_mod()
     monkeypatch.setattr(rbac, "load_grants", lambda path: tampered)
@@ -73,7 +62,7 @@ def test_rbac_drift_flags_an_agent_granted_run_trigger(monkeypatch):
 
 def test_rbac_drift_flags_founder_missing_a_founder_only_permission(monkeypatch):
     mod = _load_health_check()
-    tampered = {"founder": {"gate.approve": "allow"}}  # run.trigger silently dropped
+    tampered = {"founder": {"gate.approve": "allow"}}
     rbac = mod._rbac_mod()
     monkeypatch.setattr(rbac, "load_grants", lambda path: tampered)
     result = mod.check_rbac_drift()
@@ -97,17 +86,13 @@ def test_rbac_drift_ok_on_the_real_tracked_config():
     assert result["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 2. Audit-redaction drift
-# --------------------------------------------------------------------------- #
-
 def test_audit_redaction_drift_flags_a_raw_secret_passthrough(monkeypatch):
     mod = _load_health_check()
 
     class _NoOpRedaction:
         @staticmethod
         def safe_scrub(value):
-            return str(value)  # simulates a scrubber regressed to a no-op
+            return str(value)
 
     monkeypatch.setattr(mod, "_redaction_mod", lambda: _NoOpRedaction())
     result = mod.check_audit_redaction_drift()
@@ -121,16 +106,7 @@ def test_audit_redaction_drift_ok_on_the_real_scrubber():
     assert result["ok"] is True
 
 
-# --------------------------------------------------------------------------- #
-# 3. Degrade / flag drift
-# --------------------------------------------------------------------------- #
-
 def test_degrade_flag_on_is_healthy_when_surface_tracks_flag(monkeypatch, tmp_path):
-    """ws_h_control_plane was ACTIVATED 2026-07-26 (Founder-authorized): flag ON is
-    now the healthy live state. The check passes as long as the served surface
-    tracks the flag (control-plane when the fastapi/uvicorn deps are present, else
-    a degraded static) and force_static still degrades (CP-5) — it no longer
-    treats flag-ON as drift."""
     mod = _load_health_check()
     on_features = tmp_path / "features.yaml"
     on_features.write_text("ws_h_control_plane: true\n", encoding="utf-8")
@@ -182,10 +158,6 @@ def test_degrade_flag_drift_ok_on_the_real_tracked_config():
     result = mod.check_degrade_flag_drift()
     assert result["ok"] is True
 
-
-# --------------------------------------------------------------------------- #
-# 4. Token-compare drift
-# --------------------------------------------------------------------------- #
 
 def test_token_compare_drift_flags_a_missing_match_token_function(monkeypatch, tmp_path):
     mod = _load_health_check()
@@ -241,10 +213,6 @@ def test_token_compare_drift_ok_on_the_real_app_source():
     result = mod.check_token_compare_drift()
     assert result["ok"] is True
 
-
-# --------------------------------------------------------------------------- #
-# CLI + schedule registration
-# --------------------------------------------------------------------------- #
 
 def test_cli_exits_zero_when_healthy():
     proc = subprocess.run(

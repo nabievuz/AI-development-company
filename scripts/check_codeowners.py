@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""check_codeowners.py — .github/CODEOWNERS covers every area + matches generator.
 
-Fails CI if any top-level tracked directory lacks a CODEOWNERS entry, or if
-`.github/CODEOWNERS` has drifted from `gen_codeowners.py` output (someone hand-
-edited it, or a new area was added without regenerating).
-
-Exit codes
-----------
-0  CODEOWNERS present, complete, and in sync with the generator
-1  missing area coverage or drift
-2  usage / environment error
-"""
 from __future__ import annotations
 
 import argparse
@@ -40,7 +29,7 @@ def offenders(root: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='check_codeowners.py — .github/CODEOWNERS covers every area + matches generator.')
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)
     root = (args.root or ROOT).resolve()

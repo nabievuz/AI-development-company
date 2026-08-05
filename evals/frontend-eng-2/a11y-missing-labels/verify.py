@@ -1,15 +1,3 @@
-"""Deterministic verifier — frontend-eng-2 / a11y-missing-labels.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ violations| - |reported \\ violations|) / |violations| )
-
-The violation set is derived by parsing the ACTUAL fixture markup (not
-hardcoded independently of it) — doing the accessibility audit correctly
-reproduces it, so nothing is leaked: the fixture is the input, and grading it
-is the graded skill. Deterministic (no clock/model/randomness). An empty
-submission scores 0.0 (anti-gaming: no reward for degenerate output).
-"""
 
 from __future__ import annotations
 
@@ -28,7 +16,7 @@ def _violations(fixtures: Path) -> set[str]:
 
     violations: set[str] = set()
 
-    # <input> — needs an associated <label for=...>, or aria-label(ledby).
+
     for tag in re.findall(r"<input\b[^>]*>", html):
         attrs = _attrs(tag)
         el_id = attrs.get("id")
@@ -39,7 +27,7 @@ def _violations(fixtures: Path) -> set[str]:
         if not has_label and not has_aria:
             violations.add(el_id)
 
-    # <img> — needs an alt attribute (any value, incl. "" for decorative).
+
     for tag in re.findall(r"<img\b[^>]*>", html):
         attrs = _attrs(tag)
         el_id = attrs.get("id")
@@ -48,7 +36,7 @@ def _violations(fixtures: Path) -> set[str]:
         if "alt" not in attrs:
             violations.add(el_id)
 
-    # <button> — needs visible text content or an aria-label.
+
     for tag_attrs, content in re.findall(r"<button([^>]*)>(.*?)</button>", html, re.S):
         attrs = _attrs(tag_attrs)
         el_id = attrs.get("id")
@@ -63,7 +51,6 @@ def _violations(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _violations(fixtures)
     if not expected:
         return 0.0

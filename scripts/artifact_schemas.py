@@ -1,46 +1,5 @@
 #!/usr/bin/env python3
-"""artifact_schemas.py — the typed-contract artifact-schema registry (DAS-1467).
 
-Companion to the OPTIONAL ``produces:`` / ``consumes:`` ticket frontmatter fields
-validated by ``scripts/board_lint.py`` (rule R11).  A board ticket may declare
-which **artifact** it hands downstream (``produces:``) and which artifact it
-expects upstream (``consumes:``).  Each named artifact has a schema defined once,
-centrally, in ``governance/schemas/<name>.yaml`` — so a producer/consumer pair is
-a *typed contract* checked at plan time, not an inferred prose comment.
-
-This module is the **single source of truth for the artifact-schema shape**, the
-same role ``merge_reducers.py`` plays for the ``merge_policy`` grammar.  Both the
-lint layer (``board_lint`` imports ``load_schema_file`` / ``available_schema_names``)
-and any downstream consumer (e.g. DAS-1468) validate through here, so they can
-never drift apart.
-
-Pydantic-backed, with a faithful stdlib fallback
-------------------------------------------------
-When ``pydantic`` is importable, the ``ArtifactField`` / ``ArtifactSchema``
-pydantic models ARE the source of truth for the schema shape / grammar.  DasLab's
-runtime is deliberately stdlib + PyYAML only (see ``requirements.in``), so
-pydantic is not guaranteed to be installed; when it is absent this module falls
-back to an equivalent stdlib dataclass validator that enforces the *identical*
-constraints (shared ``ALLOWED_FIELD_TYPES`` and required-key rules).  Either way
-``load_schema_file`` returns an object exposing ``.name`` / ``.version`` /
-``.description`` / ``.fields`` and raises :class:`SchemaError` on a malformed
-schema.  ``HAVE_PYDANTIC`` records which path is active.
-
-Artifact-schema file grammar (``governance/schemas/<name>.yaml``)
-----------------------------------------------------------------
-::
-
-    name: task-ledger          # REQUIRED, non-empty; MUST equal the file stem
-    version: 1                  # OPTIONAL int >= 1 (default 1)
-    description: <one line>     # REQUIRED, non-empty
-    fields:                     # REQUIRED, non-empty list
-      - name: run_id           #   REQUIRED field name (non-empty)
-        type: string           #   REQUIRED, one of ALLOWED_FIELD_TYPES
-        required: true         #   OPTIONAL bool (default false)
-        description: <text>    #   OPTIONAL
-
-Exit-code contract: this module never exits; it raises :class:`SchemaError`.
-"""
 
 from __future__ import annotations
 
@@ -50,39 +9,30 @@ from pathlib import Path
 import yaml
 from _paths import ROOT
 
-# ---------------------------------------------------------------------------
-# Grammar constants (single source of truth, shared by both validation paths)
-# ---------------------------------------------------------------------------
 
-#: JSON-schema-flavoured field types an artifact field may declare.
 ALLOWED_FIELD_TYPES = frozenset(
     {"string", "integer", "number", "boolean", "object", "array"}
 )
 
-#: Default location of the artifact-schema registry.
+
 DEFAULT_SCHEMAS_DIR = ROOT / "governance" / "schemas"
 
 
 class SchemaError(Exception):
-    """Raised when an artifact-schema file is missing, malformed, or invalid."""
+    pass
 
 
-# ---------------------------------------------------------------------------
-# Optional pydantic backing (source of truth when installed)
-# ---------------------------------------------------------------------------
-
-try:  # pragma: no cover - exercised in whichever environment is active
+try:
     from pydantic import BaseModel, ValidationError, field_validator
 
     HAVE_PYDANTIC = True
-except ImportError:  # pragma: no cover
+except ImportError:
     HAVE_PYDANTIC = False
 
 
 if HAVE_PYDANTIC:
 
-    class ArtifactField(BaseModel):  # type: ignore[no-redef]
-        """One field of an artifact (pydantic-backed source of truth)."""
+    class ArtifactField(BaseModel):
 
         name: str
         type: str
@@ -105,8 +55,7 @@ if HAVE_PYDANTIC:
                 )
             return v
 
-    class ArtifactSchema(BaseModel):  # type: ignore[no-redef]
-        """A named artifact contract (pydantic-backed source of truth)."""
+    class ArtifactSchema(BaseModel):
 
         name: str
         version: int = 1
@@ -137,16 +86,14 @@ if HAVE_PYDANTIC:
     def _build_schema(data: dict, source: str) -> ArtifactSchema:
         try:
             return ArtifactSchema(**data)
-        except ValidationError as exc:  # normalise to SchemaError
+        except ValidationError as exc:
             raise SchemaError(f"{source}: {exc}") from exc
 
-else:  # ------------------------------------------------------------------
-    # Stdlib fallback — enforces the IDENTICAL constraints as the pydantic
-    # models above, so behaviour is the same whether or not pydantic is present.
+else:
+
 
     @dataclass
-    class ArtifactField:  # type: ignore[no-redef]
-        """One field of an artifact (stdlib fallback, same constraints)."""
+    class ArtifactField:
 
         name: str
         type: str
@@ -154,8 +101,7 @@ else:  # ------------------------------------------------------------------
         description: str = ""
 
     @dataclass
-    class ArtifactSchema:  # type: ignore[no-redef]
-        """A named artifact contract (stdlib fallback, same constraints)."""
+    class ArtifactSchema:
 
         name: str
         description: str
@@ -205,17 +151,7 @@ else:  # ------------------------------------------------------------------
         )
 
 
-# ---------------------------------------------------------------------------
-# Loader / registry
-# ---------------------------------------------------------------------------
-
 def load_schema_file(path: Path) -> ArtifactSchema:
-    """Load and validate one artifact-schema YAML file.
-
-    Raises :class:`SchemaError` if the file is unreadable, is not a YAML mapping,
-    fails the schema shape, or declares a ``name`` that does not equal the file
-    stem (the name is the registry key, so it must match the filename).
-    """
     source = path.name
     try:
         text = path.read_text(encoding="utf-8")
@@ -237,17 +173,11 @@ def load_schema_file(path: Path) -> ArtifactSchema:
 
 
 def schema_path(name: str, schemas_dir: Path | None = None) -> Path:
-    """Return the on-disk path a schema *name* resolves to (may not exist)."""
     base = schemas_dir if schemas_dir is not None else DEFAULT_SCHEMAS_DIR
     return base / f"{name}.yaml"
 
 
 def available_schema_names(schemas_dir: Path | None = None) -> set[str]:
-    """Return the set of schema names that load and validate cleanly.
-
-    A malformed file is skipped (not counted as available); use
-    :func:`load_schema_file` directly to surface the specific error.
-    """
     base = schemas_dir if schemas_dir is not None else DEFAULT_SCHEMAS_DIR
     names: set[str] = set()
     if not base.is_dir():
@@ -261,7 +191,6 @@ def available_schema_names(schemas_dir: Path | None = None) -> set[str]:
 
 
 def schema_registry(schemas_dir: Path | None = None) -> dict[str, ArtifactSchema]:
-    """Return ``{name: ArtifactSchema}`` for every valid schema in the registry."""
     base = schemas_dir if schemas_dir is not None else DEFAULT_SCHEMAS_DIR
     registry: dict[str, ArtifactSchema] = {}
     if not base.is_dir():

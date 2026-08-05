@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_loop_mode.py — loop stays OFF in P1 (PRD §6 / RFC-001 / ADR-001)."""
+
 from __future__ import annotations
 
 import sys
@@ -12,7 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_loop_mode as lm  # noqa: E402  (import after path manipulation)
+import check_loop_mode as lm
 
 REAL_CONFIG = REPO_ROOT / "config" / "loop.yaml"
 
@@ -26,7 +26,7 @@ def _cfg(**over) -> dict:
 def test_real_loop_config_is_off():
     cfg = yaml.safe_load(REAL_CONFIG.read_text(encoding="utf-8"))
     assert lm.check_loop(cfg) == []
-    # The loop ships in shadow mode; catch a silent shadow->measured drift
+
     assert cfg["mode"] == "shadow"
     assert cfg["auto_apply"] is False
 

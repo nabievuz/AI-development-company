@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_overlay_sections.py — role-overlay contract (ADR-0018 / ADR-0002, P3)."""
+
 from __future__ import annotations
 
 import sys
@@ -10,7 +10,7 @@ SCRIPTS = REPO / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_overlay_sections as cos  # noqa: E402  (import after path manipulation)
+import check_overlay_sections as cos
 
 FULL = (
     "# Role\n\n## Mission\n" + "m" * 50 + "\n\n## Scope\n" + "s" * 50 +
@@ -25,7 +25,7 @@ def _overlay(tmp_path: Path, body: str) -> Path:
 
 
 def test_real_overlays_pass_strict():
-    # the live overlays were filled to the contract — strict must pass on the real tree
+
     assert cos.main(["--strict"]) == 0
 
 

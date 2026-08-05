@@ -1,28 +1,5 @@
 #!/usr/bin/env python3
-"""build_offline_bundle.py — FR-008 vendored-wheel offline install recipe (CP-6).
 
-Builds `tools/control_plane/.vendor/` (gitignored, machine-specific install
-cache) on a network-connected build host: a platform-matched dependency closure
-for `tools/control_plane/requirements-control.txt` (fastapi/uvicorn), meant to be
-verified against real `Requires-Dist` metadata by `verify_closure.py` — NOT
-trusting pip's cross-platform resolver alone. That resolver evaluates
-environment markers (e.g. anyio's `exceptiongroup; python_version<"3.11"`)
-against the CURRENT interpreter rather than the TARGET one, and has silently
-dropped a real transitive dependency this way before (see
-`docs/runbooks/ws-h-control-plane.md`).
-
-Two phases, each an explicit subprocess call — nothing runs implicitly:
-  1. `pip download` the closure as wheels, platform-matched, `--only-binary=:all:`.
-     Needs network; run ONCE on the build host.
-  2. `pip install --no-index --find-links=<wheels> --target=<site-packages>` —
-     `--no-index` means this phase never touches the network. Copy `.vendor/`
-     to the offline target and run phase 2 there (or just point `PYTHONPATH`
-     at the already-installed `site-packages/`, skipping phase 2 entirely).
-
-`plan()` is a pure function (no I/O). `build(dry_run=True)` (the default) never
-calls `subprocess` at all — it only returns the planned commands, which is what
-lets a test assert "no external fetch is attempted" without mocking anything.
-"""
 from __future__ import annotations
 
 import argparse
@@ -35,9 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REQUIREMENTS = REPO_ROOT / "tools" / "control_plane" / "requirements-control.txt"
 DEFAULT_VENDOR = REPO_ROOT / "tools" / "control_plane" / ".vendor"
 
-# The full closure this recipe expects to land as wheels. `verify_closure.py`
-# checks this against the REAL Requires-Dist graph — this tuple is the
-# verification target, not a second source of truth pip is asked to trust.
+
 EXPECTED_CLOSURE: tuple[str, ...] = (
     "fastapi",
     "starlette",
@@ -77,7 +52,6 @@ def plan(
     abi: str = "cp310",
     platforms: tuple[str, ...] = DEFAULT_PLATFORMS,
 ) -> BuildPlan:
-    """Build the two pip commands. Pure — no I/O, no subprocess, no network."""
     download_cmd = [sys.executable, "-m", "pip", "download", "-r", str(requirements)]
     for plat in platforms:
         download_cmd += ["--platform", plat]
@@ -109,21 +83,16 @@ def plan(
 
 
 def build(*, dry_run: bool = True, **plan_kwargs: object) -> BuildPlan:
-    """Return the plan; run it only when `dry_run=False`.
-
-    `dry_run=True` (the default) touches neither the filesystem nor the
-    network — it is safe to call from a test with no mocking at all.
-    """
-    bp = plan(**plan_kwargs)  # type: ignore[arg-type]
+    bp = plan(**plan_kwargs)
     if dry_run:
         return bp
-    subprocess.run(bp.download_cmd, check=True)  # network — build host only
-    subprocess.run(bp.install_cmd, check=True)  # --no-index — no network
+    subprocess.run(bp.download_cmd, check=True)
+    subprocess.run(bp.install_cmd, check=True)
     return bp
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='build_offline_bundle.py — FR-008 vendored-wheel offline install recipe (CP-6).')
     ap.add_argument("--requirements", type=Path, default=DEFAULT_REQUIREMENTS)
     ap.add_argument("--wheels-dir", type=Path, default=DEFAULT_VENDOR / "wheels")
     ap.add_argument("--site-packages-dir", type=Path, default=DEFAULT_VENDOR / "site-packages")

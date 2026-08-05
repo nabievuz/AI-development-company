@@ -1,15 +1,3 @@
-"""Deterministic verifier — coo / budget-allocation.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ funded| - |reported \\ funded|) / |funded| )
-
-The funded set is derived by applying the stated greedy, priority-ordered,
-full-fund-or-skip allocation rule to the SAME budget request fixture the
-agent was given — doing the task correctly reproduces it — so nothing is
-leaked: the fixture is the input, and grading it is the graded skill.
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -20,7 +8,7 @@ from pathlib import Path
 def _funded(fixtures: Path) -> set[str]:
     data = json.loads((fixtures / "budget_requests.json").read_text(encoding="utf-8"))
     requests = list(data.get("requests", []))
-    # Stable sort by priority_score descending; ties keep fixture order.
+
     ordered = sorted(
         enumerate(requests),
         key=lambda pair: (-pair[1].get("priority_score", 0), pair[0]),
@@ -36,7 +24,6 @@ def _funded(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _funded(fixtures)
     if not expected:
         return 0.0

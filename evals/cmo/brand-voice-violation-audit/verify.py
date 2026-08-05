@@ -1,15 +1,3 @@
-"""Deterministic verifier — cmo / brand-voice-violation-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ violations| - |reported \\ violations|) / |violations| )
-
-The violation set is derived from the SAME fixture the agent was given by
-applying the three brand-voice rules stated in the prompt (banned
-superlative phrase / multiple exclamation marks / all-caps shouting word) —
-nothing beyond those rules is leaked. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -60,7 +48,6 @@ def _violations(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _violations(fixtures)
     if not expected:
         return 0.0

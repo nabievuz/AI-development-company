@@ -1,17 +1,3 @@
-"""Guardrail for the ``cto`` role (R4 rollout 2->32).
-
-INPUT: the shared scope screen (wrong-dept / missing-consumes / gate-open) is
-sufficient; the CTO fields a broad range of engineering decisions, so no extra
-input relevance screen is imposed (a narrow keyword screen would false-trip on
-legitimate cross-cutting work).
-
-OUTPUT: a CTO deliverable is only accepted when the produced work records an
-explicit decision / approval — a made-and-recorded call (ADR, RFC, board
-minutes, approved queue, or a stated decision). This encodes the CTO's
-Definition of Done ("the decision, plan, or ADR you own is made and recorded ...
-with the rationale and a law-check captured") so a deliberation that reaches no
-recorded decision never passes the tripwire.
-"""
 from __future__ import annotations
 
 import re
@@ -27,7 +13,7 @@ from guardrails import (
 
 ROLE = "cto"
 
-# Positive evidence that an explicit decision / approval was recorded.
+
 _DECISION = re.compile(
     r"\b(decision|decided|decide|approv(?:e|ed|al)|reject(?:ed|ion)?|"
     r"adr|rfc|ratif(?:y|ied)|sign(?:ed)?[- ]?off|"
@@ -38,12 +24,10 @@ _DECISION = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """The CTO accepts any in-department, gate-clear decision ticket."""
     return default_input_guardrail(ctx)
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only a deliverable that records an explicit decision / approval."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

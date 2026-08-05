@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""check_project_isolation.py — keep the engine project-agnostic (LAW C).
 
-DasLab is a factory for *any* goal, not one product. No project-specific name
-may leak into the engine's load-bearing files — the generators, validators,
-skills, agent shims, routing table, dept charters/overlays, and the umbrella
-specs. Project material lives under ``projects/<slug>/`` (gitignored).
-
-The denylist is derived at runtime from the names of any directories under
-``projects/`` (gitignored). Historical/work-record areas (``board/tickets/``,
-``docs/``, ``governance/board-minutes``) and the scanners themselves are out of
-scope — they may reference a project by name as data.
-
-Exit codes
-----------
-0  engine is project-agnostic
-1  a project name leaked into an engine file
-2  usage / environment error
-"""
 from __future__ import annotations
 
 import argparse
@@ -28,7 +11,7 @@ from pathlib import Path
 
 from _paths import ROOT
 
-# Load-bearing engine surface (glob patterns, repo-root-relative).
+
 ENGINE_PATTERNS = (
     "scripts/*.py",
     "scripts/*.sh",
@@ -44,25 +27,20 @@ ENGINE_PATTERNS = (
     "*/CLAUDE.md",
     "*/agents/*/AGENTS.md",
 )
-# Base denylist: derived from projects/ subdir names at runtime (see denylist()).
-# Add an explicit slug here only to forbid a name with no projects/ dir present.
+
+
 _BASE_DENY: tuple[str, ...] = ()
-# Scratch dirs under projects/ that are not project slugs.
+
 _SCRATCH_DIRS = {"worktrees"}
-# Never scan the scanners (they hold the denylist as data).
+
 _SELF = {"scripts/check_project_isolation.py"}
 
-# ENGINE SURFACE vs HISTORY (the isolation boundary, made explicit).
-# The engine surface scanned above (ENGINE_PATTERNS) is the reusable machinery that
-# must be project-neutral. Everything else is OUT OF SCOPE BY CONSTRUCTION — these
-# historical / work-record areas legitimately reference a project by name as data
-# and must NOT be falsified to chase a grep-zero:
+
 _ALLOWLIST_HISTORICAL = (
-    "board/tickets/",          # platform-only board; a platform ticket may cite a
-                               # project name as data (board_lint R9 forbids the
-                               # structural `project:` field — project tickets live
-                               # in projects/<slug>/board-tickets/)
-    "docs/adr/",               # architecture decisions may cite a project as data
+    "board/tickets/",
+
+
+    "docs/adr/",
     "governance/board-minutes/",
 )
 
@@ -95,10 +73,8 @@ def engine_files(root: Path) -> list[str]:
 
 
 def denylist(root: Path) -> set[str]:
-    # Derive forbidden project names from projects/ subdir names plus any explicit
-    # _BASE_DENY entries. Dot-dirs and known scratch dirs (e.g. "worktrees") are
-    # excluded — they are not project slugs and would false-flag legitimate
-    # git-worktree references in engine docs.
+
+
     names = {d for d in _BASE_DENY if d}
     projects = root / "projects"
     if projects.is_dir():
@@ -134,7 +110,7 @@ def offenders(root: Path, deny: set[str] | None = None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='check_project_isolation.py — keep the engine project-agnostic (LAW C).')
     parser.add_argument("--root", type=Path, default=None, help="repo root (default: self-located)")
     args = parser.parse_args(argv)
     root = (args.root or ROOT).resolve()

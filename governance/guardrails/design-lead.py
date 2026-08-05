@@ -1,15 +1,3 @@
-"""Guardrail for the ``design-lead`` role (design-dept — DAS-1471 family).
-
-INPUT: the shared scope screen (wrong-dept / missing-consumes / gate-open) is
-sufficient; a design-lead ticket is any design-dept ticket, and a broad keyword
-screen would risk falsely refusing a legitimate design ticket, so none is added.
-
-OUTPUT: a design-lead deliverable is only accepted when the produced work
-references a concrete design artifact / spec. This encodes the discipline's
-Definition of Done — "the design artifact is produced, token-compliant,
-reviewed, and handed to engineering with the spec it needs to build" (role
-overlay). A status note with no artifact or spec reference is not a handoff.
-"""
 from __future__ import annotations
 
 import re
@@ -25,8 +13,7 @@ from guardrails import (
 
 ROLE = "design-lead"
 
-# Positive evidence that a concrete design artifact / spec was produced or
-# handed off. Broad and tolerant so any real design deliverable carries one.
+
 _DESIGN_ARTIFACT = re.compile(
     r"\b(mockup|wireframe|prototype|figma|component|token|design[- ]?system|"
     r"spec|handoff|hand[- ]?off|redline|style[- ]?guide|artifact|screen)\b",
@@ -35,12 +22,10 @@ _DESIGN_ARTIFACT = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """The Design Lead accepts any in-department, gate-clear design ticket."""
     return default_input_guardrail(ctx)
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only a design-lead deliverable that references an artifact / spec."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

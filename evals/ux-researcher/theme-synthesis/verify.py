@@ -1,14 +1,3 @@
-"""Deterministic verifier — ux-researcher / theme-synthesis.
-
-Fractional credit:
-  * 0.5 if top_theme matches the theme with the highest distinct-session
-    coverage in the fixture (ties broken by first occurrence).
-  * 0.5 if session_count matches that theme's exact distinct-session coverage.
-
-The answer key is computed from the SAME fixture the agent was given — nothing
-is leaked separately. Deterministic (no clock/model). An empty submission
-scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -17,7 +6,6 @@ from pathlib import Path
 
 
 def _theme_coverage(fixtures: Path) -> tuple[str, int]:
-    """Return (top_theme, distinct_session_count) — first-seen order breaks ties."""
     data = json.loads((fixtures / "sessions.json").read_text(encoding="utf-8"))
     sessions = data.get("sessions", [])
 
@@ -43,7 +31,6 @@ def _theme_coverage(fixtures: Path) -> tuple[str, int]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     top_theme, session_count = _theme_coverage(fixtures)
     if not top_theme:
         return 0.0

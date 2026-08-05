@@ -1,51 +1,5 @@
 #!/usr/bin/env python3
-"""gateway_compile.py — ORGANISM WS7 GATEWAY intake pipeline (O7-T02, P22).
 
-Turns a submitted **PROJECT-OS-PACK** (see ``docs/specs/PROJECT-OS-PACK.md`` /
-``docs/adr/0030-project-os-pack.md`` — FR-001…FR-010 binding) into a set of
-self-contained, stage-gated **STORY TICKETS** on the target project's own board.
-It is the single deterministic gate every new project enters through: a project
-only becomes board tickets after it has provably cleared every QONUN gate.
-
-Pipeline stages, run in STRICT order — the first failing gate stops the pipeline
-and nothing downstream runs:
-
-1. **validate pack** — placeholder-lint (no unfilled TODO / ``<...>`` slots),
-   link integrity (every referenced relative path resolves), and schema
-   conformance against the manifest (FR-001…FR-005, FR-009). A broken pack is
-   REJECTED with actionable, per-field errors (file + field + why + how-to-fix),
-   never a bare traceback.
-2. **discovery gate** — confirm the Founder Discovery Gate is satisfied: >=10 Q&A
-   present OR an explicit Founder waiver (FR-006). If neither, STOP and GENERATE
-   the missing discovery questions so the operator can take them to the Founder.
-3. **research enrichment** — emit a research-enrichment step whose sourced
-   conclusion (market, competitors, regulatory, technical architecture, pricing,
-   SEO/channel, risks) is stored ONLY in the project folder (D-4, QONUN Placement).
-4. **approved-check** — verify the ``APPROVED:``/``TASDIQLANDI:`` Founder approval
-   signal on ``projects/<name>/APPROVED-GOAL-QUEUE.md`` by WIRING the existing
-   ``scripts/check_approved_goal_queue.py`` (FR-007 — not reimplemented here).
-5. **compile story tickets** — write STORY TICKETS into
-   ``projects/<name>/board-tickets/``. Each ticket is self-contained (embedded
-   context excerpt, acceptance criteria, produces/consumes, AADL stage tag, gate
-   ref) so a fresh agent window needs zero archaeology, and carries
-   ``project: <name>`` (FR-008, QONUN Project Placement Law).
-
-Usage::
-
-    python3 scripts/gateway_compile.py <pack-root> [--projects-dir DIR] [--json]
-    python3 scripts/gateway_compile.py <pack-root> --gate-walk [--emit-cards]
-
-``<pack-root>`` is the project folder ``projects/<name>/``. Exit codes:
-0 = compiled, 1 = rejected / blocked, 2 = usage / IO error.
-
-**Stage-gated delivery (P22, DAS-1494).** The default mode compiles the pack into
-stage-tagged story tickets. ``--gate-walk`` instead walks the AADL gate order over
-the already-compiled ``<pack-root>/board-tickets/`` and refuses to advance past an
-open gate (delegates to ``scripts/stage_gate.py``); with ``--emit-cards`` each open
-gate that blocks a downstream stage is surfaced as a DAS-1446 interrupt-card for
-Founder sign-off. GATE-5 (Deployment) is machine-enforced never-auto-approve, so an
-open GATE-5 provably blocks any production deploy.
-"""
 from __future__ import annotations
 
 import argparse
@@ -58,27 +12,24 @@ from pathlib import Path
 
 import yaml
 
-# scripts/ is on sys.path when run directly; make the import robust either way.
+
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import check_approved_goal_queue as approved_queue  # noqa: E402  (wired existing gate)
+import check_approved_goal_queue as approved_queue
 
-# --------------------------------------------------------------------------- #
-# Contract constants (mirror docs/specs/PROJECT-OS-PACK.md §3 / §4)
-# --------------------------------------------------------------------------- #
 
 MANIFEST_NAME = "PROJECT-OS.yaml"
 QUEUE_NAME = "APPROVED-GOAL-QUEUE.md"
 DISCOVERY_REL = Path("docs") / "01-planning" / "discovery.md"
 RESEARCH_REL = Path("docs") / "01-planning" / "RESEARCH-ENRICHMENT.md"
 
-# D-2: the closed manifest field set.
+
 REQUIRED_MANIFEST_KEYS = ("name", "mission", "constraints", "stack", "budget", "success_metrics")
 KNOWN_MANIFEST_KEYS = frozenset(REQUIRED_MANIFEST_KEYS)
 
-# D-3: the canonical AADL §2 six-stage doc-tree names (exact, ordered).
+
 CANONICAL_STAGE_DIRS = (
     "01-planning",
     "02-design",
@@ -88,8 +39,7 @@ CANONICAL_STAGE_DIRS = (
     "06-maintenance",
 )
 
-# AADL §1/§3 — one story ticket per lifecycle stage. (stage_no, name, gate,
-# doc-dir, responsible IC role, one-line gate acceptance seed).
+
 AADL_STAGES = (
     (1, "Planning", "GATE-1", "01-planning", "senior-pm",
      "measurable business KPI defined, scope explicit, budget + risk-ethics signed off"),
@@ -105,15 +55,10 @@ AADL_STAGES = (
      "KPI vs Stage-1 baseline reported, cost/value positive, feedback entering eval set"),
 )
 
-# Goal-queue item statuses that authorize compilation (queue-item at
-# founder_approved or later — QONUN-3 / D-5).
+
 COMPILABLE_QUEUE_STATUSES = frozenset({"founder_approved", "planned", "active"})
 
-# --------------------------------------------------------------------------- #
-# Placeholder / relaxation / discovery detection
-# --------------------------------------------------------------------------- #
 
-# Unfilled-slot markers a well-formed pack must not carry.
 _PLACEHOLDER_RES = (
     (re.compile(r"\bTODO\b"), "TODO"),
     (re.compile(r"\bFIXME\b"), "FIXME"),
@@ -124,8 +69,7 @@ _PLACEHOLDER_RES = (
     (re.compile(r"<[A-Z][A-Z0-9_]{2,}>"), "<PLACEHOLDER_TOKEN>"),
 )
 
-# A project-local constraint may only TIGHTEN org law (D-6 / FR-009). A constraint
-# that pairs a relaxation verb with an org-law noun RELAXES org law → invalid pack.
+
 _RELAX_VERB_RE = re.compile(
     r"\b(waiv\w*|skip\w*|bypass\w*|disabl\w*|ignor\w*|relax\w*|loosen\w*|"
     r"weaken\w*|exempt\w*|opt[\s-]?out|override|remov\w*)\b",
@@ -137,13 +81,12 @@ _ORG_LAW_NOUN_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Discovery Q&A markers and the explicit waiver signal.
+
 _Q_RE = re.compile(r"(?im)^\s*Q\d*\s*[:.)]")
 _A_RE = re.compile(r"(?im)^\s*A\d*\s*[:.)]")
 _WAIVER_RE = re.compile(r"\b(WAIV(?:ED|ER)|DISCOVERY[\s_-]?WAIVED)\b", re.IGNORECASE)
 
-# The Founder discovery questions the gate generates when it is open (the
-# /daslab-plan §2 coverage list — one per required intake dimension).
+
 DISCOVERY_QUESTIONS = (
     "Who is the target user, and in what context do they hit the core problem?",
     "What is the single must-have outcome the product must deliver?",
@@ -163,13 +106,8 @@ DISCOVERY_QUESTIONS = (
 _KEBAB_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
-# --------------------------------------------------------------------------- #
-# Result containers
-# --------------------------------------------------------------------------- #
-
 @dataclass
 class PackError:
-    """One actionable rejection: names the exact defect and how to fix it."""
 
     file: str
     field: str
@@ -204,12 +142,7 @@ class PipelineResult:
         self.stages.append(StageResult(name, ok, detail))
 
 
-# --------------------------------------------------------------------------- #
-# Stage 1 — validate pack
-# --------------------------------------------------------------------------- #
-
 def _pack_text_files(pack_root: Path) -> list[Path]:
-    """Authored pack files placeholder-lint / link-check scan (manifest + docs + queue)."""
     files: list[Path] = []
     for rel in (MANIFEST_NAME, "README.md", QUEUE_NAME):
         p = pack_root / rel
@@ -244,7 +177,7 @@ def _lint_links(pack_root: Path, errors: list[PackError]) -> None:
             continue
         text = f.read_text(encoding="utf-8", errors="ignore")
         for target in _LINK_RE.findall(text):
-            target = target.strip().split()[0]  # drop optional "title"
+            target = target.strip().split()[0]
             if target.startswith(("http://", "https://", "mailto:", "#")) or not target:
                 continue
             rel = target.split("#", 1)[0]
@@ -289,7 +222,7 @@ def _load_manifest(pack_root: Path, errors: list[PackError]) -> dict | None:
 
 
 def _validate_manifest(pack_root: Path, data: dict, result: PipelineResult, errors: list[PackError]) -> None:
-    # FR-002 — required keys.
+
     for key in REQUIRED_MANIFEST_KEYS:
         if key not in data or data.get(key) in (None, ""):
             errors.append(PackError(
@@ -297,14 +230,14 @@ def _validate_manifest(pack_root: Path, data: dict, result: PipelineResult, erro
                 problem=f"required manifest key {key!r} is missing or empty",
                 fix=f"declare {key!r} (see docs/specs/PROJECT-OS-PACK.md §3.1) — FR-002",
             ))
-    # FR-004 — unknown top-level key is a WARNING, not a reject.
+
     for key in data:
         if key not in KNOWN_MANIFEST_KEYS:
             result.warnings.append(
                 f"{MANIFEST_NAME}: unknown top-level key {key!r} (closed field set — "
                 "surfaced, not dropped; extending the set needs a spec revision + ADR, FR-004)"
             )
-    # FR-003 — name must equal folder segment.
+
     name = data.get("name")
     if isinstance(name, str) and name.strip():
         if name.strip() != pack_root.name:
@@ -319,7 +252,7 @@ def _validate_manifest(pack_root: Path, data: dict, result: PipelineResult, erro
                 problem=f"name {name!r} is not a kebab-case slug",
                 fix="use a lowercase kebab-case slug (e.g. acme-helpdesk) — FR-003",
             ))
-    # FR-009 — constraints may only tighten, never relax org law.
+
     constraints = data.get("constraints")
     if isinstance(constraints, list):
         for c in constraints:
@@ -333,7 +266,7 @@ def _validate_manifest(pack_root: Path, data: dict, result: PipelineResult, erro
 
 
 def _validate_doctree(pack_root: Path, errors: list[PackError]) -> None:
-    # FR-005 — canonical AADL §2 folder names, exact.
+
     docs = pack_root / "docs"
     if not docs.is_dir():
         errors.append(PackError(
@@ -361,7 +294,6 @@ def _validate_doctree(pack_root: Path, errors: list[PackError]) -> None:
 
 
 def validate_pack(pack_root: Path, result: PipelineResult) -> bool:
-    """Stage 1. Returns True iff the pack is well-formed; fills result.errors."""
     errors: list[PackError] = []
     data = _load_manifest(pack_root, errors)
     if data is not None:
@@ -375,12 +307,7 @@ def validate_pack(pack_root: Path, result: PipelineResult) -> bool:
     return ok
 
 
-# --------------------------------------------------------------------------- #
-# Stage 2 — discovery gate
-# --------------------------------------------------------------------------- #
-
 def check_discovery_gate(pack_root: Path, result: PipelineResult) -> bool:
-    """Stage 2 (FR-006). >=10 Q&A OR explicit waiver; else BLOCK + generate questions."""
     discovery = pack_root / DISCOVERY_REL
     text = discovery.read_text(encoding="utf-8", errors="ignore") if discovery.is_file() else ""
     if _WAIVER_RE.search(text):
@@ -391,7 +318,7 @@ def check_discovery_gate(pack_root: Path, result: PipelineResult) -> bool:
     if pairs >= 10:
         result._stage("discovery-gate", True, f"{pairs} Q&A pairs present (>=10)")
         return True
-    # Open gate — BLOCK and generate the missing questions.
+
     result.questions = list(DISCOVERY_QUESTIONS)
     result._stage(
         "discovery-gate", False,
@@ -401,10 +328,6 @@ def check_discovery_gate(pack_root: Path, result: PipelineResult) -> bool:
     return False
 
 
-# --------------------------------------------------------------------------- #
-# Stage 3 — research enrichment
-# --------------------------------------------------------------------------- #
-
 _RESEARCH_SECTIONS = (
     "Market", "Competitors", "Regulatory / Compliance", "Technical architecture",
     "Pricing / Unit economics", "SEO / Channel", "Risks",
@@ -412,12 +335,6 @@ _RESEARCH_SECTIONS = (
 
 
 def emit_research_enrichment(pack_root: Path, result: PipelineResult) -> Path:
-    """Stage 3 (D-4). Emit the research-enrichment step INTO the project folder only.
-
-    Idempotent: writes a deterministic sourced-conclusion scaffold whose sections
-    are the seven the Founder-Approved Goal Queue law requires. Stored under
-    docs/01-planning/ so QONUN Project Placement is never broken.
-    """
     out = pack_root / RESEARCH_REL
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -437,12 +354,7 @@ def emit_research_enrichment(pack_root: Path, result: PipelineResult) -> Path:
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Stage 4 — approved-check (WIRES check_approved_goal_queue.py)
-# --------------------------------------------------------------------------- #
-
 def check_approved(pack_root: Path, projects_dir: Path, result: PipelineResult) -> bool:
-    """Stage 4 (FR-007). Wire the existing approved-goal-queue gate — do not reimplement."""
     queue = pack_root / QUEUE_NAME
     if not queue.is_file():
         result.errors.append(PackError(
@@ -452,7 +364,7 @@ def check_approved(pack_root: Path, projects_dir: Path, result: PipelineResult) 
         ))
         result._stage("approved-check", False, "queue missing")
         return False
-    # WIRED: reuse check_approved_goal_queue's approval detector (no duplicate logic).
+
     approved = approved_queue._queue_approved(projects_dir, pack_root.name)
     if not approved:
         result.errors.append(PackError(
@@ -466,16 +378,7 @@ def check_approved(pack_root: Path, projects_dir: Path, result: PipelineResult) 
     return True
 
 
-# --------------------------------------------------------------------------- #
-# Stage 5 — compile story tickets
-# --------------------------------------------------------------------------- #
-
 def parse_goal_queue(text: str) -> list[dict[str, str]]:
-    """Parse the queue's prioritized table; return compilable goal items (D-5).
-
-    Finds the markdown table whose header row names ``goal_slug``, maps columns by
-    header, and returns rows whose ``status`` is founder_approved / planned / active.
-    """
     lines = text.splitlines()
     header_idx = next(
         (i for i, ln in enumerate(lines) if "|" in ln and "goal_slug" in ln.lower()),
@@ -494,7 +397,7 @@ def parse_goal_queue(text: str) -> list[dict[str, str]]:
             break
         row = cells(ln)
         if len(row) != len(headers) or set("".join(row)) <= set("-: "):
-            continue  # separator or ragged row
+            continue
         rec = dict(zip(headers, row, strict=True))
         if rec.get("status", "").lower() in COMPILABLE_QUEUE_STATUSES and rec.get("goal_slug"):
             items.append(rec)
@@ -537,7 +440,7 @@ def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: s
         "---",
         "",
     ]
-    fm = [ln for ln in fm if ln != ""]  # drop the empty stage line for the epic
+    fm = [ln for ln in fm if ln != ""]
     if not body.endswith("\n"):
         body += "\n"
     path = board_dir / f"DAS-{tid}-{goal}-{stage_tag}.md"
@@ -546,7 +449,6 @@ def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: s
 
 
 def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResult) -> list[Path]:
-    """Stage 5 (FR-008). Emit self-contained, project-scoped, stage-gated story tickets."""
     queue_text = (pack_root / QUEUE_NAME).read_text(encoding="utf-8", errors="ignore")
     goals = parse_goal_queue(queue_text)
     if not goals:
@@ -574,7 +476,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
         }:
             owner = "cpo"
 
-        # Epic per goal — the stage tickets' parent (keeps the tree R6/R7-clean).
+
         epic_id = tid
         tid += 1
         epic_body = (
@@ -638,35 +540,30 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
     return written
 
 
-# --------------------------------------------------------------------------- #
-# Pipeline driver
-# --------------------------------------------------------------------------- #
-
 def run_pipeline(pack_root: Path, projects_dir: Path | None = None) -> PipelineResult:
-    """Run the strict-ordered gateway pipeline. Stops at the first failing gate."""
     pack_root = pack_root.resolve()
     projects_dir = (projects_dir or pack_root.parent).resolve()
     result = PipelineResult(slug=pack_root.name)
 
-    # Stage 1 — validate.
+
     if not validate_pack(pack_root, result):
         result.rejected_stage = "validate"
         return result
 
-    # Stage 2 — discovery gate (provably blocks; nothing downstream runs).
+
     if not check_discovery_gate(pack_root, result):
         result.rejected_stage = "discovery-gate"
         return result
 
-    # Stage 3 — research enrichment.
+
     emit_research_enrichment(pack_root, result)
 
-    # Stage 4 — approved-check (wired).
+
     if not check_approved(pack_root, projects_dir, result):
         result.rejected_stage = "approved-check"
         return result
 
-    # Stage 5 — compile story tickets.
+
     manifest = yaml.safe_load((pack_root / MANIFEST_NAME).read_text(encoding="utf-8"))
     tickets = compile_story_tickets(pack_root, manifest, result)
     if not tickets:
@@ -676,10 +573,6 @@ def run_pipeline(pack_root: Path, projects_dir: Path | None = None) -> PipelineR
     result.ok = True
     return result
 
-
-# --------------------------------------------------------------------------- #
-# CLI
-# --------------------------------------------------------------------------- #
 
 def _render(result: PipelineResult) -> str:
     out: list[str] = []
@@ -720,7 +613,7 @@ def _as_dict(result: PipelineResult) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description="gateway_compile.py — ORGANISM WS7 GATEWAY intake pipeline (O7-T02, P22).\n\nTurns a submitted **PROJECT-OS-PACK** (see ``docs/specs/PROJECT-OS-PACK.md`` /\n``docs/adr/0030-project-os-pack.md`` — FR-001…FR-010 binding) into a set of\nself-contained, stage-gated **STORY TICKETS** on the target project's own board.\nIt is the single deterministic gate every new project enters through: a project\nonly becomes board tickets after it has provably cleared every QONUN gate.\n\nPipeline stages, run in STRICT order — the first failing gate stops the pipeline\nand nothing downstream runs:\n\n1. **validate pack** — placeholder-lint (no unfilled TODO / ``<...>`` slots),\n   link integrity (every referenced relative path resolves), and schema\n   conformance against the manifest (FR-001…FR-005, FR-009). A broken pack is\n   REJECTED with actionable, per-field errors (file + field + why + how-to-fix),\n   never a bare traceback.\n2. **discovery gate** — confirm the Founder Discovery Gate is satisfied: >=10 Q&A\n   present OR an explicit Founder waiver (FR-006). If neither, STOP and GENERATE\n   the missing discovery questions so the operator can take them to the Founder.\n3. **research enrichment** — emit a research-enrichment step whose sourced\n   conclusion (market, competitors, regulatory, technical architecture, pricing,\n   SEO/channel, risks) is stored ONLY in the project folder (D-4, QONUN Placement).\n4. **approved-check** — verify the ``APPROVED:``/``TASDIQLANDI:`` Founder approval\n   signal on ``projects/<name>/APPROVED-GOAL-QUEUE.md`` by WIRING the existing\n   ``scripts/check_approved_goal_queue.py`` (FR-007 — not reimplemented here).\n5. **compile story tickets** — write STORY TICKETS into\n   ``projects/<name>/board-tickets/``. Each ticket is self-contained (embedded\n   context excerpt, acceptance criteria, produces/consumes, AADL stage tag, gate\n   ref) so a fresh agent window needs zero archaeology, and carries\n   ``project: <name>`` (FR-008, QONUN Project Placement Law).\n\nUsage::\n\n    python3 scripts/gateway_compile.py <pack-root> [--projects-dir DIR] [--json]\n    python3 scripts/gateway_compile.py <pack-root> --gate-walk [--emit-cards]\n\n``<pack-root>`` is the project folder ``projects/<name>/``. Exit codes:\n0 = compiled, 1 = rejected / blocked, 2 = usage / IO error.\n\n**Stage-gated delivery (P22, DAS-1494).** The default mode compiles the pack into\nstage-tagged story tickets. ``--gate-walk`` instead walks the AADL gate order over\nthe already-compiled ``<pack-root>/board-tickets/`` and refuses to advance past an\nopen gate (delegates to ``scripts/stage_gate.py``); with ``--emit-cards`` each open\ngate that blocks a downstream stage is surfaced as a DAS-1446 interrupt-card for\nFounder sign-off. GATE-5 (Deployment) is machine-enforced never-auto-approve, so an\nopen GATE-5 provably blocks any production deploy.", formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pack_root", help="the project folder projects/<name>/ to compile")
     ap.add_argument("--projects-dir", default=None,
                     help="the projects/ root (default: parent of pack_root) — for the approved-queue gate")
@@ -740,10 +633,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     projects_dir = Path(args.projects_dir) if args.projects_dir else None
 
-    # P22 — stage-gated delivery: walk the AADL gates over the compiled board and
-    # refuse to advance past an open gate (delegates to scripts/stage_gate.py).
+
     if args.gate_walk:
-        import stage_gate  # noqa: PLC0415 - only needed for this optional mode
+        import stage_gate
         board = pack_root / "board-tickets"
         if not board.is_dir():
             print(f"ERROR: no board-tickets/ under {pack_root} — compile the pack first",

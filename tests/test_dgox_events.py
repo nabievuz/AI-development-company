@@ -1,14 +1,3 @@
-"""tests/test_dgox_events.py — pytest suite for scripts/dgox/events.py.
-
-Coverage:
-- Common envelope: build + validate (valid and invalid cases).
-- Shape A (routing_decision): build + validate (valid and invalid cases).
-- Shape B (agent_invocation): build + validate (valid and invalid cases).
-- Append-then-replay round-trip (uses tmp_path — never touches board/.events.jsonl).
-- iter_events filtering by ticket_id, run_id, and event_type.
-- Malformed-line tolerance in iter_events.
-- gitignore exclusion: ``git check-ignore board/.events.jsonl`` → ignored.
-"""
 
 from __future__ import annotations
 
@@ -19,18 +8,14 @@ from pathlib import Path
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Path setup — make scripts/ importable and scripts/dgox/ importable as a
-# namespace package regardless of how pytest is invoked.
-# ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import metrics_lib  # noqa: E402
-from dgox.events import (  # noqa: E402
+import metrics_lib
+from dgox.events import (
     RUN_END_METRICS_FIELDS,
     SPAN_KINDS,
     SPAN_OTEL_ATTRS,
@@ -55,9 +40,6 @@ from dgox.events import (  # noqa: E402
     validate_wave,
 )
 
-# ---------------------------------------------------------------------------
-# Fixtures / shared data
-# ---------------------------------------------------------------------------
 
 FIXED_TS = "2026-06-20T00:00:00Z"
 
@@ -151,7 +133,6 @@ def _make_checkpoint_event(**overrides):
     return build_checkpoint(**defaults)
 
 
-# A root run span: 12:00:00 → 12:03:20 = 200 s = 200000 ms; cache-warm.
 SPAN_START = "2026-07-03T12:00:00Z"
 SPAN_END = "2026-07-03T12:03:20Z"
 
@@ -174,11 +155,6 @@ def _make_span_event(**overrides):
     }
     defaults.update(overrides)
     return build_span(**defaults)
-
-
-# ---------------------------------------------------------------------------
-# Envelope tests
-# ---------------------------------------------------------------------------
 
 
 class TestEnvelope:
@@ -231,11 +207,6 @@ class TestEnvelope:
         assert validate_envelope(ev) == []
 
 
-# ---------------------------------------------------------------------------
-# Shape A — routing_decision
-# ---------------------------------------------------------------------------
-
-
 class TestRoutingDecision:
     def test_build_produces_expected_shape(self):
         ev = _make_routing_event()
@@ -252,7 +223,7 @@ class TestRoutingDecision:
         ]
         assert ev["fallback"] == "block_and_escalate_to_backend-em"
         assert ev["created_at"] == FIXED_TS
-        # run_id is absent when not provided
+
         assert "run_id" not in ev
 
     def test_build_with_run_id(self):
@@ -263,7 +234,7 @@ class TestRoutingDecision:
         original = ["aadl_predecessor_gate_closed"]
         ev = _make_routing_event(policy_checks=original)
         original.append("mutated")
-        # The event should not reflect the mutation
+
         assert "mutated" not in ev["policy_checks"]
 
     def test_validate_valid_event_no_errors(self):
@@ -299,11 +270,6 @@ class TestRoutingDecision:
         del ev["ticket_id"]
         errors = validate_routing_decision(ev)
         assert any("ticket_id" in e for e in errors)
-
-
-# ---------------------------------------------------------------------------
-# Shape B — agent_invocation
-# ---------------------------------------------------------------------------
 
 
 class TestAgentInvocation:
@@ -372,11 +338,6 @@ class TestAgentInvocation:
         assert any("allowed_tools" in e for e in errors)
 
 
-# ---------------------------------------------------------------------------
-# Shape C — run_start
-# ---------------------------------------------------------------------------
-
-
 class TestRunStart:
     def test_build_produces_expected_shape(self):
         ev = _make_run_start_event()
@@ -408,13 +369,8 @@ class TestRunStart:
         assert any("goal" in e for e in errors)
 
     def test_appendable_envelope_valid(self):
-        # run_start must satisfy the store envelope (append path).
+
         assert validate_envelope(_make_run_start_event()) == []
-
-
-# ---------------------------------------------------------------------------
-# Shape D — run_end (load-bearing metrics_lib.py contract)
-# ---------------------------------------------------------------------------
 
 
 class TestRunEnd:
@@ -433,7 +389,7 @@ class TestRunEnd:
 
     def test_build_emits_all_metrics_contract_fields(self):
         ev = _make_run_end_event()
-        # Every field metrics_lib reads must be present on the built event.
+
         assert set(ev) >= RUN_END_METRICS_FIELDS
         assert {"event_type", "ticket_id"} <= set(ev)
 
@@ -475,19 +431,10 @@ class TestRunEnd:
         assert any("model" in e for e in errors)
 
 
-# ---------------------------------------------------------------------------
-# Schema-conformance — build_run_end MUST satisfy the metrics_lib readers.
-# If any field is renamed the builder/consumer diverge and these fail.
-# ---------------------------------------------------------------------------
-
-
 class TestRunEndMetricsConformance:
-    """A build_run_end(...) event must flow through the metrics readers and be
-    COUNTED (not silently dropped) — proving the producer/consumer field names
-    match exactly (ADR 0023 §4 hard contract)."""
 
     def test_field_set_matches_metrics_readers(self):
-        # Single source of truth mirrors exactly what metrics_lib consumes.
+
         assert {
             "run_id",
             "created_at",
@@ -504,7 +451,7 @@ class TestRunEndMetricsConformance:
         result = metrics_lib.model_mix([ev])
         assert result is not None, "run_end was dropped by model_mix (field mismatch)"
         assert result["total"] == 1
-        assert result["low_cost"] == 1  # 'haiku' ∈ LOW_COST_MODELS
+        assert result["low_cost"] == 1
         assert result["ratio"] == 1.0
 
     def test_gaming_violations_sees_full_evidence(self):
@@ -512,7 +459,7 @@ class TestRunEndMetricsConformance:
         result = metrics_lib.gaming_violations([ev])
         assert result is not None
         assert result["completions"] == 1
-        # merged_pr + green ci + t7_pass all present → no violation reported.
+
         assert result["violations"] == []
 
     def test_gaming_violations_flags_missing_evidence(self):
@@ -528,7 +475,7 @@ class TestRunEndMetricsConformance:
         result = metrics_lib.t1b_high_impact([ev])
         assert result is not None
         assert result["completions"] == 1
-        assert result["high_impact"] == 1  # t7_score 0.95 >= 0.90
+        assert result["high_impact"] == 1
         assert result["rate"] == 1.0
 
     def test_run_intervals_pairs_start_and_end(self):
@@ -541,14 +488,9 @@ class TestRunEndMetricsConformance:
         assert e >= s
 
     def test_bad_outcome_is_not_counted_as_success(self):
-        # A non-success outcome must be excluded by model_mix (T4 correctness).
+
         ev = _make_run_end_event(outcome="error")
         assert metrics_lib.model_mix([ev]) is None
-
-
-# ---------------------------------------------------------------------------
-# Shape E — wave
-# ---------------------------------------------------------------------------
 
 
 class TestWave:
@@ -597,11 +539,6 @@ class TestWave:
         ev["tickets"] = ["DAS-1", 42]
         errors = validate_wave(ev)
         assert any("tickets" in e for e in errors)
-
-
-# ---------------------------------------------------------------------------
-# Shape F — checkpoint
-# ---------------------------------------------------------------------------
 
 
 class TestCheckpoint:
@@ -661,46 +598,41 @@ class TestCheckpoint:
         assert any("ticket_states" in e for e in errors)
 
 
-# ---------------------------------------------------------------------------
-# Shape H — span (ORGANISM WS3 BRIDGE — ADR 0024, OTel GenAI attr names)
-# ---------------------------------------------------------------------------
-
-
 class TestSpan:
     def test_build_produces_expected_shape(self):
         ev = _make_span_event()
         assert ev["event_type"] == "span"
         assert ev["ticket_id"] == "DAS-1453"
-        # trace_id is derived from ticket_id (a run is traced under its ticket).
+
         assert ev["trace_id"] == "DAS-1453"
         assert ev["span_id"] == "01J9ZB2K7Q0W9E4R5T6Y7U8ISP"
-        assert ev["parent_span_id"] is None  # root span
+        assert ev["parent_span_id"] is None
         assert ev["kind"] == "run"
         assert ev["start"] == SPAN_START
         assert ev["end"] == SPAN_END
-        # duration_ms is DERIVED from start/end (no clock read): 200 s = 200000 ms.
+
         assert ev["duration_ms"] == 200000
         assert ev["status"] == "ok"
         assert ev["created_at"] == SPAN_END
-        # run_id absent when not supplied.
+
         assert "run_id" not in ev
 
     def test_build_uses_otel_gen_ai_attribute_names(self):
-        # The JSON field names ARE the OpenTelemetry GenAI semantic-convention
-        # attribute names (ADR 0024 §2) — a rename here breaks the future exporter.
+
+
         ev = _make_span_event()
         assert ev["gen_ai.agent.name"] == "cto"
         assert ev["gen_ai.request.model"] == "opus"
         assert ev["gen_ai.usage.input_tokens"] == 18450
         assert ev["gen_ai.usage.output_tokens"] == 5120
         assert ev["gen_ai.usage.cached_input_tokens"] == 16000
-        # No ad-hoc alias leaked in alongside the OTel names.
+
         for adhoc in ("agent_name", "input_tokens", "output_tokens", "model", "tier"):
             assert adhoc not in ev
-        # The OTel mapping is the single source of truth and every mapped key
-        # appears verbatim on the built event.
+
+
         for otel_name in SPAN_OTEL_ATTRS.values():
-            if otel_name != "gen_ai.operation.name":  # kind maps to a concept, key is 'kind'
+            if otel_name != "gen_ai.operation.name":
                 assert otel_name in ev
 
     def test_build_with_run_id(self):
@@ -732,8 +664,8 @@ class TestSpan:
             assert validate_span(_make_span_event(status=status)) == []
 
     def test_appendable_envelope_valid(self):
-        # span must satisfy the store envelope (append path) — 'span' is a
-        # registered event type in _VALID_EVENT_TYPES.
+
+
         assert validate_envelope(_make_span_event()) == []
 
     def test_validate_wrong_event_type_is_error(self):
@@ -756,7 +688,7 @@ class TestSpan:
 
     def test_validate_bad_parent_span_id_is_error(self):
         ev = _make_span_event()
-        ev["parent_span_id"] = ""  # neither None (root) nor a non-empty id
+        ev["parent_span_id"] = ""
         errors = validate_span(ev)
         assert any("parent_span_id" in e for e in errors)
 
@@ -798,13 +730,13 @@ class TestSpan:
 
     def test_validate_cached_inconsistent_with_tokens_is_error(self):
         ev = _make_span_event(cached_input_tokens=16000)
-        ev["cached"] = False  # contradicts cached_input_tokens > 0
+        ev["cached"] = False
         errors = validate_span(ev)
         assert any("cached must equal" in e for e in errors)
 
     def test_validate_duration_mismatch_is_error(self):
         ev = _make_span_event()
-        ev["duration_ms"] = 12345  # not (end - start)
+        ev["duration_ms"] = 12345
         errors = validate_span(ev)
         assert any("duration_ms must equal" in e for e in errors)
 
@@ -832,15 +764,10 @@ class TestSpan:
             output_tokens=0,
             cached_input_tokens=0,
         )
-        store.append(root)  # envelope-valid → append must not raise
+        store.append(root)
         store.append(child)
         read_back = list(iter_events(store_path, event_type="span"))
         assert read_back == [root, child]
-
-
-# ---------------------------------------------------------------------------
-# New shapes round-trip through the append-only store
-# ---------------------------------------------------------------------------
 
 
 class TestNewShapesRoundTrip:
@@ -854,14 +781,9 @@ class TestNewShapesRoundTrip:
             _make_run_end_event(),
         ]
         for ev in events:
-            store.append(ev)  # envelope-valid → append must not raise
+            store.append(ev)
         read_back = list(iter_events(store_path))
         assert read_back == events
-
-
-# ---------------------------------------------------------------------------
-# Append + replay round-trip (tmp_path — never writes real board/.events.jsonl)
-# ---------------------------------------------------------------------------
 
 
 class TestEventStoreRoundTrip:
@@ -955,15 +877,15 @@ class TestEventStoreRoundTrip:
     def test_invalid_event_raises_before_write(self, tmp_path):
         store_path = tmp_path / "events.jsonl"
         store = EventStore(store_path)
-        bad_event = {"event_type": "routing_decision"}  # missing ticket_id, created_at
+        bad_event = {"event_type": "routing_decision"}
         with pytest.raises(ValueError, match="missing required field"):
             store.append(bad_event)
-        # File should not have been created
+
         assert not store_path.exists()
 
     def test_malformed_lines_are_skipped_in_replay(self, tmp_path):
         store_path = tmp_path / "events.jsonl"
-        # Write one valid event and one garbage line
+
         ev = _make_routing_event()
         valid_line = json.dumps(ev) + "\n"
         store_path.write_text(valid_line + "NOT_JSON{{{\n", encoding="utf-8")
@@ -976,7 +898,7 @@ class TestEventStoreRoundTrip:
         store_path = tmp_path / "events.jsonl"
         ev = _make_routing_event()
         valid_line = json.dumps(ev) + "\n"
-        # Surround valid line with blank lines
+
         store_path.write_text("\n" + valid_line + "\n\n", encoding="utf-8")
 
         events = list(iter_events(store_path))
@@ -991,7 +913,7 @@ class TestEventStoreRoundTrip:
 
         for line in store_path.read_text(encoding="utf-8").splitlines():
             if line.strip():
-                obj = json.loads(line)  # must not raise
+                obj = json.loads(line)
                 assert isinstance(obj, dict)
 
     def test_utcnow_returns_nonempty_string(self):
@@ -1001,14 +923,8 @@ class TestEventStoreRoundTrip:
         assert "T" in ts
 
 
-# ---------------------------------------------------------------------------
-# gitignore exclusion
-# ---------------------------------------------------------------------------
-
-
 class TestGitignore:
     def test_events_jsonl_is_gitignored(self):
-        """git check-ignore board/.events.jsonl must exit 0 (file is ignored)."""
         result = subprocess.run(
             ["git", "check-ignore", "--quiet", "board/.events.jsonl"],
             cwd=_REPO_ROOT,

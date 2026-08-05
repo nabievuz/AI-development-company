@@ -1,13 +1,9 @@
-"""Deterministic verifier — chairman / adr-ratify-gate."""
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-#: The mandatory ADR triple this repo's convention requires (see
-#: docs/adr/0001-status-handoff-protocol.md and siblings — every ratified ADR
-#: carries all three). This is the governance rule, not the answer — the
-#: answer is which of the three are ABSENT from the specific draft under review.
+
 MANDATORY_SECTIONS = ("Context", "Decision", "Consequences")
 
 
@@ -24,8 +20,8 @@ def verify(submission: dict, fixtures: Path) -> float:
     present = _present_headings(draft_text)
     required = {s for s in MANDATORY_SECTIONS if s not in present}
     if not required:
-        # Defensive: the fixture must always be missing at least one mandatory
-        # section, or this task cannot discriminate. Treat as a task defect.
+
+
         raise ValueError("fixture draft is missing no mandatory sections")
 
     got_raw = submission.get("missing_sections")

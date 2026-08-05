@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""check_quickstart.py — the README Quickstart actually works on a fresh clone.
 
-A new operator follows the README literally. This validator guarantees that path:
-
-1. **Order** — parse the README "Quickstart" fenced block and assert the boot
-   order is correct: ``bootstrap.py`` must run **before** ``doctor.py`` (doctor's
-   REQUIRED ``projects/`` check only passes after bootstrap creates it).
-2. **Runs** — execute the Quickstart's ``python3 scripts/*.py`` commands in a
-   throwaway copy of the repo (with ``CI=1`` so Claude Code is optional) and assert
-   each exits 0. ``--no-run`` does the order check only (used by diagnostics; CI
-   runs the full check).
-
-Wired into CI (blocking) and ``diagnostics.py`` (Docs) so the onboarding can never
-drift back to a doctor-first Quickstart that fails at step 1.
-
-Exit codes
-----------
-0  Quickstart order correct (and, unless --no-run, every command exits 0)
-1  wrong order or a Quickstart command failed
-2  usage / no Quickstart found
-"""
 from __future__ import annotations
 
 import argparse
@@ -38,7 +18,6 @@ _CMD_RE = re.compile(r"^python3\s+scripts/\S+\.py")
 
 
 def quickstart_commands(readme: Path) -> list[str]:
-    """Return the ``python3 scripts/*.py`` commands from the Quickstart block, in order."""
     m = _QUICKSTART_RE.search(readme.read_text(encoding="utf-8", errors="ignore"))
     if not m:
         return []
@@ -47,14 +26,13 @@ def quickstart_commands(readme: Path) -> list[str]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        code = line.split("#", 1)[0].strip()  # drop trailing comment
+        code = line.split("#", 1)[0].strip()
         if _CMD_RE.match(code):
             cmds.append(code)
     return cmds
 
 
 def order_problem(cmds: list[str]) -> str | None:
-    """Return an error string if the boot order is wrong, else None."""
     def idx(name: str) -> int:
         return next((i for i, c in enumerate(cmds) if name in c), -1)
 
@@ -67,7 +45,6 @@ def order_problem(cmds: list[str]) -> str | None:
 
 
 def run_in_scratch(root: Path, cmds: list[str]) -> str | None:
-    """Run the commands in a throwaway copy of the repo; return an error or None."""
     with tempfile.TemporaryDirectory() as tmp:
         scratch = Path(tmp) / "clone"
         scratch.mkdir()
@@ -77,8 +54,8 @@ def run_in_scratch(root: Path, cmds: list[str]) -> str | None:
             ).stdout
             subprocess.run(["tar", "-x", "-C", str(scratch)], input=arch, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
-            return None  # git/tar unavailable — order check already covered it
-        # Overlay the working-tree scripts + README so uncommitted fixes apply.
+            return None
+
         shutil.copytree(root / "scripts", scratch / "scripts", dirs_exist_ok=True)
         shutil.copy2(root / "README.md", scratch / "README.md")
         env = {**os.environ, "CI": "1"}
@@ -93,7 +70,7 @@ def run_in_scratch(root: Path, cmds: list[str]) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='check_quickstart.py — the README Quickstart actually works on a fresh clone.')
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--no-run", action="store_true", help="order check only (skip running)")
     args = parser.parse_args(argv)

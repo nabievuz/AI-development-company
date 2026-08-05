@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""check_memory_governance.py — ArcRift memory governance gate (R-5 / ADR-005).
 
-Validates a memory store against config/memory_governance.yaml: every memory
-carries the migrated schema (trust_score + created_at), each trust_score is
-consistent with its provenance tier, and a memory that declares a contradiction
-is quarantined (excluded from recall). Reports recallable / excluded / duplicate
-counts and the memory-health score. Inert (exit 0) when no store exists — the live
-store is the external ArcRift; board/.arcrift-outbox.jsonl is gitignored runtime.
-
-Exit codes: 0 = governed/clean OR unmeasured, 1 = schema/trust/contradiction
-violation, 2 = usage error.
-
-Usage:
-    python3 scripts/check_memory_governance.py [--store board/.arcrift-outbox.jsonl] [--config config/memory_governance.yaml] [--now ISO8601Z]
-"""
 from __future__ import annotations
 
 import argparse
@@ -27,7 +13,7 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -82,7 +68,7 @@ def violations(memories: list[dict], config: dict, now: datetime) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_memory_governance.py — ArcRift memory governance gate (R-5 / ADR-005).')
     ap.add_argument("--store", type=Path, default=ROOT / "board" / ".arcrift-outbox.jsonl")
     ap.add_argument("--config", type=Path, default=ROOT / "config" / "memory_governance.yaml")
     ap.add_argument("--now", default=None, help="ISO-8601 Z 'now' override (default: current UTC)")

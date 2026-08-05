@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""verify_closure.py — FR-008 real Requires-Dist closure verification (CP-6).
 
-pip's cross-platform wheel resolution evaluates environment markers (e.g.
-anyio's `exceptiongroup; python_version<"3.11"`) against the CURRENT
-interpreter, not the TARGET one — and has silently dropped a real transitive
-dependency this way before. This module verifies a built vendor bundle by
-reading each wheel's REAL `Requires-Dist` metadata directly — zipfile +
-`email` header parsing, no import, no pip, no network — and walking the
-dependency graph from the requested roots to find anything the resolver
-should have downloaded but did not.
-"""
 from __future__ import annotations
 
 import argparse
@@ -22,18 +12,10 @@ _NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 
 def _canonical(name: str) -> str:
-    """PEP 503 canonicalization — runs/dashes/underscores/dots all collapse to
-    a single dash, lowercased, so `pydantic_core` and `pydantic-core` compare
-    equal (real wheel filenames and Requires-Dist values disagree on this).
-    """
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def read_requires_dist(wheel_path: Path) -> list[str]:
-    """Return the canonical project names from a wheel's `Requires-Dist`
-    metadata (environment-marker / extras / version-specifier suffixes
-    stripped off — only the name is needed to walk the graph).
-    """
     with zipfile.ZipFile(wheel_path) as zf:
         meta_names = [n for n in zf.namelist() if n.endswith(".dist-info/METADATA")]
         if not meta_names:
@@ -50,7 +32,6 @@ def read_requires_dist(wheel_path: Path) -> list[str]:
 
 
 def _wheel_index(wheels_dir: Path) -> dict[str, Path]:
-    """Map canonical project name -> the wheel file for it in *wheels_dir*."""
     index: dict[str, Path] = {}
     for whl in wheels_dir.glob("*.whl"):
         stem = whl.name[: -len(".whl")]
@@ -60,11 +41,6 @@ def _wheel_index(wheels_dir: Path) -> dict[str, Path]:
 
 
 def verify_closure(wheels_dir: Path, roots: tuple[str, ...]) -> list[str]:
-    """Walk the real Requires-Dist graph from *roots*; return the canonical
-    names that are required (directly or transitively) but MISSING as a wheel
-    in *wheels_dir*. Empty means the closure is complete — this is the check
-    that catches an `exceptiongroup`-class gap the resolver can leave behind.
-    """
     by_name = _wheel_index(wheels_dir)
     seen: set[str] = set()
     missing: list[str] = []
@@ -85,7 +61,7 @@ def verify_closure(wheels_dir: Path, roots: tuple[str, ...]) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='verify_closure.py — FR-008 real Requires-Dist closure verification (CP-6).')
     ap.add_argument("--wheels-dir", type=Path, required=True)
     ap.add_argument("roots", nargs="+", help="top-level package names, e.g. fastapi uvicorn")
     args = ap.parse_args(argv)

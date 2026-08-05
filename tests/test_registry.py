@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_registry.py — metrics/registry.yaml is a valid T1-T7 SSOT (R-1 / ADR-002).
 
-Enforces: the registry parses, every metric carries the contract fields, the
-targets match PRD-001 §1, and the P1 validators it names exist on disk. The
-T2-T6 + anti-gaming validators are P2 — the registry must NAME them, but they
-are intentionally not required to exist yet (no over-building in P1).
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,7 +19,7 @@ EXPECTED_METRICS = [
     "T7_quality",
 ]
 
-# PRD-001 §1 targets (numeric/contractual goal per metric).
+
 EXPECTED_TARGETS = {
     "T1_busy_fraction": 0.60,
     "T2_idle_wave_rate": 0.15,
@@ -76,7 +70,7 @@ def test_targets_match_prd_section_1():
 
 
 def test_all_validators_exist_on_disk():
-    # After P2 every metric's validator + the anti-gaming validator is built.
+
     data = _load()
     for name, spec in data["metrics"].items():
         v = REPO_ROOT / spec["validator"]

@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-lead / incident-severity-triage."""
 from __future__ import annotations
 
 import json

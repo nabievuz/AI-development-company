@@ -1,20 +1,3 @@
-"""tests/test_agent_eval.py — golden-eval harness runner (scripts/agent_eval.py).
-
-Coverage (DAS-1487 acceptance criteria):
-
-    1. Layout discovery: roles/tasks under evals/<role>/<task-id>/ are found.
-    2. Deterministic scoring: each example verify.py returns fractional credit and
-       the example role (qa-eng) is scored end-to-end WITHOUT a live subagent.
-    3. k attempts: k=3 default, and k is honoured.
-    4. Soft/rubric path reuses config/t7_rubric.yaml via check_t7_quality
-       (weighted_score) — no parallel scorer.
-    5. Anti-gaming: every shipped task scores 0.0 on a degenerate submission; a
-       constructed gameable task is flagged.
-    6. Cost: accuracy is paired with cost pulled from cost_ledger (inert -> None;
-       spans present -> attributed to the role).
-    7. Scorecard rendering feeds the roster.
-    8. CLI smoke: --role / --roster / --check-gaming.
-"""
 
 from __future__ import annotations
 
@@ -30,15 +13,11 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import agent_eval as ae  # noqa: E402  (import after path manipulation)
+import agent_eval as ae
 
 EVALS = REPO_ROOT / "evals"
 _TS = "2026-07-03T12:00:00Z"
 
-
-# --------------------------------------------------------------------------- #
-# 0. clamp helper
-# --------------------------------------------------------------------------- #
 
 def test_clamp01_bounds() -> None:
     assert ae.clamp01(-1.0) == 0.0
@@ -46,33 +25,25 @@ def test_clamp01_bounds() -> None:
     assert ae.clamp01(0.5) == 0.5
 
 
-# --------------------------------------------------------------------------- #
-# 1. Discovery
-# --------------------------------------------------------------------------- #
-
 def test_discover_roles_includes_examples() -> None:
     roles = ae.discover_roles(EVALS)
     assert "qa-eng" in roles
     assert "tech-writer" in roles
-    # README.md must not be treated as a role.
+
     assert "README.md" not in roles
 
 
 def test_discover_tasks_qa_eng() -> None:
     tasks = [t.name for t in ae.discover_tasks("qa-eng", EVALS)]
-    # sorted by id; DAS-1488 added boundary-values as the 3rd qa-eng task.
+
     assert tasks == ["boundary-values", "coverage-gap", "detect-flaky-assertion"]
 
-
-# --------------------------------------------------------------------------- #
-# 2. Deterministic scoring — the shipped example tasks
-# --------------------------------------------------------------------------- #
 
 def test_score_task_detect_flaky() -> None:
     result = ae.score_task(EVALS / "qa-eng" / "detect-flaky-assertion")
     assert result.k == 3
     assert not result.rubric
-    # attempts: 1.0 (line+fix), 1.0 (line+fix), 0.5 (line only) -> mean 0.8333
+
     assert [round(a.credit, 4) for a in result.attempts] == [1.0, 1.0, 0.5]
     assert result.accuracy == pytest.approx(0.8333, abs=1e-3)
 
@@ -84,22 +55,16 @@ def test_score_task_coverage_gap() -> None:
 
 
 def test_evaluate_role_qa_eng_end_to_end(inert_store_path: Path) -> None:
-    """The example role is scored deterministically without dispatching an agent."""
-    # DAS-1651: an explicitly-absent store, not store_path=None — None reads the
-    # real ambient board/.events.jsonl and flips cost_usd to 0.0 once any wave has
-    # run on the box (see tests/conftest.py: inert_store_path).
+
+
     card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
     assert card.task_count == 3
-    # mean of 1.0 (boundary-values), 0.6667 (coverage-gap), 0.8333 (detect-flaky).
+
     assert card.accuracy == pytest.approx(0.8333, abs=1e-3)
-    assert card.meets_bar()  # clears the 80% GATE-4 bar
-    # No span store given -> cost ledger inert -> cost is None ("n/a").
+    assert card.meets_bar()
+
     assert card.cost_usd is None
 
-
-# --------------------------------------------------------------------------- #
-# 3. k attempts honoured
-# --------------------------------------------------------------------------- #
 
 def test_k_limits_attempts() -> None:
     result = ae.score_task(EVALS / "qa-eng" / "detect-flaky-assertion", k=1)
@@ -112,20 +77,15 @@ def test_k_must_be_positive() -> None:
         ae.score_task(EVALS / "qa-eng" / "coverage-gap", k=0)
 
 
-# --------------------------------------------------------------------------- #
-# 4. Soft/rubric path reuses the T7 rubric (no parallel scorer)
-# --------------------------------------------------------------------------- #
-
 def test_rubric_task_reuses_t7() -> None:
     result = ae.score_task(EVALS / "tech-writer" / "release-note")
     assert result.rubric
-    # All-equal per-dim judge scores fold to that value (weights sum to 1.00).
+
     assert [round(a.credit, 4) for a in result.attempts] == [0.9, 0.8, 0.7]
     assert result.accuracy == pytest.approx(0.8, abs=1e-6)
 
 
 def test_rubric_credit_matches_check_t7_weighted_score() -> None:
-    """The soft path must equal check_t7_quality.weighted_score (reuse, not fork)."""
     import check_t7_quality
 
     rubric = check_t7_quality.load_rubric(ae.DEFAULT_RUBRIC_PATH)
@@ -145,14 +105,10 @@ def test_rubric_clamps_out_of_range_judge() -> None:
     import check_t7_quality
 
     rubric = check_t7_quality.load_rubric(ae.DEFAULT_RUBRIC_PATH)
-    # A misbehaving judge returning >1 per dim cannot push credit above 1.0.
+
     inflated = dict.fromkeys(check_t7_quality.EXPECTED_DIMENSIONS, 5.0)
     assert ae._rubric_credit(rubric, inflated) == pytest.approx(1.0)
 
-
-# --------------------------------------------------------------------------- #
-# 5. Anti-gaming (Goodhart defence, inherited from check_metric_gaming)
-# --------------------------------------------------------------------------- #
 
 def test_shipped_tasks_reject_degenerate_submission() -> None:
     for task_dir in ae.discover_all_tasks(EVALS):
@@ -198,10 +154,6 @@ def test_non_gameable_tmp_task_passes(tmp_path: Path) -> None:
     assert ae.gaming_findings(root) == []
 
 
-# --------------------------------------------------------------------------- #
-# 5b. Prompt-leak detector (task.md example == graded answer) — ORGANISM DAS-1536
-# --------------------------------------------------------------------------- #
-
 _ANSWER_VERIFY = (
     "def verify(submission, fixtures):\n"
     "    return 1.0 if submission.get('answer') == 42 else 0.0\n"
@@ -209,8 +161,6 @@ _ANSWER_VERIFY = (
 
 
 def test_prompt_leak_task_md_answer_is_flagged(tmp_path: Path) -> None:
-    """A task.md that prints the literal graded answer (scores 1.0 through the task's
-    own verifier) is a prompt leak — the empty-probe gate is blind to it, this one isn't."""
     root = tmp_path / "evals"
     task_dir = _write_task(root, "backend-eng-1", "leaky", _ANSWER_VERIFY)
     (task_dir / "task.md").write_text(
@@ -218,14 +168,11 @@ def test_prompt_leak_task_md_answer_is_flagged(tmp_path: Path) -> None:
     )
     findings = ae.prompt_leak_findings(root)
     assert len(findings) == 1 and "prompt-leak" in findings[0]
-    # gaming_findings folds the leak probe in, so --check-gaming catches it too
+
     assert any("prompt-leak" in f for f in ae.gaming_findings(root))
 
 
 def test_prompt_leak_partial_overlap_is_flagged(tmp_path: Path) -> None:
-    """Strict zero-overlap (MAX_PROMPT_LEAK_CREDIT = 0.0): a task.md example that
-    reveals only PART of the answer (a partial/coincidental leak scoring < 1.0) is
-    still flagged — the DAS-1536 guild sweep found 0.2–0.4 partials a 0.5 bar missed."""
     root = tmp_path / "evals"
     verify = (
         "def verify(submission, fixtures):\n"
@@ -235,7 +182,7 @@ def test_prompt_leak_partial_overlap_is_flagged(tmp_path: Path) -> None:
         "    return hits / len(want)\n"
     )
     task_dir = _write_task(root, "backend-eng-1", "partial", verify)
-    # example reveals ONE of the two answer entries -> scores 0.5 -> still a leak
+
     (task_dir / "task.md").write_text(
         '# Task\n\n```json\n{"ans": {"a": 1}}\n```\n', encoding="utf-8"
     )
@@ -244,8 +191,6 @@ def test_prompt_leak_partial_overlap_is_flagged(tmp_path: Path) -> None:
 
 
 def test_prompt_leak_placeholder_task_md_passes(tmp_path: Path) -> None:
-    """A non-answer placeholder (``<int>``) is not valid JSON, so it is not scored and
-    not a leak — the corrected task.md shape."""
     root = tmp_path / "evals"
     task_dir = _write_task(root, "backend-eng-1", "clean", _ANSWER_VERIFY)
     (task_dir / "task.md").write_text(
@@ -255,9 +200,8 @@ def test_prompt_leak_placeholder_task_md_passes(tmp_path: Path) -> None:
 
 
 def test_prompt_leak_missing_task_md_is_skipped(tmp_path: Path) -> None:
-    """A task without a task.md cannot leak its prompt — the probe skips it."""
     root = tmp_path / "evals"
-    _write_task(root, "backend-eng-1", "no-md", _ANSWER_VERIFY)  # _write_task writes no task.md
+    _write_task(root, "backend-eng-1", "no-md", _ANSWER_VERIFY)
     assert ae.prompt_leak_findings(root) == []
 
 
@@ -265,16 +209,12 @@ def test_json_candidates_extracts_literals_skips_placeholders() -> None:
     cands = ae._json_candidates('```json\n{"a": 1}\n``` and [2, 3] and {"b": <int>}')
     assert {"a": 1} in cands
     assert [2, 3] in cands
-    assert {"b": "<int>"} not in cands  # placeholder is invalid JSON, never extracted
+    assert {"b": "<int>"} not in cands
 
 
 def test_prompt_leak_findings_clean_on_shipped_tree() -> None:
     assert ae.prompt_leak_findings(EVALS) == []
 
-
-# --------------------------------------------------------------------------- #
-# 6. Cost integration (from cost_ledger span store)
-# --------------------------------------------------------------------------- #
 
 def _span(agent: str, model: str, in_tok: int, out_tok: int) -> dict:
     return {
@@ -300,9 +240,8 @@ def _span(agent: str, model: str, in_tok: int, out_tok: int) -> dict:
 
 
 def test_role_cost_inert_without_store(inert_store_path: Path) -> None:
-    # DAS-1651: store_path=None is NOT "no store" — it defaults to the real
-    # ambient board/.events.jsonl (dgox.events.DEFAULT_STORE_PATH). This test's
-    # whole point is the store being absent, so it must say so explicitly.
+
+
     assert ae.role_cost("qa-eng", store_path=inert_store_path) is None
 
 
@@ -314,7 +253,7 @@ def test_role_cost_from_spans(tmp_path: Path) -> None:
         _span("frontend-eng-1", "opus", 500, 50),
     ]
     store.write_text("\n".join(json.dumps(s) for s in spans) + "\n", encoding="utf-8")
-    # sonnet: (1000*3.00 + 200*15.00) / 1e6 = 0.006
+
     cost = ae.role_cost("qa-eng", store_path=store)
     assert cost == pytest.approx(0.006, abs=1e-9)
 
@@ -328,18 +267,14 @@ def test_evaluate_role_pairs_accuracy_with_cost(tmp_path: Path) -> None:
     assert card.cost_usd == pytest.approx(0.006, abs=1e-9)
 
 
-# --------------------------------------------------------------------------- #
-# 7. Scorecard rendering
-# --------------------------------------------------------------------------- #
-
 def test_scorecard_markdown_has_rows(inert_store_path: Path) -> None:
     cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
     md = ae.scorecard_markdown(cards)
     assert "| Role | Tier | Tasks | Accuracy | Pass (>=80%) | Est. cost (USD) |" in md
     assert "`qa-eng`" in md
     assert "`tech-writer`" in md
-    assert "PASS" in md  # the >=80% verdict column
-    assert "n/a (inert)" in md  # cost inert without a span store
+    assert "PASS" in md
+    assert "n/a (inert)" in md
 
 
 def test_scorecard_to_dict_shape(inert_store_path: Path) -> None:
@@ -357,24 +292,6 @@ def test_scorecard_to_dict_shape(inert_store_path: Path) -> None:
 
 
 def test_no_store_path_none_literal_in_this_file() -> None:
-    """DAS-1651 guard: ``store_path=None`` (or a positional ``None`` in that slot)
-    passed to ``role_cost``/``evaluate_role``/``evaluate_all`` reads the REAL
-    ambient ``board/.events.jsonl`` — it is not "no store". Every call in this
-    file must go through the ``inert_store_path`` fixture instead.
-
-    This is a hermetic-test defect, not a source defect (``store_path=None`` is a
-    legitimate, documented public default for callers of ``agent_eval.py`` itself
-    — a CLI invocation with no ``--events`` flag, say). The guard is scoped to
-    THIS file's calls, mirroring the AST self-checks in test_wave_runner.py and
-    test_dgox_phase1_shadow.py, because this is the third time a test asserted an
-    ambient-store value by accident (test_ws_a2a_health_check.py, twice, then
-    this file) and a silent per-file fix invites a fourth — in a *different*
-    file. A repo-wide version of this guard would need to know which callers
-    intend "the real store" (health-check-in-prod scripts do, legitimately) vs.
-    "inert", which this file cannot judge on another file's behalf; each test
-    file that touches a store-accepting function is expected to carry its own
-    copy of this guard, the same way the two precedents above do not share one.
-    """
     tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
     guarded = {"role_cost", "evaluate_role", "evaluate_all"}
     offenders: list[int] = []
@@ -385,9 +302,8 @@ def test_no_store_path_none_literal_in_this_file() -> None:
         name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
         if name not in guarded:
             continue
-        # Keyword form only (every call in this file passes store_path by keyword,
-        # never positionally) — see the docstring above for why a positional-arg
-        # index guard was deliberately not attempted here.
+
+
         for kw in node.keywords:
             if kw.arg == "store_path" and _is_none(kw.value):
                 offenders.append(node.lineno)
@@ -402,29 +318,23 @@ def _is_none(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is None
 
 
-# --------------------------------------------------------------------------- #
-# 7b. Release-blocking >=80% bar (GATE-4 mechanism, DAS-1488)
-# --------------------------------------------------------------------------- #
-
 def test_pass_bar_default_is_80pct() -> None:
     assert ae.PASS_BAR == 0.80
 
 
 def test_meets_bar_uses_custom_threshold(inert_store_path: Path) -> None:
-    card = ae.RoleScorecard(role="x", tier="sonnet", tasks=[])  # accuracy 0.0
+    card = ae.RoleScorecard(role="x", tier="sonnet", tasks=[])
     assert not card.meets_bar()
     empty = ae.RoleScorecard(role="y", tier="sonnet", tasks=[])
     assert empty.accuracy == 0.0
-    # qa-eng (0.8333) clears 0.80 but not a hypothetical 0.90 bar. Neither
-    # assertion reads cost_usd, but store_path is still fixtured (not None) for
-    # consistency — see inert_store_path (DAS-1651).
+
+
     qa = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
     assert qa.meets_bar(0.80)
     assert not qa.meets_bar(0.90)
 
 
 def test_all_covered_roles_meet_bar(inert_store_path: Path) -> None:
-    """DAS-1488 demonstration: every covered role clears the >=80% bar."""
     cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
     covered = {"qa-eng", "tech-writer", "backend-eng-1", "security-eng",
                "product-analyst", "sre-eng"}
@@ -440,15 +350,11 @@ def test_scorecard_markdown_flags_failing_role() -> None:
         tasks=[ae.TaskResult(role="good", task_id="t",
                              attempts=[ae.AttemptResult(0, 1.0)])],
     )
-    failing = ae.RoleScorecard(role="bad", tier="sonnet", tasks=[])  # 0.0
+    failing = ae.RoleScorecard(role="bad", tier="sonnet", tasks=[])
     md = ae.scorecard_markdown([passing, failing])
     assert "PASS" in md
     assert "FAIL" in md
 
-
-# --------------------------------------------------------------------------- #
-# 8. CLI smoke
-# --------------------------------------------------------------------------- #
 
 def test_cli_role(capsys: pytest.CaptureFixture[str]) -> None:
     rc = ae.main(["--role", "qa-eng", "--tier", "sonnet", "--evals", str(EVALS)])
@@ -483,13 +389,13 @@ def test_cli_check_gaming_flags_gameable(tmp_path: Path, capsys: pytest.CaptureF
 
 def test_cli_enforce_passes_on_covered_tree(capsys: pytest.CaptureFixture[str]) -> None:
     rc = ae.main(["--all", "--tier", "sonnet", "--evals", str(EVALS), "--enforce"])
-    assert rc == 0  # every covered role clears the 80% bar
+    assert rc == 0
 
 
 def test_cli_enforce_fails_below_bar(tmp_path: Path) -> None:
     root = tmp_path / "evals"
-    # A real (non-gameable) task whose ONLY recorded submission ({}) scores 0.0,
-    # so the role sits below the bar and --enforce must exit non-zero.
+
+
     _write_task(
         root, "backend-eng-1", "needs-answer",
         "def verify(submission, fixtures):\n"

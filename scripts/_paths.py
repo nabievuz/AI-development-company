@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Single source of truth for the DasLab repository root.
 
-The root is *resolved at runtime, never written down* (LAW A — self-locating
-root). Resolution order:
-
-1. ``DASLAB_ROOT`` environment variable (explicit override / CI / containers).
-2. ``git rev-parse --show-toplevel`` (the enclosing git work-tree).
-3. The directory two levels up from this file (``scripts/_paths.py`` →
-   repo root) as a last-resort fallback when git is unavailable.
-
-Every script imports ``ROOT`` from here — no script hardcodes an absolute path.
-
-    from _paths import ROOT          # scripts/ is on sys.path[0] when run directly
-"""
 from __future__ import annotations
 
 import os
@@ -21,7 +8,6 @@ from pathlib import Path
 
 
 def repo_root() -> Path:
-    """Resolve the repository root at runtime (never a hardcoded path)."""
     override = os.environ.get("DASLAB_ROOT")
     if override:
         return Path(override).resolve()
@@ -43,12 +29,6 @@ ROOT = repo_root()
 
 
 def _gitignored_top_level_dirs(root: Path) -> set[str]:
-    """Top-level directory names excluded by .gitignore (for the no-git fallback).
-
-    Only single-component directory patterns count as top-level exclusions:
-    ``/projects/`` and ``node_modules/`` exclude those dirs, but ``/.claude/worktrees/``
-    (a sub-path) does NOT exclude ``.claude`` itself.
-    """
     ignored = {".git", "node_modules", "__pycache__"}
     gi = root / ".gitignore"
     if gi.is_file():
@@ -63,14 +43,6 @@ def _gitignored_top_level_dirs(root: Path) -> set[str]:
 
 
 def tracked_top_level_dirs(root: Path | None = None) -> list[str]:
-    """Top-level directories that are git-tracked (gitignored dirs excluded).
-
-    Single source of truth for "what areas exist" (CODEOWNERS, etc.). Uses
-    ``git ls-files``; a runtime-created gitignored dir such as ``projects/`` (made
-    by ``bootstrap.py``) never appears, so the result is stable before and after
-    bootstrap. Falls back to a filesystem walk that honours ``.gitignore`` when git
-    is unavailable (e.g. a ``git archive`` extraction).
-    """
     root = (root or ROOT)
     try:
         out = subprocess.run(

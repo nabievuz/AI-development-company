@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_gate6_attestation.py — cryptographic GATE-6 attestation (R-2 / ADR-006)."""
+
 from __future__ import annotations
 
 import sys
@@ -12,8 +12,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import attest_gate6 as ag  # noqa: E402  (import after path manipulation)
-import check_gate6_attestation as cga  # noqa: E402
+import attest_gate6 as ag
+import check_gate6_attestation as cga
 
 AT = "2026-06-22T00:00:00Z"
 
@@ -39,22 +39,18 @@ def _attested(key: str | None = None, attested_by: str = "ci-bot") -> dict:
     return rec
 
 
-# --------------------------------------------------------------------------- #
-# Hash + verify
-# --------------------------------------------------------------------------- #
-
 def test_valid_attestation_verifies():
     assert ag.verify_attestation(_attested()) == []
 
 
 def test_tampered_record_breaks_hash():
     rec = _attested()
-    rec["hypothesis"] = "something else entirely"  # edited AFTER attestation
+    rec["hypothesis"] = "something else entirely"
     assert any("content_hash" in p for p in ag.verify_attestation(rec))
 
 
 def test_self_attestation_rejected():
-    rec = _attested(attested_by="ai-agent")  # == proposed_by
+    rec = _attested(attested_by="ai-agent")
     assert any("distinct" in p for p in ag.verify_attestation(rec))
 
 
@@ -79,10 +75,6 @@ def test_signature_invalid_with_wrong_key():
     assert any("signature" in p for p in ag.verify_attestation(rec, key="WRONG"))
 
 
-# --------------------------------------------------------------------------- #
-# CI validator + stamp CLI
-# --------------------------------------------------------------------------- #
-
 def _write_record(tmp_path: Path, rec: dict, name: str = "GATE6-1.yaml") -> Path:
     exp = tmp_path / "experiments"
     exp.mkdir(exist_ok=True)
@@ -96,11 +88,11 @@ def test_check_inert_when_no_experiments(tmp_path):
 
 def test_check_deferred_record_is_inert(tmp_path):
     exp = _write_record(tmp_path, _record(status="deferred"))
-    assert cga.main(["--experiments", str(exp)]) == 0  # not applied -> nothing to attest
+    assert cga.main(["--experiments", str(exp)]) == 0
 
 
 def test_check_applied_unattested_fails(tmp_path):
-    exp = _write_record(tmp_path, _record(status="applied"))  # no attestation block
+    exp = _write_record(tmp_path, _record(status="applied"))
     assert cga.main(["--experiments", str(exp)]) == 1
 
 
@@ -118,9 +110,9 @@ def test_stamp_then_verify_roundtrip(tmp_path):
 
 
 def test_forged_attester_with_key_is_rejected():
-    # rewriting attested_by WITHOUT re-signing must break the HMAC (identity is bound)
+
     rec = _attested(key="prod-key")
-    rec["attestation"]["attested_by"] = "ciso-alice"  # forged, not re-signed
+    rec["attestation"]["attested_by"] = "ciso-alice"
     assert any("signature" in p for p in ag.verify_attestation(rec, key="prod-key"))
 
 
@@ -132,7 +124,7 @@ def test_forged_attested_at_and_ci_run_rejected():
 
 
 def test_signed_record_without_key_fails_closed():
-    # a record that advertises a signature, verified WITHOUT the key, must fail closed
+
     rec = _attested(key="prod-key")
     assert any("no GATE6_ATTEST_KEY" in p for p in ag.verify_attestation(rec, key=None))
 
@@ -148,5 +140,5 @@ def test_case_only_distinct_identities_rejected():
 def test_non_dict_yaml_doc_skipped_not_crashed(tmp_path):
     exp = tmp_path / "experiments"
     exp.mkdir()
-    (exp / "stray.yaml").write_text("- a\n- b\n", encoding="utf-8")  # a list, not a record
-    assert cga.main(["--experiments", str(exp)]) == 0  # skipped, no crash
+    (exp / "stray.yaml").write_text("- a\n- b\n", encoding="utf-8")
+    assert cga.main(["--experiments", str(exp)]) == 0

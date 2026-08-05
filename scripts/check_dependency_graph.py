@@ -1,27 +1,5 @@
 #!/usr/bin/env python3
-"""check_dependency_graph.py — Phase 3 ticket dependency graph (ADR-0016, ADR-0002).
 
-Validates the OPTIONAL `depends_on:` / `zone:` / `produces:` / `consumes:` board
-frontmatter:
-
-- NO DANGLING DEPS — every id in a ticket's `depends_on` is a real board ticket.
-- ACYCLIC — the `depends_on` graph has no cycle (a cycle would deadlock dispatch).
-- WELL-FORMED ZONE — a present-but-empty `zone:` is a defect.
-- PRODUCER/CONSUMER MATCH — every `consumes:` artifact has a matching `produces:`
-  from at least one other ticket on the board.
-- CONNECTED DEPENDENCY GRAPH — within a goal group that uses produces/consumes, the
-  tickets participating in the dataflow must be in the same connected component of
-  the undirected depends_on graph; orphaned components are named.
-
-CI-safe / dormant: passes when no ticket uses these fields (the state today). The
-runtime "no two same-zone tickets in one wave" rule is a /daslab-cycle property (not
-repo state) and is guarded separately by a skill-token test, not here.
-
-Usage:
-    python scripts/check_dependency_graph.py [--board board/tickets]
-
-Exit 0 = clean. Exit 1 = violation(s). Exit 2 = usage error.
-"""
 from __future__ import annotations
 
 import argparse
@@ -35,11 +13,6 @@ DAS_RE = re.compile(r"\bDAS-\d+\b")
 
 
 def _list_field(text: str, key: str) -> list[str]:
-    """Read a frontmatter field that may be a single name or a [a, b, c] list.
-
-    Mirrors ``board_lint._schema_names_of`` — no PyYAML dependency.  Returns []
-    when the field is absent or empty so callers can treat absence uniformly.
-    """
     raw = _fm_field(text, key)
     if not raw:
         return []
@@ -78,17 +51,6 @@ def _load(
     dict[str, list[str]],
     dict[str, str],
 ]:
-    """Return (deps, zones, files, defers, produces_by_id, consumes_by_id, goal_by_id).
-
-    ``defer_by_id`` maps ticket id → True when the ticket carries ``defer: true``
-    (the deferred-synthesis marker introduced by the P5 fanout primitive).
-
-    ``produces_by_id`` / ``consumes_by_id`` map ticket id → list of artifact-schema
-    names declared in ``produces:`` / ``consumes:`` frontmatter (DAS-1467/DAS-1468).
-    Empty list when the field is absent.
-
-    ``goal_by_id`` maps ticket id → ``goal:`` value ('' when absent).
-    """
     deps: dict[str, list[str]] = {}
     zones: dict[str, str | None] = {}
     files: dict[str, str] = {}
@@ -114,7 +76,6 @@ def _load(
 
 
 def _find_cycle(deps: dict[str, list[str]]) -> list[str] | None:
-    """Return a cycle path if the depends_on graph has one, else None (DFS, 3-colour)."""
     WHITE, GREY, BLACK = 0, 1, 2
     colour = dict.fromkeys(deps, WHITE)
 
@@ -123,7 +84,7 @@ def _find_cycle(deps: dict[str, list[str]]) -> list[str] | None:
         path.append(node)
         for nxt in deps.get(node, []):
             if nxt not in colour:
-                continue  # dangling — reported separately
+                continue
             if colour[nxt] == GREY:
                 return path[path.index(nxt):] + [nxt]
             if colour[nxt] == WHITE:
@@ -147,7 +108,6 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
     all_ids = set(deps)
     violations: list[tuple[str, str]] = []
 
-    # --- Existing checks (unchanged) ---
 
     for tid, dep_list in deps.items():
         for d in dep_list:
@@ -158,10 +118,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
         if zone is not None and zone == "":
             violations.append((files[tid], "zone: is present but empty"))
 
-    # Fanout invariant: a defer: true ticket MUST declare at least one dep.
-    # A deferred synthesis ticket with empty depends_on can never become
-    # actionable (the dep-blocked skip has nothing to wait on), which is a
-    # silent defect.  Fail-fast here so the planner catches it at emit time.
+
     for tid, is_deferred in defers.items():
         if is_deferred and not deps.get(tid, []):
             violations.append(
@@ -173,10 +130,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
     if cycle:
         violations.append(("dependency-graph", "cycle: " + " → ".join(cycle)))
 
-    # --- New checks: producer/consumer dataflow (CI-safe / dormant) ---
-    # Both checks are NO-OPs when no ticket declares produces:/consumes:.
 
-    # P/C-1 — every consumed artifact must have at least one producer on the board.
     all_produced: set[str] = set()
     for artifacts in produces_by_id.values():
         all_produced.update(artifacts)
@@ -190,16 +144,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
                     f"— add a ticket with produces: {artifact}",
                 ))
 
-    # P/C-2 — connected dependency graph among produces/consumes tickets within a goal.
-    # Within a goal group that has at least one produces:/consumes: ticket, the
-    # dataflow participants must all sit in the same connected component of the
-    # undirected depends_on graph (restricted to the goal group).  An orphaned
-    # component means a consumer could be dispatched before its producer with no
-    # ordering guarantee.
-    #
-    # Scope: only goal groups where at least one ticket declares produces/consumes
-    # AND the goal value is non-empty — so this block is dormant on a board with
-    # no dataflow contracts (CI-safe / dormant contract).
+
     goals_with_pc: set[str] = set()
     for tid, artifacts in produces_by_id.items():
         if artifacts:
@@ -213,7 +158,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
                 goals_with_pc.add(g)
 
     if goals_with_pc:
-        # Collect all tickets per goal (for the full adjacency graph)
+
         by_goal: dict[str, list[str]] = {}
         for tid, goal in goal_by_id.items():
             if goal in goals_with_pc:
@@ -223,7 +168,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
             if len(members) < 2:
                 continue
 
-            # Build undirected adjacency restricted to this goal group
+
             member_set = set(members)
             adj: dict[str, set[str]] = {tid: set() for tid in members}
             for tid in members:
@@ -232,7 +177,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
                         adj[tid].add(dep)
                         adj[dep].add(tid)
 
-            # BFS to find connected components
+
             unvisited = set(members)
             components: list[set[str]] = []
             while unvisited:
@@ -253,8 +198,7 @@ def scan(board_dir: Path) -> list[tuple[str, str]]:
             if len(components) <= 1:
                 continue
 
-            # Only report if the disconnection splits the produces/consumes tickets
-            # across components — non-dataflow tickets may legitimately be isolated.
+
             pc_tickets = {
                 tid for tid in members
                 if produces_by_id.get(tid) or consumes_by_id.get(tid)

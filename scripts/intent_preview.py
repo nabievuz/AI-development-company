@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""intent_preview.py — Agent Intent Preview.
 
-Shows WHAT an agent plans to do BEFORE execution — defeating the "black-box wave"
-anxiety (human trust is the weakest assessed dimension, 55/100). Given a planned
-dispatch (or a board ticket), it renders the agent, model, plan summary, and
-declared tools, and — by running the plan through the never-auto-approve matchers
-(config/risk_taxonomy.yaml) — tells the operator up front whether it REQUIRES human
-approval (QONUN-5) before it may run.
-
-A dispatch plan:
-    {ticket_id, role, model, summary, ticket_type?, stage?, labels?[], paths?[], planned_tools?[]}
-
-Usage:
-    python3 scripts/intent_preview.py --plan-file plan.json
-    python3 scripts/intent_preview.py --ticket DAS-1311
-"""
 from __future__ import annotations
 
 import argparse
@@ -27,20 +12,18 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
 
 def build_intent(plan: dict, taxonomy: dict) -> dict:
-    """Classify a planned dispatch: which never-auto-approve categories it hits and
-    therefore whether it needs human approval before execution."""
     never = taxonomy.get("never_auto_approve", [])
     matchers = taxonomy.get("matchers", {}) or {}
     fm = {k: plan.get(k) for k in ("ticket_type", "stage", "labels", "paths")}
     categories = [c for c in never if nap.matches_category(fm, matchers.get(c, {}))]
     forced = plan.get("_fail_closed")
-    if forced:  # fail-CLOSED input (unparseable/smuggled) -> human-required, never auto
+    if forced:
         categories = [forced, *categories]
     tools = plan.get("planned_tools", plan.get("tools", [])) or []
     return {
@@ -76,8 +59,8 @@ def ticket_plan(board: Path, ticket_id: str) -> dict | None:
         return None
     fm = nap.parse_frontmatter(matches[0].read_text(encoding="utf-8", errors="ignore"))
     if fm is None:
-        # fail-CLOSED, exactly like check_never_auto_approve: a ticket whose
-        # frontmatter is unparseable/smuggled must preview as human-required.
+
+
         return {
             "ticket_id": ticket_id, "role": "(unrouted)", "model": "?",
             "summary": "(frontmatter unparseable or fence-smuggled)",
@@ -96,7 +79,7 @@ def ticket_plan(board: Path, ticket_id: str) -> dict | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='intent_preview.py — Agent Intent Preview.')
     ap.add_argument("--plan-file", type=Path, default=None)
     ap.add_argument("--ticket", default=None)
     ap.add_argument("--board", type=Path, default=ROOT / "board")

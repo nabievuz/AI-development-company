@@ -1,51 +1,5 @@
 #!/usr/bin/env python3
-"""ws_h_health_check.py — WS-H CONTROL Maintenance health/eval (GATE-6, DAS-1605).
 
-AADL Stage 6 — Maintenance recurring health/eval for the WS-H self-hosted web
-control plane (ADR-0039, ``docs/design/ws-h-control-plane.md``). Four checks,
-all READ-ONLY (never mutates ``config/rbac.yaml``, ``config/features.yaml``,
-or ``tools/control_plane/app.py``):
-
-  1. **RBAC drift** — reuses ``scripts/rbac.py: decide()`` (no fork) to assert
-     an agent principal still CANNOT hold ``gate.approve`` or ``run.trigger``,
-     and reuses ``scripts/rbac.py: load_grants()`` to assert
-     ``config/rbac.yaml`` still grants both permissions ONLY to ``founder``.
-     A config change that grants either to a non-founder kind is a finding
-     (``load_grants`` itself raises ``RbacConfigError`` on that tamper, which
-     this check surfaces rather than swallows).
-  2. **Audit-redaction drift** — reuses ``tools/mcp_bridges/redaction.py:
-     safe_scrub()`` (no fork; the SAME scrubber the control plane's ``audit()``
-     helper calls, ADR-0012) to plant a secret-shaped string and assert no raw
-     secret substring survives the scrub. A regression that starts writing
-     raw Tier-B content to the audit ledger is a finding.
-  3. **Degrade/flag drift** — reuses ``scripts/feature_flags.py: enabled()``
-     to assert ``ws_h_control_plane`` still defaults OFF in
-     ``config/features.yaml``, and reuses
-     ``tools/control_plane/install/degrade.py: resolve_surface()`` (no fork)
-     to assert the degrade-to-static path still fires — with the flag OFF the
-     surface resolves to ``"static"``, and even a forced flag-ON with the
-     optional deps (fastapi/uvicorn) absent still resolves to ``"static"``
-     (NOT-a-daemon, CP-5). A regression that returns ``"control-plane"``
-     under either condition is a finding.
-  4. **Token-compare drift** — a static (no-import, since fastapi is an
-     OPTIONAL dependency this check must not require) AST scan of
-     ``tools/control_plane/app.py``'s ``_match_token`` helper, asserting it
-     still calls ``hmac.compare_digest`` for the bearer-token comparison and
-     has not regressed to a bare dict ``.get()`` lookup (a timing side-channel
-     regression on the auth secret).
-
-Exit codes: 0 = healthy (no drift, all probes correct), 1 = a finding — the
-caller (Maintenance cadence) treats a non-zero exit as an ALERT, never a
-silent skip. This script never opens a ticket or files itself; routing a
-finding into a board ticket and into the ``daslab-learn`` Founder-review
-cadence is a human/orchestrator step documented in
-``docs/06-maintenance/ws-h-control-health.md`` — no autonomous
-self-modification (ADR-0029 G5).
-
-Usage::
-
-    python3 scripts/ws_h_health_check.py [--json]
-"""
 from __future__ import annotations
 
 import argparse
@@ -66,10 +20,7 @@ CONTROL_PLANE_APP_PATH = ROOT / "tools" / "control_plane" / "app.py"
 
 FLAG = "ws_h_control_plane"
 
-# Known secret-shaped probe fed through the ADR-0012 scrubber. Fragmented on
-# purpose (matches the WS-A/WS-D/WS-E health check convention) — a literal
-# secret-shaped literal in a tracked file trips diagnostics.py's
-# no-committed-secrets scan.
+
 _SECRET_PROBE = "sk-live-" + "abcd1234EFGH5678ijkl9012MNOP"
 
 
@@ -77,7 +28,7 @@ def _load_module(path: Path, name: str) -> ModuleType:
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+    if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -98,9 +49,6 @@ def _degrade_mod() -> ModuleType:
 
 
 def check_rbac_drift() -> dict:
-    """Assert an agent principal still cannot hold ``gate.approve``/``run.trigger``
-    (decide()), and ``config/rbac.yaml`` still grants both ONLY to ``founder``
-    (load_grants())."""
     rbac = _rbac_mod()
     problems: list[str] = []
     try:
@@ -132,9 +80,6 @@ def check_rbac_drift() -> dict:
 
 
 def check_audit_redaction_drift() -> dict:
-    """Plant a secret-shaped string through the SAME ADR-0012 scrubber the
-    control plane's ``audit()`` helper calls (``tools/mcp_bridges/redaction.py:
-    safe_scrub``) and assert no raw secret substring survives."""
     redaction = _redaction_mod()
     scrubbed = redaction.safe_scrub(f"leaked token in request: {_SECRET_PROBE}")
     if _SECRET_PROBE in scrubbed:
@@ -156,21 +101,13 @@ def check_audit_redaction_drift() -> dict:
 
 
 def check_degrade_flag_drift() -> dict:
-    """Assert the degrade-to-static path (``resolve_surface()``) still fires — the
-    CP-5 / NOT-a-daemon guarantee: a forced static (or absent fastapi/uvicorn)
-    always degrades to the static cockpit, never crashes, never silently starts a
-    server — AND that the served surface tracks the flag. ``ws_h_control_plane``
-    was ACTIVATED 2026-07-26 (Founder-authorized; loopback systemd unit +
-    DASLAB_CP_RBAC), so the flag being ON with a control-plane surface is the
-    healthy live state, not drift."""
     sys.path.insert(0, str(ROOT / "scripts"))
-    import feature_flags  # local import: scripts/ owns this module, we only read it
+    import feature_flags
 
     problems: list[str] = []
     degrade = _degrade_mod()
 
-    # CP-5 invariant, holds regardless of the flag: a forced static always
-    # degrades to the static cockpit — the NOT-a-daemon guarantee.
+
     forced = degrade.resolve_surface(features_path=FEATURES_PATH, force_static=True)
     if forced.mode != "static":
         problems.append(
@@ -178,9 +115,7 @@ def check_degrade_flag_drift() -> dict:
             "degrade-to-static / --force-static regression (CP-5)"
         )
 
-    # The served surface must track the flag: OFF => static (always); ON =>
-    # 'control-plane' when the fastapi/uvicorn deps are present, else a clean
-    # degrade to 'static' (CP-5) — both are healthy when the flag is ON.
+
     flag_on = feature_flags.enabled(FLAG, FEATURES_PATH)
     decision = degrade.resolve_surface(features_path=FEATURES_PATH)
     if flag_on:
@@ -205,11 +140,6 @@ def check_degrade_flag_drift() -> dict:
 
 
 def check_token_compare_drift() -> dict:
-    """Static AST scan of ``tools/control_plane/app.py``'s ``_match_token`` — no
-    import (fastapi is an optional dependency this check must not require).
-    Asserts the token comparison still calls ``hmac.compare_digest`` and has not
-    regressed to a bare dict ``.get()`` lookup (a timing side-channel regression
-    on the auth secret)."""
     if not CONTROL_PLANE_APP_PATH.is_file():
         return {"ok": False, "detail": f"{CONTROL_PLANE_APP_PATH} is missing"}
     source = CONTROL_PLANE_APP_PATH.read_text(encoding="utf-8")
@@ -237,8 +167,8 @@ def check_token_compare_drift() -> dict:
             and node.func.value.id == "hmac"
         ):
             uses_compare_digest = True
-        # Regression pattern: `return tokens.get(token)` (or similar) used as the
-        # ENTIRE lookup, bypassing a constant-time compare.
+
+
         if (
             isinstance(node, ast.Return)
             and isinstance(node.value, ast.Call)
@@ -284,7 +214,7 @@ def run() -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='ws_h_health_check.py — WS-H CONTROL Maintenance health/eval (GATE-6, DAS-1605).\n\nAADL Stage 6 — Maintenance recurring health/eval for the WS-H self-hosted web\ncontrol plane (ADR-0039, ``docs/design/ws-h-control-plane.md``). Four checks,\nall READ-ONLY (never mutates ``config/rbac.yaml``, ``config/features.yaml``,\nor ``tools/control_plane/app.py``):\n\n  1. **RBAC drift** — reuses ``scripts/rbac.py: decide()`` (no fork) to assert\n     an agent principal still CANNOT hold ``gate.approve`` or ``run.trigger``,\n     and reuses ``scripts/rbac.py: load_grants()`` to assert\n     ``config/rbac.yaml`` still grants both permissions ONLY to ``founder``.\n     A config change that grants either to a non-founder kind is a finding\n     (``load_grants`` itself raises ``RbacConfigError`` on that tamper, which\n     this check surfaces rather than swallows).\n  2. **Audit-redaction drift** — reuses ``tools/mcp_bridges/redaction.py:\n     safe_scrub()`` (no fork; the SAME scrubber the control plane\'s ``audit()``\n     helper calls, ADR-0012) to plant a secret-shaped string and assert no raw\n     secret substring survives the scrub. A regression that starts writing\n     raw Tier-B content to the audit ledger is a finding.\n  3. **Degrade/flag drift** — reuses ``scripts/feature_flags.py: enabled()``\n     to assert ``ws_h_control_plane`` still defaults OFF in\n     ``config/features.yaml``, and reuses\n     ``tools/control_plane/install/degrade.py: resolve_surface()`` (no fork)\n     to assert the degrade-to-static path still fires — with the flag OFF the\n     surface resolves to ``"static"``, and even a forced flag-ON with the\n     optional deps (fastapi/uvicorn) absent still resolves to ``"static"``\n     (NOT-a-daemon, CP-5). A regression that returns ``"control-plane"``\n     under either condition is a finding.\n  4. **Token-compare drift** — a static (no-import, since fastapi is an\n     OPTIONAL dependency this check must not require) AST scan of\n     ``tools/control_plane/app.py``\'s ``_match_token`` helper, asserting it\n     still calls ``hmac.compare_digest`` for the bearer-token comparison and\n     has not regressed to a bare dict ``.get()`` lookup (a timing side-channel\n     regression on the auth secret).\n\nExit codes: 0 = healthy (no drift, all probes correct), 1 = a finding — the\ncaller (Maintenance cadence) treats a non-zero exit as an ALERT, never a\nsilent skip. This script never opens a ticket or files itself; routing a\nfinding into a board ticket and into the ``daslab-learn`` Founder-review\ncadence is a human/orchestrator step documented in\n``docs/06-maintenance/ws-h-control-health.md`` — no autonomous\nself-modification (ADR-0029 G5).\n\nUsage::\n\n    python3 scripts/ws_h_health_check.py [--json]')
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     args = parser.parse_args(argv)
 

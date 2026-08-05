@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_metrics_t4_t5_t6.py — T4 model-mix, T5 recovery, T6 review (R-1 / ADR-002)."""
+
 from __future__ import annotations
 
 import json
@@ -11,10 +11,10 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_model_mix as cm  # noqa: E402  (import after path manipulation)
-import check_recovery as crec  # noqa: E402
-import check_review_eff as crev  # noqa: E402
-import metrics_lib as ml  # noqa: E402
+import check_model_mix as cm
+import check_recovery as crec
+import check_review_eff as crev
+import metrics_lib as ml
 
 
 def _write(tmp_path: Path, events: list[dict]) -> Path:
@@ -45,16 +45,12 @@ def _trans(frm: str, to: str, minute: int, tid: str = "DAS-1") -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# T4 model mix + haiku classifier
-# --------------------------------------------------------------------------- #
-
 def test_haiku_eligible_classifier():
     assert ml.haiku_eligible("format") is True
     assert ml.haiku_eligible("routing", ["doc_update"]) is True
     assert ml.haiku_eligible("code_generation") is False
     assert ml.haiku_eligible(None, ["security"]) is False
-    assert ml.haiku_eligible("unknown") is False  # conservative default
+    assert ml.haiku_eligible("unknown") is False
 
 
 def test_model_mix_none_when_empty():
@@ -86,25 +82,21 @@ def test_model_mix_cli_meets_target(tmp_path):
 
 
 def test_model_mix_excludes_non_success_outcomes():
-    # canonical failure is "error" (not "failed"); error/timeout/no_work must NOT count
+
     for bad in ("error", "timeout", "no_work", "aborted"):
         assert ml.model_mix([_completion("haiku", outcome=bad)]) is None
-    # explicit success still counts
+
     assert ml.model_mix([_completion("haiku", outcome="success")])["total"] == 1
 
 
 def test_model_mix_dedupes_same_unit():
-    # one unit emitting BOTH a run_end and a routing->done must count once
+
     run_end = {"event_type": "run_end", "ticket_id": "DAS-7", "run_id": "R7",
                "model": "haiku", "created_at": "2026-06-21T10:00:00Z"}
     routed = {"event_type": "routing_decision", "ticket_id": "DAS-7", "run_id": "R7",
               "to_status": "done", "model": "haiku", "created_at": "2026-06-21T10:00:01Z"}
     assert ml.model_mix([run_end, routed])["total"] == 1
 
-
-# --------------------------------------------------------------------------- #
-# T5 recovery
-# --------------------------------------------------------------------------- #
 
 def test_recovery_none_when_no_drills():
     assert ml.recovery_reliability([]) is None
@@ -128,10 +120,6 @@ def test_recovery_cli_perfect_passes(tmp_path):
     p = _write(tmp_path, [_drill() for _ in range(100)])
     assert crec.main(["--events", str(p)]) == 0
 
-
-# --------------------------------------------------------------------------- #
-# T6 review efficiency
-# --------------------------------------------------------------------------- #
 
 def test_review_eff_none_when_no_reviews():
     assert ml.review_efficiency([]) is None
@@ -162,10 +150,10 @@ def test_review_eff_cli_max_rework_gate(tmp_path):
 
 
 def test_review_blocked_is_not_rework():
-    # in_review -> blocked is a dependency block, NOT a quality bounce-back
+
     evs = [
         _trans("in_progress", "in_review", 0, "DAS-1"), _trans("in_review", "done", 10, "DAS-1"),
         _trans("in_progress", "in_review", 0, "DAS-2"), _trans("in_review", "blocked", 5, "DAS-2"),
     ]
     r = ml.review_efficiency(evs)
-    assert r["reviews"] == 1 and r["rework_rate"] == 0.0  # blocked excluded
+    assert r["reviews"] == 1 and r["rework_rate"] == 0.0

@@ -1,53 +1,14 @@
-# board/schedule.yaml — ORGANISM WS4 HEARTBEAT declarative scheduler config
-#
-# Consumed by: scripts/loop_controller.py --tick
-# Spec-of-record: docs/adr/0027-scheduler-safety.md (SI-1..SI-7 — BINDING)
-#
-# Safety rails (ADR-0027):
-#   SI-1  One-shot: cadence lives in the OS scheduler entry (launchd/cron),
-#         never inside the process. This file declares intent; it does NOT
-#         install any OS scheduler entry.
-#   SI-2  loop.yaml stays shadow/auto_apply:false — this file never touches it.
-#   SI-3  break_glass honored — --tick is a no-op while an override is live.
-#   SI-4  Quiet hours declared here — heartbeat dispatches nothing inside window.
-#   SI-5  Budget caps in config/budgets.yaml — --tick checks cost-ledger first.
-#   SI-6  max_concurrent_waves: 1 — no overlapping waves, ever.
-#   SI-7  never_auto_approve: true — gates + interrupt-cards ALWAYS wait for Founder.
-#
-# Primary enable gate: heartbeat_enabled flag in config/features.yaml (default OFF).
-# A --tick with heartbeat_enabled=false runs in shadow-observe mode: it evaluates
-# and logs what it WOULD do, but dispatches nothing. Live dispatch requires the
-# Founder to flip heartbeat_enabled: true after a >=3-day clean shadow window
-# (ADR-0027 SI-7).
-#
-# Editing this file is an infrastructure/governance change.
-# Never set never_auto_approve: false or max_concurrent_waves > 1.
 
 version: 1
 
-# -----------------------------------------------------------------------
-# Safety constraints (invariant: never relax)
-# -----------------------------------------------------------------------
-max_concurrent_waves: 1     # SI-6: autonomous substrate runs at most 1 wave at a time
-never_auto_approve: true    # SI-7: gates + interrupt-cards ALWAYS wait for the Founder
+max_concurrent_waves: 1
+never_auto_approve: true
 
-# -----------------------------------------------------------------------
-# Quiet hours window (SI-4)
-# No waves are dispatched while the current UTC time is inside this window.
-# Format: "HH:MM" (UTC 24h). Set start == end to disable quiet hours entirely.
-# The window may span midnight (e.g. 22:00–06:00).
-# -----------------------------------------------------------------------
 quiet_hours:
-  start: "22:00"    # 10 PM UTC — begin quiet window
-  end: "06:00"      # 06 AM UTC — end quiet window
-  timezone: UTC     # all comparisons are in UTC; this field is documentation only
+  start: "22:00"
+  end: "06:00"
+  timezone: UTC
 
-# -----------------------------------------------------------------------
-# Declarative trigger table
-# Maps the 5 WS4 triggers to their configuration.
-# Supported actions per trigger: dispatch | validate | idle
-# (closed set per flow_router.DECISIONS — no "answer"/"approve" action, SI-7)
-# -----------------------------------------------------------------------
 triggers:
 
   - name: cron_tick
@@ -66,7 +27,7 @@ triggers:
     description: >
       Every N completed runs → a periodic validate checkpoint to confirm
       the board state is healthy, without a full dispatch.
-    checkpoint_every: 10   # validate after every 10 completed run_end events
+    checkpoint_every: 10
     enabled: true
 
   - name: ticket_created
@@ -90,14 +51,6 @@ triggers:
       resume: value (SI-7).
     enabled: true
 
-# -----------------------------------------------------------------------
-# Idle-time consolidation jobs (R10 "sleep-time" pattern) — DOCUMENTED ONLY.
-# Read-only maintenance passes the Founder-owned OS scheduler MAY run during
-# quiet hours. They mutate NOTHING (SI-7) and are OUT-OF-BAND read-only tools,
-# never a 6th flow_router trigger/action (the decision set stays the closed
-# {dispatch, validate, idle}). Like the OS-scheduler entry below, nothing in
-# this repo installs these — this section declares intent only.
-# -----------------------------------------------------------------------
 scheduled_jobs:
   - name: memory_consolidation
     description: >
@@ -106,64 +59,6 @@ scheduled_jobs:
       ranking parity. READ-ONLY — never prunes or stores (pruning is a
       Founder-gated ArcRift act).
     command: "python3 scripts/consolidate_memory.py --out board/runs/consolidation/latest.json"
-    cadence: idle          # quiet_hours / low-activity windows only
-    read_only: true        # mutates nothing; emits a run log
-    installed: false       # DOCUMENTED ONLY — no OS entry installed by this repo
-
-# -----------------------------------------------------------------------
-# OS scheduler entry — DOCUMENTED ONLY, NOT INSTALLED
-# -----------------------------------------------------------------------
-# To enable the autonomous heartbeat the Founder:
-#   1. Verifies >=3 consecutive days of clean shadow readings
-#      (T1>=0.60, T2<=0.15, T7 holds — ADR-0027 SI-7).
-#   2. Flips heartbeat_enabled: true in config/features.yaml
-#      (QONUN-5 human-only governance act — never automated).
-#   3. Installs ONE of the entries below (deliberate, one-time operator act).
-#   4. Can remove the entry at any time to disable the heartbeat immediately
-#      (no code change needed; break_glass.py activate is the in-band kill).
-#
-# Nothing in this repo installs either entry. The heartbeat DOES NOT RUN
-# unless the Founder explicitly performs steps 1–3.
-#
-# --- macOS launchd plist (replace /path/to/daslab with the real repo path) ---
-#
-# File: ~/Library/LaunchAgents/com.daslab.heartbeat.plist
-#
-# <?xml version="1.0" encoding="UTF-8"?>
-# <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-#     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-# <plist version="1.0">
-# <dict>
-#   <key>Label</key>
-#   <string>com.daslab.heartbeat</string>
-#   <key>ProgramArguments</key>
-#   <array>
-#     <string>/usr/bin/python3</string>
-#     <string>/path/to/daslab/scripts/loop_controller.py</string>
-#     <string>--tick</string>
-#     <string>--trigger</string>
-#     <string>cron_tick</string>
-#   </array>
-#   <key>StartInterval</key>
-#   <integer>3600</integer>
-#   <key>RunAtLoad</key>
-#   <false/>
-#   <key>WorkingDirectory</key>
-#   <string>/path/to/daslab</string>
-#   <key>StandardOutPath</key>
-#   <string>/var/log/daslab/heartbeat.log</string>
-#   <key>StandardErrorPath</key>
-#   <string>/var/log/daslab/heartbeat-err.log</string>
-# </dict>
-# </plist>
-#
-# Install:  launchctl load ~/Library/LaunchAgents/com.daslab.heartbeat.plist
-# Disable:  launchctl unload ~/Library/LaunchAgents/com.daslab.heartbeat.plist
-#
-# --- Linux cron equivalent (crontab -e) ---
-#
-# 0 * * * * cd /path/to/daslab && python3 scripts/loop_controller.py --tick --trigger cron_tick >> /var/log/daslab/heartbeat.log 2>&1
-#
-# Both entries run --tick once per hour. The safety rails (quiet hours,
-# break-glass, budget caps, max_concurrent_waves=1) guarantee safe no-ops
-# when conditions do not warrant dispatch — every tick is bounded and logged.
+    cadence: idle
+    read_only: true
+    installed: false

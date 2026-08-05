@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-lead / rollback-go-nogo."""
 from __future__ import annotations
 
 import json

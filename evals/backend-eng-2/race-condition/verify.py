@@ -1,4 +1,3 @@
-"""Deterministic verifier — backend-eng-2 / race-condition."""
 from __future__ import annotations
 
 from pathlib import Path

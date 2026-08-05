@@ -1,10 +1,3 @@
-"""tests/test_validate_commflows.py — pytest for validate_commflows.py.
-
-Exercises the shape/derivation validator for governance/communication-flows.yaml:
-the committed file is a sound derived projection of ROUTING.md; the emitter is
-idempotent; and each closed-enum / no-invented-topology / founder-is-external
-rule rejects a crafted bad file.
-"""
 from __future__ import annotations
 
 import sys
@@ -15,7 +8,7 @@ import yaml
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from validate_commflows import (  # noqa: E402
+from validate_commflows import (
     FLOWS_YAML,
     derive_expected_edges,
     emit_yaml,
@@ -38,11 +31,11 @@ def test_emit_is_idempotent_and_matches_committed_file() -> None:
 
 def test_derivation_has_two_edges_per_reporting_line() -> None:
     edges = derive_expected_edges()
-    # Every edge is unique and comes in a delegation/escalation pair.
+
     assert len(edges) == len(set(edges))
     dele = {(s, r) for s, r, k, _ in edges if k == "delegation"}
     esca = {(r, s) for s, r, k, _ in edges if k == "escalation"}
-    assert dele == esca  # each downward edge has its mirrored upward edge
+    assert dele == esca
     assert all(src == "routing.reports_to" for *_, src in edges)
 
 
@@ -95,7 +88,7 @@ def test_rejects_invented_edge(tmp_path: Path) -> None:
 
 def test_rejects_missing_derived_edge(tmp_path: Path) -> None:
     doc = yaml.safe_load(FLOWS_YAML.read_text(encoding="utf-8"))
-    doc["flows"] = doc["flows"][:-2]  # drop one reporting line's pair
+    doc["flows"] = doc["flows"][:-2]
     errs = validate(_write(tmp_path / "f.yaml", doc))
     assert any("missing derived edge" in e for e in errs)
 

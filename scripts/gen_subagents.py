@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Claude Code subagent definitions from the DasLab org tree.
 
-For every <dept>/agents/<role-key>/AGENTS.md role overlay, emit
-.claude/agents/<role-key>.md (the Claude Code subagent definition) plus
-board/ROUTING.md (role -> reviewer/manager table used for in_review routing).
-
-The overlays stay the single source of truth for each role's mission; the
-generated subagent is a thin shim that (a) points the subagent at its overlay
-and dept charter, and (b) states the file-based board protocol directly — edit the
-ticket file; its `status`/`## Log` ARE the state, and there is no external API.
-
-Re-run after editing any overlay. Idempotent — output is fully regenerated.
-Runtime pilots tied to non-Claude runtimes are skipped (they were adapter
-experiments, not Claude roles).
-"""
 import json
 import re
 
@@ -21,53 +7,37 @@ import yaml
 from _paths import ROOT
 
 OUT = ROOT / ".claude" / "agents"
-SKIP = set()  # (no external-runtime pilots)
+SKIP = set()
 DEPTS = ["governance", "engineering", "product", "design", "marketing", "operations"]
 
-# WS-A (ADR-0033 TB-2): compile each overlay's `## External tools` YAML block into
-# board/.tool-allowlist.json — the compiled least-privilege grant map the PreToolUse
-# hook (tools/mcp_bridges/audit_external_tool.py) reads. TRACKED + generate-and-diff
-# (C1): a hand-edit of the JSON diverges from this compile and the drift test reddens.
+
 TOOL_ALLOWLIST_OUT = ROOT / "board" / ".tool-allowlist.json"
-# Capture the fenced YAML block that immediately follows a `## External tools`
-# heading (the section may carry an HTML comment before the fence).
+
+
 _EXTERNAL_TOOLS_RE = re.compile(
     r"^##\s+External tools\b.*?\n```ya?ml\s*\n(.*?)\n```",
     re.S | re.M | re.I,
 )
 
-# Communication fabric (ADR-0026): the closed set of allowed (sender -> receiver)
-# routes, authored/validated by DAS-1465. Each role's OUTBOUND routes are compiled
-# into its generated shim below, so a route the role is not granted has no place in
-# its definition — structurally unrepresentable (DAS-1466, §5 row 9).
+
 FLOWS = ROOT / "governance" / "communication-flows.yaml"
 
-# Binding model allocation (board policy). The table in that file is the single
-# source of truth: | `role` | opus/sonnet/haiku | effort | rationale | (ADR 0013).
-# (Fable 5 is retired/disabled — Tier F runs on opus; there is no fable tier.)
+
 MODEL_POLICY = ROOT / "governance" / "policies" / "model-allocation.md"
-# Capture role, model, and the OPTIONAL Effort cell (col 3); rationale (col 4) is
-# ignored. A 3-col row (no effort cell) fails this regex, so the table edit and
-# this generator change land together (ADR 0013). Haiku's effort cell is blank.
+
+
 ROW_RE = re.compile(
     r"^\|\s*`?([a-z0-9-]+)`?\s*\|\s*(opus|sonnet|haiku)\s*\|"
     r"\s*(max|xhigh|high|medium|low)?\s*\|",
     re.M,
 )
-# An explicit per-role Effort cell wins; this is the fallback for a blank cell.
-# Haiku takes NO effort parameter (400 error) — its frontmatter omits the line.
+
+
 EFFORT_DEFAULT_BY_MODEL = {"opus": "high", "sonnet": "medium"}
 
-# Guild agent-templates (ADR-0029): the per-ROLE craft file that is the canonical
-# source-of-truth for a role. `scripts/gen_agent_templates.py` seeds each template
-# from the overlay + this same model-allocation table + communication-flows; the
-# shim below is COMPILED FROM the template (ADR-0029 G-4). model+effort in a
-# template are copied VERBATIM from the allocation table (G-3), so the generator
-# cross-checks them against load_alloc() and fails loudly on any drift. When a
-# template is absent (sparse worktree) the compile falls back to the direct
-# sources, mirroring the flows-absent tolerance.
+
 TEMPLATES = ROOT / "governance" / "agent-templates"
-# Parse `model:` / `effort:` out of a template's YAML frontmatter block.
+
 _TMPL_MODEL_RE = re.compile(r"^model:\s*(opus|sonnet|haiku)\s*$", re.M)
 _TMPL_EFFORT_RE = re.compile(r"^effort:\s*(max|xhigh|high|medium|low)\s*$", re.M)
 
@@ -88,11 +58,6 @@ def field(text, name):
 
 
 def iter_overlays(depts=DEPTS):
-    """Yield ``(role_key, overlay_text)`` for every role overlay in the org tree.
-
-    Shared by the shim generator and the tool-allowlist compiler so both read the
-    exact same SSOT set (no drift between "who has a shim" and "who has a grant").
-    """
     for dept in depts:
         agents_dir = ROOT / dept / "agents"
         if not agents_dir.is_dir():
@@ -106,12 +71,6 @@ def iter_overlays(depts=DEPTS):
 
 
 def parse_external_tools(overlay_text):
-    """Return the ``external_tools`` list from an overlay's `## External tools` block.
-
-    Absent section (the common case) → ``[]``. Malformed YAML → ``[]`` (the overlay
-    grants nothing rather than crashing the whole compile; a bad block simply grants
-    no reach — deny-by-default).
-    """
     m = _EXTERNAL_TOOLS_RE.search(overlay_text)
     if not m:
         return []
@@ -124,19 +83,6 @@ def parse_external_tools(overlay_text):
 
 
 def compile_tool_allowlist(overlays=None):
-    """Compile overlay `## External tools` grants → the TB-2 allow-list map.
-
-    Shape (exactly what ``audit_external_tool.decide()`` reads)::
-
-        { "mcp__<server>": ["role-a", "role-b"],           # server-level grant
-          "mcp__<server>__<tool>": ["role-c"] }             # tool-level grant
-
-    The value is ALWAYS a sorted list of EXPLICIT role keys — never ``"*"`` (C2):
-    a server-wide ``tools: ["*"]`` overlay grant compiles to the explicit list of
-    roles that declared it, so "any-role" is structurally unrepresentable in the
-    compiled map. A role appears under a key only if its overlay declared it
-    (union of declarations; no default entry, no wildcard role).
-    """
     if overlays is None:
         overlays = iter_overlays()
     grant_map: dict[str, set[str]] = {}
@@ -151,8 +97,8 @@ def compile_tool_allowlist(overlays=None):
             if not isinstance(tools, list):
                 tools = [tools]
             if any(str(t).strip() == "*" for t in tools):
-                # Server-wide grant → the SERVER key, mapped to the EXPLICIT role
-                # (never the literal "*"). C2: no "*" value is ever emitted.
+
+
                 grant_map.setdefault(server, set()).add(role_key)
             else:
                 for t in tools:
@@ -163,20 +109,12 @@ def compile_tool_allowlist(overlays=None):
 
 
 def write_tool_allowlist():
-    """Write the compiled TB-2 allow-list to the tracked artifact (idempotent)."""
     allow = compile_tool_allowlist()
     TOOL_ALLOWLIST_OUT.write_text(json.dumps(allow, indent=2, sort_keys=True) + "\n")
     return allow
 
 
 def load_template_alloc(templates_dir=TEMPLATES):
-    """Return ``{role_key: (model, effort_or_None)}`` from the guild templates.
-
-    Reads ``model:`` / ``effort:`` out of each ``governance/agent-templates/<role>.md``
-    frontmatter (ADR-0029). A haiku template carries no ``effort:`` line, so its
-    effort is ``None``. Returns ``{}`` when the templates directory is absent
-    (sparse worktree) — the caller then falls back to the allocation table.
-    """
     if not templates_dir.is_dir():
         return {}
     out: dict[str, tuple[str, str | None]] = {}
@@ -191,13 +129,6 @@ def load_template_alloc(templates_dir=TEMPLATES):
 
 
 def load_outbound_routes(flows_path=FLOWS):
-    """Return ``{sender_key: [(kind, receiver), ...]}`` from communication-flows.yaml.
-
-    The per-sender list is de-duplicated and sorted ``(kind, receiver)`` so the
-    generated shim is byte-stable across regenerations (regenerate-and-diff clean).
-    Returns ``None`` when the flows file is absent (sparse worktree) — the route
-    section then records that the fabric is not yet in-tree instead of crashing.
-    """
     if not flows_path.exists():
         return None
     data = yaml.safe_load(flows_path.read_text()) or {}
@@ -216,7 +147,6 @@ def load_outbound_routes(flows_path=FLOWS):
 
 
 def format_routes_block(key, routes):
-    """Render the compiled outbound-route lines for role *key* (one per allowed route)."""
     if routes is None:
         return "- _(governance/communication-flows.yaml not yet in-tree — no routes compiled)_"
     mine = routes.get(key, [])
@@ -230,7 +160,7 @@ def main():
     for old in OUT.glob("*.md"):
         old.unlink()
 
-    roles = []  # (key, display, dept, reports_to)
+    roles = []
     for dept in DEPTS:
         for d in sorted((ROOT / dept / "agents").iterdir()):
             key = d.name
@@ -250,17 +180,13 @@ def main():
             f"FATAL: no model row in {MODEL_POLICY.name} for: {', '.join(missing)} — "
             "add them to the allocation table, then re-run")
 
-    # ADR-0029 G-4: the shim is COMPILED FROM the per-role guild template. Regenerate
-    # the templates from the same SSOTs (lazy import avoids a module-load cycle), then
-    # read model+effort BACK from each template so the shim's values genuinely flow
-    # overlay+policy → template → shim. A template's model/effort is a VERBATIM copy of
-    # the allocation table (G-3); cross-check it here and fail loudly on any drift.
-    import gen_agent_templates  # noqa: PLC0415  (lazy: breaks the import cycle)
+
+    import gen_agent_templates
     gen_agent_templates.generate()
     tmpl_alloc = load_template_alloc()
     for key, _, _, _ in roles:
         if key not in tmpl_alloc:
-            continue  # template absent → fall back to the allocation table (tolerance)
+            continue
         t_model, t_effort = tmpl_alloc[key]
         if t_model != models[key] or t_effort != efforts[key]:
             raise SystemExit(
@@ -268,7 +194,7 @@ def main():
                 f"model={t_model}/effort={t_effort} but model-allocation.md says "
                 f"model={models[key]}/effort={efforts[key]} — re-run "
                 "scripts/gen_agent_templates.py (ADR-0029 G-3)")
-        # Compile FROM the template's verbatim values (identical to the SSOT).
+
         models[key], efforts[key] = t_model, t_effort
 
     for key, display, dept, reports in roles:
@@ -354,8 +280,7 @@ must be routed (reviews, escalations, new work discovered).
     (ROOT / "board" / "ROUTING.md").write_text("\n".join(routing) + "\n")
     print(f"  ✓ board/ROUTING.md ({len(roles)} roles)")
 
-    # WS-A (ADR-0033 TB-2): compile the overlay `## External tools` grants into the
-    # tracked, reviewed allow-list the PreToolUse hook trusts (C1 generate-and-diff).
+
     allow = write_tool_allowlist()
     print(f"  ✓ board/.tool-allowlist.json ({len(allow)} tool grant(s))")
 

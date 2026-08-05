@@ -1,21 +1,3 @@
-"""tests/test_pulse_checkpoint.py — pytest suite for scripts/pulse_checkpoint.py.
-
-Coverage:
-- ULID generation (format, uniqueness, monotonicity)
-- compute_board_hash (determinism, sensitivity)
-- get_event_offset (no-file → 0, byte count after appending)
-- compute_delta (unchanged omitted, changed/new included)
-- compute_ledger_hash (determinism, self-exclusion from preimage)
-- write_wave_checkpoint (file written, correct path, event emitted)
-- Delta encoding asserted: second-wave checkpoint omits unchanged ticket states
-- Ledger hash chaining: wave-N.prev == hash(wave-(N-1))
-- Per-ticket completion append + read-back (append_ticket_completion /
-  get_completed_tickets)
-- Simulated-crash / resume scenario (the key acceptance criterion from DAS-1444):
-    crash after N of M tickets → exactly N in completions → resume re-dispatches M-N
-- reconstruct_ticket_states (empty, wave-1, wave-2 layering)
-- gitignore: board/runs/ is gitignored, board/runs/*/run-summary.md is NOT
-"""
 
 from __future__ import annotations
 
@@ -25,17 +7,14 @@ import sys
 import time
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Path setup — make scripts/ importable regardless of pytest invocation root.
-# ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import pulse_checkpoint as pc  # noqa: E402
-from dgox.events import (  # noqa: E402
+import pulse_checkpoint as pc
+from dgox.events import (
     EventStore,
     build_ticket_completion,
     iter_events,
@@ -43,9 +22,6 @@ from dgox.events import (  # noqa: E402
     validate_ticket_completion,
 )
 
-# ---------------------------------------------------------------------------
-# Shared fixtures / helpers
-# ---------------------------------------------------------------------------
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 FIXED_TS2 = "2026-07-03T12:41:00Z"
@@ -57,11 +33,6 @@ def _write_ticket(tickets_dir: Path, name: str, content: str) -> Path:
     p = tickets_dir / name
     p.write_text(content, encoding="utf-8")
     return p
-
-
-# ---------------------------------------------------------------------------
-# TestGenerateULID
-# ---------------------------------------------------------------------------
 
 
 class TestGenerateULID:
@@ -78,16 +49,11 @@ class TestGenerateULID:
         assert len(ids) == 20, "ULID collision detected"
 
     def test_lexicographic_sort_reflects_time_order(self):
-        # Two ULIDs generated at least 1 ms apart should sort in creation order.
+
         a = pc.generate_ulid()
         time.sleep(0.002)
         b = pc.generate_ulid()
         assert a < b, f"ULID not monotonic: {a!r} >= {b!r}"
-
-
-# ---------------------------------------------------------------------------
-# TestComputeBoardHash
-# ---------------------------------------------------------------------------
 
 
 class TestComputeBoardHash:
@@ -137,11 +103,6 @@ class TestComputeBoardHash:
         assert h1 == h2
 
 
-# ---------------------------------------------------------------------------
-# TestGetEventOffset
-# ---------------------------------------------------------------------------
-
-
 class TestGetEventOffset:
     def test_returns_zero_for_nonexistent_file(self, tmp_path):
         assert pc.get_event_offset(tmp_path / "no.jsonl") == 0
@@ -167,11 +128,6 @@ class TestGetEventOffset:
         offset = pc.get_event_offset(store_path)
         assert offset == store_path.stat().st_size
         assert offset > 0
-
-
-# ---------------------------------------------------------------------------
-# TestComputeDelta
-# ---------------------------------------------------------------------------
 
 
 class TestComputeDelta:
@@ -209,11 +165,6 @@ class TestComputeDelta:
         assert "DAS-2" not in delta
 
 
-# ---------------------------------------------------------------------------
-# TestComputeLedgerHash
-# ---------------------------------------------------------------------------
-
-
 class TestComputeLedgerHash:
     def _sample_cp(self) -> dict:
         return {
@@ -243,7 +194,6 @@ class TestComputeLedgerHash:
         assert pc.compute_ledger_hash(cp1) != pc.compute_ledger_hash(cp2)
 
     def test_self_key_excluded_from_preimage(self):
-        """Setting ledger_hashes.self to different values must NOT change the hash."""
         cp_a = self._sample_cp()
         cp_a["ledger_hashes"]["self"] = "sha256:aaaa"
         cp_b = self._sample_cp()
@@ -251,21 +201,14 @@ class TestComputeLedgerHash:
         assert pc.compute_ledger_hash(cp_a) == pc.compute_ledger_hash(cp_b)
 
     def test_prev_key_included_in_preimage(self):
-        """Changing ledger_hashes.prev MUST change the hash (it IS in the preimage)."""
         cp_a = self._sample_cp()
         cp_b = self._sample_cp()
         cp_b["ledger_hashes"]["prev"] = "sha256:different"
         assert pc.compute_ledger_hash(cp_a) != pc.compute_ledger_hash(cp_b)
 
 
-# ---------------------------------------------------------------------------
-# TestWriteWaveCheckpoint
-# ---------------------------------------------------------------------------
-
-
 class TestWriteWaveCheckpoint:
     def _write_cp(self, tmp_path, wave=1, curr_states=None, prev_wave_cp=None, **kw):
-        """Helper: write a checkpoint and return (cp_dict, checkpoint_path)."""
         runs_dir = tmp_path / "runs"
         store_path = tmp_path / "events.jsonl"
         tickets_dir = tmp_path / "tickets"
@@ -361,13 +304,7 @@ class TestWriteWaveCheckpoint:
         assert cp["pending_interrupts"] == ["DAS-1445"]
 
 
-# ---------------------------------------------------------------------------
-# TestDeltaEncoding — the ADR-0023 §3 core invariant
-# ---------------------------------------------------------------------------
-
-
 class TestDeltaEncoding:
-    """Assert that wave-2 checkpoint omits unchanged ticket states (delta, not snapshot)."""
 
     def test_wave2_delta_omits_unchanged_states(self, tmp_path):
         runs_dir = tmp_path / "runs"
@@ -380,7 +317,7 @@ class TestDeltaEncoding:
             "DAS-1444": "in_review",
             "DAS-1445": "todo",
         }
-        # Write wave-1 checkpoint (all tickets appear in delta since prev is empty)
+
         pc.write_wave_checkpoint(
             run_id=RUN_ID, wave=1, ticket_id=ANCHOR,
             curr_ticket_states=wave1_states,
@@ -389,9 +326,9 @@ class TestDeltaEncoding:
         )
 
         wave2_states = {
-            "DAS-1443": "done",       # UNCHANGED
-            "DAS-1444": "done",       # CHANGED
-            "DAS-1445": "in_progress",  # CHANGED
+            "DAS-1443": "done",
+            "DAS-1444": "done",
+            "DAS-1445": "in_progress",
         }
         cp2 = pc.write_wave_checkpoint(
             run_id=RUN_ID, wave=2, ticket_id=ANCHOR,
@@ -400,7 +337,7 @@ class TestDeltaEncoding:
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
 
-        # wave-2 ticket_states must be the DELTA, not the full snapshot
+
         delta = cp2["ticket_states"]
         assert "DAS-1443" not in delta, (
             "DAS-1443 was unchanged between wave-1 and wave-2 "
@@ -430,7 +367,7 @@ class TestDeltaEncoding:
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
 
-        # Reconstructing up to wave-2 should give the FULL current state
+
         full = pc.reconstruct_ticket_states(RUN_ID, 2, runs_dir)
         assert full == wave2_states
 
@@ -455,14 +392,9 @@ class TestDeltaEncoding:
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
 
-        # up_to_wave=1 should give wave-1 state, not wave-2
+
         full = pc.reconstruct_ticket_states(RUN_ID, 1, runs_dir)
         assert full == wave1_states
-
-
-# ---------------------------------------------------------------------------
-# TestLedgerHashChaining
-# ---------------------------------------------------------------------------
 
 
 class TestLedgerHashChaining:
@@ -485,8 +417,7 @@ class TestLedgerHashChaining:
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
 
-        # The ledger chain: wave-2.prev == hash(wave-1 checkpoint)
-        # which should equal wave-1.self (they must be the same)
+
         assert cp2["ledger_hashes"]["prev"] == cp1["ledger_hashes"]["self"], (
             "Ledger chain broken: wave-2.prev != wave-1.self"
         )
@@ -503,7 +434,7 @@ class TestLedgerHashChaining:
             created_at=FIXED_TS,
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
-        # Re-derive the self hash independently
+
         recomputed = pc.compute_ledger_hash(cp)
         assert recomputed == cp["ledger_hashes"]["self"]
 
@@ -527,14 +458,9 @@ class TestLedgerHashChaining:
                 store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
             ))
 
-        # Chain: cp[n].prev == cp[n-1].self
+
         assert cps[1]["ledger_hashes"]["prev"] == cps[0]["ledger_hashes"]["self"]
         assert cps[2]["ledger_hashes"]["prev"] == cps[1]["ledger_hashes"]["self"]
-
-
-# ---------------------------------------------------------------------------
-# TestTicketCompletion
-# ---------------------------------------------------------------------------
 
 
 class TestTicketCompletion:
@@ -624,7 +550,7 @@ class TestTicketCompletion:
             run_id=run_a, ticket_id="DAS-1443", status="done",
             wave=1, created_at=FIXED_TS, runs_dir=runs_dir,
         )
-        # run_b has its own completions.jsonl (different directory)
+
         pc.append_ticket_completion(
             run_id=run_b, ticket_id="DAS-1444", status="done",
             wave=1, created_at=FIXED_TS, runs_dir=runs_dir,
@@ -648,22 +574,7 @@ class TestTicketCompletion:
         assert ev["created_at"] == FIXED_TS
 
 
-# ---------------------------------------------------------------------------
-# TestSimulatedCrashResume — key acceptance criterion (DAS-1444 §AC)
-# ---------------------------------------------------------------------------
-
-
 class TestSimulatedCrashResume:
-    """Simulate a crash after N of M tickets complete and verify resume safety.
-
-    Scenario:
-      - M = 5 tickets in a wave
-      - N = 3 complete before crash (completion records written)
-      - Crash (no wave-boundary checkpoint written)
-      - Resume: get_completed_tickets() → exactly N recorded
-      - The resume should re-dispatch only M - N = 2 remaining tickets,
-        and re-dispatch NONE of the N completed ones.
-    """
 
     M = 5
     N = 3
@@ -676,13 +587,13 @@ class TestSimulatedCrashResume:
         all_tickets = self._ticket_ids()
         completed_tickets = all_tickets[: self.N]
 
-        # N tickets complete, writing durable records
+
         for tid in completed_tickets:
             pc.append_ticket_completion(
                 run_id=RUN_ID, ticket_id=tid, status="done",
                 wave=1, created_at=FIXED_TS, runs_dir=runs_dir,
             )
-        # "Crash" here — no checkpoint written, M-N tickets never recorded
+
 
         completed = pc.get_completed_tickets(RUN_ID, runs_dir)
         assert len(completed) == self.N, (
@@ -696,14 +607,14 @@ class TestSimulatedCrashResume:
         completed_tickets = all_tickets[: self.N]
         remaining_tickets = all_tickets[self.N :]
 
-        # N tickets complete
+
         for tid in completed_tickets:
             pc.append_ticket_completion(
                 run_id=RUN_ID, ticket_id=tid, status="done",
                 wave=1, created_at=FIXED_TS, runs_dir=runs_dir,
             )
 
-        # On resume: compute which tickets still need dispatch
+
         completed = pc.get_completed_tickets(RUN_ID, runs_dir)
         to_dispatch = [t for t in all_tickets if t not in completed]
 
@@ -724,14 +635,13 @@ class TestSimulatedCrashResume:
         completed = pc.get_completed_tickets(RUN_ID, runs_dir)
         to_dispatch = [t for t in all_tickets if t not in completed]
 
-        # None of the completed tickets should appear in to_dispatch
+
         re_runs = set(to_dispatch) & completed
         assert re_runs == set(), (
             f"Idempotency violated: these already-complete tickets would be re-dispatched: {re_runs}"
         )
 
     def test_idempotent_append_doesnt_break_completed_set(self, tmp_path):
-        """Appending the same ticket twice does not affect the set (set semantics)."""
         runs_dir = tmp_path / "runs"
         tid = "DAS-1443"
 
@@ -739,7 +649,7 @@ class TestSimulatedCrashResume:
             run_id=RUN_ID, ticket_id=tid, status="done",
             wave=1, created_at=FIXED_TS, runs_dir=runs_dir,
         )
-        # Append again (simulates a re-invoke after partial crash)
+
         pc.append_ticket_completion(
             run_id=RUN_ID, ticket_id=tid, status="done",
             wave=1, created_at=FIXED_TS2, runs_dir=runs_dir,
@@ -747,11 +657,6 @@ class TestSimulatedCrashResume:
 
         completed = pc.get_completed_tickets(RUN_ID, runs_dir)
         assert completed == {tid}, "Duplicate append changed the completed set"
-
-
-# ---------------------------------------------------------------------------
-# TestReconstructTicketStates
-# ---------------------------------------------------------------------------
 
 
 class TestReconstructTicketStates:
@@ -802,16 +707,9 @@ class TestReconstructTicketStates:
         assert result == wave2
 
 
-# ---------------------------------------------------------------------------
-# TestReplayQACompatibility
-# ---------------------------------------------------------------------------
-
-
 class TestReplayQACompatibility:
-    """Wave-checkpoint events must not corrupt the replay_qa transition chain."""
 
     def test_checkpoint_events_do_not_affect_replay_qa(self, tmp_path):
-        """replay_qa only inspects routing_decision events; checkpoint events are ignored."""
         import replay_qa
         import wave_kpi
 
@@ -820,7 +718,7 @@ class TestReplayQACompatibility:
         tickets_dir.mkdir()
         runs_dir = tmp_path / "runs"
 
-        # Write a proper routing_decision chain
+
         from dgox.events import build_routing_decision
 
         store = EventStore(store_path)
@@ -839,7 +737,7 @@ class TestReplayQACompatibility:
             created_at=FIXED_TS2, run_id=RUN_ID,
         ))
 
-        # Also write checkpoint events (should not affect replay_qa)
+
         pc.write_wave_checkpoint(
             run_id=RUN_ID, wave=1, ticket_id=ANCHOR,
             curr_ticket_states={ANCHOR: "done"},
@@ -847,7 +745,7 @@ class TestReplayQACompatibility:
             store_path=store_path, tickets_dir=tickets_dir, runs_dir=runs_dir,
         )
 
-        # replay_qa must find 0 corrupted resumes
+
         events = wave_kpi.read_events(str(store_path))
         summary = replay_qa.drill(events)
         assert summary["corrupted"] == [], (
@@ -856,20 +754,8 @@ class TestReplayQACompatibility:
         assert summary["replayable"] == summary["runs"]
 
 
-# ---------------------------------------------------------------------------
-# TestGitignore
-# ---------------------------------------------------------------------------
-
-
 class TestGitignore:
     def test_run_checkpoint_is_gitignored(self):
-        """Checkpoint JSON files under board/runs/ must be gitignored (ADR-0023 §5).
-
-        We check a concrete checkpoint path rather than ``board/runs/`` itself
-        because the pattern ``board/runs/**`` + ``!board/runs/*/`` keeps the
-        run-id sub-directories traversable (un-ignored), while still ignoring
-        all files inside them (except run-summary.md).
-        """
         result = subprocess.run(
             ["git", "check-ignore", "--quiet",
              "board/runs/01J9Z8QK3M7Q0W9E4R5T6Y7U8I/wave-001.checkpoint.json"],
@@ -882,7 +768,6 @@ class TestGitignore:
         )
 
     def test_completions_jsonl_is_gitignored(self):
-        """Per-ticket completion records under board/runs/ must be gitignored."""
         result = subprocess.run(
             ["git", "check-ignore", "--quiet",
              "board/runs/01J9Z8QK3M7Q0W9E4R5T6Y7U8I/completions.jsonl"],
@@ -894,19 +779,13 @@ class TestGitignore:
         )
 
     def test_run_summary_is_NOT_gitignored(self):
-        """run-summary.md must be retained (NOT gitignored) per ADR-0023 §5.
-
-        The .gitignore uses a negation rule ``!board/runs/*/run-summary.md``
-        after ``board/runs/**`` to keep the final summary committable while
-        all other run artifacts remain ephemeral.
-        """
         result = subprocess.run(
             ["git", "check-ignore", "--quiet",
              "board/runs/01J9Z8QK3M7Q0W9E4R5T6Y7U8I/run-summary.md"],
             cwd=_REPO_ROOT,
             capture_output=True,
         )
-        # returncode 1 means "not ignored" — that is what we want for run-summary.md
+
         assert result.returncode == 1, (
             "board/runs/*/run-summary.md IS gitignored but should be retained — "
             "check the negation rule (!board/runs/*/run-summary.md) in .gitignore"

@@ -1,4 +1,3 @@
-"""Deterministic verifier — content-lead / content-plan-priority."""
 from __future__ import annotations
 
 import json

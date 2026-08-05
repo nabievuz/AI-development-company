@@ -1,4 +1,3 @@
-"""Deterministic verifier — product-analyst / funnel-dropoff."""
 from __future__ import annotations
 
 import json

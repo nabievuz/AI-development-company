@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""break_glass.py — BREAK-GLASS emergency override.
 
-A time-limited (60-minute), scope-restricted (single rollback), audit-required
-emergency override of the approval gates. Activation is appended to the
-append-only DGO-X audit log (``board/.events.jsonl``) and AUTO-EXPIRES after 60
-minutes — ``is_active(now)`` is false once the window passes, with no manual
-deactivation needed.
-
-It does NOT relax QONUN-5 in steady state: only a live, logged, auto-expiring
-activation grants the bounded override, and every activation requires a
-post-incident review within 24h (enforced by check_break_glass_review.py).
-
-The pure builders take ``created_at`` as an argument (deterministic, testable);
-only the CLI reads the wall clock — mirroring the DGO-X event-store discipline.
-
-Library + CLI:
-    python3 scripts/break_glass.py activate --reason "prod incident" --operator cto
-    python3 scripts/break_glass.py status
-"""
 from __future__ import annotations
 
 import argparse
@@ -41,12 +23,10 @@ DEFAULT_STORE = ROOT / "board" / ".events.jsonl"
 
 
 def utcnow() -> datetime:
-    """Current UTC time (the only wall-clock read in this module)."""
     return datetime.now(tz=UTC)
 
 
 def parse_ts(ts: str) -> datetime | None:
-    """Parse an ISO-8601 'YYYY-MM-DDTHH:MM:SSZ' timestamp into aware UTC, or None."""
     try:
         return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except (ValueError, TypeError):
@@ -54,7 +34,6 @@ def parse_ts(ts: str) -> datetime | None:
 
 
 def fmt_ts(d: datetime) -> str:
-    """Format a datetime as ISO-8601 UTC ending in 'Z'."""
     return d.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -68,11 +47,6 @@ def build_activation(
     window_minutes: int = WINDOW_MINUTES,
     ticket_id: str = "DAS-BREAK-GLASS",
 ) -> dict:
-    """Build a break-glass activation event (single-rollback scope, 60-min expiry).
-
-    Raises ValueError on a disallowed scope (the override may only ever cover a
-    single rollback) or an unparseable timestamp.
-    """
     if scope != ALLOWED_SCOPE:
         raise ValueError(f"break-glass scope must be {ALLOWED_SCOPE!r}; got {scope!r}")
     start = parse_ts(created_at)
@@ -93,7 +67,6 @@ def build_activation(
 
 
 def append_event(event: dict, path: Path = DEFAULT_STORE) -> None:
-    """Append one JSON line to the append-only audit log (never rewrites it)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
     with open(path, "a", encoding="utf-8") as fh:
@@ -109,7 +82,6 @@ def append_event(event: dict, path: Path = DEFAULT_STORE) -> None:
 
 
 def read_events(path: str | Path = DEFAULT_STORE) -> list[dict]:
-    """Read the JSONL audit log; [] if absent. Bad lines are skipped."""
     events: list[dict] = []
     try:
         with open(path, encoding="utf-8") as fh:
@@ -127,17 +99,10 @@ def read_events(path: str | Path = DEFAULT_STORE) -> list[dict]:
 
 
 def iter_activations(events: Iterable[dict]) -> list[dict]:
-    """Return the break-glass activation events from a stream."""
     return [e for e in events if e.get("event_type") == ACTIVATION_EVENT]
 
 
 def active_overrides(now: datetime, path: str | Path = DEFAULT_STORE) -> list[dict]:
-    """Activations whose 60-min window covers ``now`` (start <= now < expiry).
-
-    Expiry is RECOMPUTED from created_at + window_minutes (capped at the 60-min
-    policy), never trusted from a stored expires_at a forged event could inflate,
-    and only single-rollback-scope activations can ever be live.
-    """
     out: list[dict] = []
     for ev in iter_activations(read_events(path)):
         if str(ev.get("scope")) != ALLOWED_SCOPE:
@@ -155,12 +120,11 @@ def active_overrides(now: datetime, path: str | Path = DEFAULT_STORE) -> list[di
 
 
 def is_active(now: datetime, path: str | Path = DEFAULT_STORE) -> bool:
-    """True if any break-glass override is live at ``now`` (auto-expires otherwise)."""
     return bool(active_overrides(now, path))
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='break_glass.py — BREAK-GLASS emergency override.')
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     act = sub.add_parser("activate", help="activate a 60-min single-rollback override")

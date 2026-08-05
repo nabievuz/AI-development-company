@@ -1,15 +1,3 @@
-"""Guardrail for the ``product-analyst`` role (DAS-1471).
-
-INPUT: the shared scope screen, then a metrics-relevance screen — a product
-analyst ticket must actually name something measurable (a metric / KPI /
-analytics / funnel / cohort concern), otherwise it is off-scope and re-routes to
-the owning product role.
-
-OUTPUT: an analysis is only accepted when it presents at least one numeric
-value. This encodes the discipline's Definition of Done — "Metrics, KPI/goal-
-drift reports; numeric errors insidious" (role overlay): a data analysis that
-cites no numbers is a qualitative opinion, not a metrics deliverable.
-"""
 from __future__ import annotations
 
 import re
@@ -25,7 +13,7 @@ from guardrails import (
 
 ROLE = "product-analyst"
 
-# A product-analyst ticket names at least one measurable / metrics concern.
+
 _METRIC_TERMS = re.compile(
     r"\b(metric|metrics|kpi|kpis|analytic|analytics|instrumentation|funnel|"
     r"conversion|retention|cohort|dashboard|goal[- ]?drift|measurement|measure|"
@@ -34,10 +22,7 @@ _METRIC_TERMS = re.compile(
     re.IGNORECASE,
 )
 
-# Positive evidence that the analysis carries a numeric value (any digit).
-# A METRIC-shaped number (percentage, currency, or a count next to a metric unit)
-# — NOT a lone digit, so an incidental ticket id (DAS-1500) or bare year no longer
-# satisfies "cite a measured figure".
+
 _NUMERIC = re.compile(
     r"(?i)(?:"
     r"\$\s?\d|\d+(?:[.,]\d+)?\s?%"
@@ -48,7 +33,6 @@ _NUMERIC = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Shared scope screen + a metrics-relevance screen."""
     ok, feedback = default_input_guardrail(ctx)
     if not ok:
         return (ok, feedback)
@@ -63,7 +47,6 @@ def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only an analysis that presents at least one numeric metric."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

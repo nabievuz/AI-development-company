@@ -1,4 +1,3 @@
-"""Deterministic verifier — tech-writer / doc-link-check."""
 from __future__ import annotations
 
 import json

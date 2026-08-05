@@ -1,7 +1,3 @@
-# DasLab — Metric Contract Registry (SSOT)
-# Single source of truth for T1-T7.
-# Wired to: board/.events.jsonl (DGO-X event store) + scripts/wave_kpi.py
-# Every metric MUST have a validator in scripts/. No tuning without these.
 version: 1
 updated: 2026-07-03
 
@@ -11,8 +7,8 @@ metrics:
     formula: "useful_agent_minutes / total_available_agent_minutes"
     source: "scheduler traces (board/.events.jsonl: dispatch/complete events)"
     window: "rolling 7-wave"
-    baseline: 0.11          # measured §15.1
-    target: 0.60            # T1
+    baseline: 0.11
+    target: 0.60
     guardrail: "must not reduce T7_quality"
     owner: metrics
     validator: scripts/check_busy_fraction.py
@@ -22,8 +18,8 @@ metrics:
     formula: "idle_waves / total_waves"
     source: "DGO-X queue logs"
     window: "rolling 7-wave"
-    baseline: 0.70          # measured §15.1
-    target: 0.15            # T2 (<=)
+    baseline: 0.70
+    target: 0.15
     guardrail: "must not create low-quality frontier refill"
     owner: scheduler
     validator: scripts/check_idle_waves.py
@@ -33,7 +29,7 @@ metrics:
     formula: "median_and_p95(active_useful_agents)"
     source: "runtime telemetry"
     window: "per-wave"
-    target: 6               # T3 (>=)
+    target: 6
     guardrail: "must not increase conflicts/rework"
     owner: scheduler
     validator: scripts/check_concurrency.py
@@ -43,7 +39,7 @@ metrics:
     formula: "low_cost_successful_tasks / total_tasks"
     source: "model routing logs"
     window: "rolling 7-wave"
-    target: 0.25            # T4 (>= haiku-eligible)
+    target: 0.25
     guardrail: "must not reduce quality"
     owner: cost
     validator: scripts/check_model_mix.py
@@ -53,7 +49,7 @@ metrics:
     formula: "successful_replays / recovery_drills"
     source: "checkpoint tests"
     window: "per-drill"
-    target: 0.99            # T5 (>=)
+    target: 0.99
     guardrail: "zero corrupted resume accepted"
     owner: reliability
     validator: scripts/check_recovery.py
@@ -78,18 +74,10 @@ metrics:
     owner: verification
     validator: scripts/check_t7_quality.py
 
-# Anti-gaming rule: T1-T6 are only valid when T7 holds AND
-# delivered value (merged PR + passing DoD) is confirmed. Busy/concurrency
-# without useful output does NOT count.
 anti_gaming:
   rule: "T1..T6 numerator counts a unit ONLY if it ends in merged PR + green CI + T7 pass"
   validator: scripts/check_metric_gaming.py
 
-# ---------------------------------------------------------------------------
-# Informational metrics  (not hard gates — per ORGANISM §9 default #6)
-# Ships as a reader first; promote to a hard gate after >= 1 wave-week of
-# clean live data AND a pricing re-verification.
-# ---------------------------------------------------------------------------
 informational_metrics:
   C1_cost_per_run:
     definition: "Estimated USD token cost aggregated by ticket / agent / tier / run (INFORMATIONAL)"

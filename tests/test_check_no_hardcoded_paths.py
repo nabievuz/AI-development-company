@@ -1,9 +1,3 @@
-"""tests/test_check_no_hardcoded_paths.py — pytest for check_no_hardcoded_paths.py.
-
-Hermetic: builds a synthetic git repo under tmp_path and scans it via --root.
-Proves (a) a hardcoded /Users/<name> or /home/<name> path is detected, (b) a
-clean tree passes, and (c) board/tickets are allowlisted.
-"""
 from __future__ import annotations
 
 import subprocess
@@ -13,9 +7,9 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from check_no_hardcoded_paths import main, offenders  # noqa: E402
+from check_no_hardcoded_paths import main, offenders
 
-# Assemble at runtime so this test file holds no literal hardcoded path either.
+
 _U = "/" + "Users" + "/" + "someone" + "/proj"
 _H = "/" + "home" + "/" + "someone" + "/proj"
 

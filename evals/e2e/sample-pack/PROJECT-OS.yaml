@@ -1,6 +1,3 @@
-# PROJECT-OS manifest for the acme-tasks sample pack (evals/e2e/sample-pack).
-# Compiled by scripts/gateway_compile.py in a tmp/scratch project dir named after
-# `name` — never in place. See evals/e2e/README.md for the honest scope note.
 name: acme-tasks
 mission: >
   acme-tasks is a small team task-management SaaS: authenticated users create,

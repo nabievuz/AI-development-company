@@ -1,12 +1,9 @@
-"""Deterministic verifier — chairman / never-auto-approve-audit."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-#: QONUN-5 floor categories — mirrors scripts/check_never_auto_approve.py's
-#: hard-coded _QONUN5_FLOOR. This is the governance rule (given to the agent
-#: in task.md); the answer is which specific fixture tickets trip it.
+
 FLOOR = {
     "new_goal", "security_sensitive", "schema_migration", "gate5_deployment",
     "governance_or_policy", "permission_change", "secret_change",

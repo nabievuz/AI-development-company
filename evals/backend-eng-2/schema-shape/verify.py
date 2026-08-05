@@ -1,4 +1,3 @@
-"""Deterministic verifier — backend-eng-2 / schema-shape."""
 from __future__ import annotations
 
 import json
@@ -21,7 +20,7 @@ def _conforms(body: dict, schema: dict) -> bool:
         if expected_type is None:
             continue
         value = body[field]
-        # bool is a subclass of int in Python; keep "number" from accepting bool.
+
         if type_name == "number" and isinstance(value, bool):
             return False
         if not isinstance(value, expected_type):

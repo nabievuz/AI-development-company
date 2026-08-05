@@ -1,41 +1,5 @@
 #!/usr/bin/env python3
-"""check_import_ban.py — GATE-4 clean-room: fail on any banned donor library.
 
-Five banned donor agent-framework libraries (§2.3 clean-room):
-  1. langgraph   — NARROWLY sanctioned in the DGO-X substrate zone (see below)
-  2. agent-framework (Microsoft)
-  3. crewai
-  4. agency-swarm
-  5. superagi
-
-Scans two surfaces:
-  * Dependency manifests: requirements*.txt, requirements*.in, pyproject.toml
-    ([project.dependencies] / [tool.poetry.dependencies])
-  * Python source:        scripts/**/*.py and tests/**/*.py (recursive)
-
-ADR-0035 sanctioned-substrate carve-out (GATE-4, CTO-ratified 2026-07-24)
--------------------------------------------------------------------------
-ADR-0035 (Accepted) adopts LangGraph as the DGO-X Phase-2/3 execution substrate
-**strictly under C1** — an opt-in extra, never in the core dependency set.  This
-policy therefore NARROWS the §2.3 ban for ``langgraph`` ONLY: a ``langgraph``
-import is permitted inside the sanctioned substrate zone ``scripts/dgox/`` (see
-SANCTIONED_IMPORT_PATHS), and the runtime is declared solely in the opt-in extra
-``scripts/dgox/requirements-langgraph.txt`` (which lives OUTSIDE the root-only
-manifest scan, so it is not — and must not be — added to the core
-``requirements.txt``).  ``langgraph`` stays BANNED in every other source path and
-in every scanned manifest; the other four donor libs have NO carve-out and stay
-fully banned everywhere.  This narrows the ban to state-as-fact what ADR-0035
-ratified — it does not remove it.
-
-Matching is word-boundary-safe (Python re with \\b — NOT git grep -E which
-silently ignores \\b), so a substring like ``my_crewai_plugin`` is NOT a hit.
-
-Exit codes
-----------
-0  no banned library found
-1  at least one banned library found
-2  usage / environment error
-"""
 from __future__ import annotations
 
 import argparse
@@ -46,13 +10,7 @@ from pathlib import Path
 
 from _paths import ROOT
 
-# ---------------------------------------------------------------------------
-# Banned libraries: (canonical-distribution-name, [import-module-aliases])
-#
-# Distribution-name matching is normalised (hyphens == underscores, case-
-# insensitive) per PEP 508.  Import-module aliases cover the actual top-level
-# Python name(s) used in "import <x>" or "from <x> import …".
-# ---------------------------------------------------------------------------
+
 BANNED: list[tuple[str, list[str]]] = [
     ("langgraph", ["langgraph"]),
     ("agent-framework", ["agent_framework", "agentframework"]),
@@ -61,34 +19,13 @@ BANNED: list[tuple[str, list[str]]] = [
     ("superagi", ["superagi"]),
 ]
 
-# ---------------------------------------------------------------------------
-# Sanctioned carve-outs: (banned-lib-name, source-path-prefix) pairs where a
-# ratified ADR NARROWS the ban for one lib in one zone only.  A banned import
-# is suppressed ONLY when BOTH the lib name AND the containing file's path
-# prefix match a pair here.  This is a scoped allow, not a global unban — every
-# lib/path outside these exact pairs stays fully banned.
-#
-# ADR-0035 (Accepted; CTO ratified — RACI 3.1/3.6 A — 2026-07-24) adopts
-# LangGraph as the DGO-X P2/P3 execution substrate under DGO-X C1.  It is an
-# opt-in extra declared only in scripts/dgox/requirements-langgraph.txt (NOT the
-# core requirements.txt), consumed only from the substrate zone scripts/dgox/.
-# So langgraph is allowed to be imported there and nowhere else; the other four
-# donor libs (agent-framework, crewai, agency-swarm, superagi) have NO carve-out.
-# Path prefixes are matched against the file's repo-relative POSIX path.
-# ---------------------------------------------------------------------------
+
 SANCTIONED_IMPORT_PATHS: list[tuple[str, str]] = [
     ("langgraph", "scripts/dgox/"),
 ]
 
 
 def _is_sanctioned_import(lib_name: str, rel_posix: str) -> bool:
-    """True when a (lib, path) import hit is explicitly sanctioned by a ratified ADR.
-
-    Suppresses a hit only when the banned lib AND the file's repo-relative POSIX
-    path prefix both match a ``SANCTIONED_IMPORT_PATHS`` pair.  Narrows the §2.3
-    clean-room ban to honour ADR-0035 (langgraph inside ``scripts/dgox/`` only);
-    it does not remove the ban for that lib elsewhere or for any other lib.
-    """
     return any(
         lib_name == sanctioned_lib and rel_posix.startswith(prefix)
         for sanctioned_lib, prefix in SANCTIONED_IMPORT_PATHS
@@ -96,25 +33,12 @@ def _is_sanctioned_import(lib_name: str, rel_posix: str) -> bool:
 
 
 def _dist_pattern(name: str) -> re.Pattern[str]:
-    """Case-insensitive, boundary-safe regex for a distribution/package name.
-
-    Splits on ``[-_]`` and re-joins with ``[-_]`` so that PEP 508 normalised
-    equivalents (hyphens == underscores) are both matched.
-    Uses Python re ``\\b`` — NOT git grep -E which ignores ``\\b``.
-    """
     parts = re.split(r"[-_]", name)
     norm = r"[-_]".join(re.escape(p) for p in parts)
     return re.compile(r"(?i)\b" + norm + r"\b")
 
 
 def _import_pattern(aliases: list[str]) -> re.Pattern[str]:
-    """Regex matching a Python import/from-import of any of ``aliases``.
-
-    Anchored to line-start (after optional whitespace) so it matches actual
-    import statements, not mid-line occurrences inside string literals.
-    The trailing ``(?:\\b|\\.)`` also catches submodule imports such as
-    ``import langgraph.graph``.
-    """
     alts = "|".join(re.escape(a) for a in aliases)
     return re.compile(
         r"^\s*(?:import|from)\s+(?:" + alts + r")(?:\b|\.)",
@@ -122,7 +46,6 @@ def _import_pattern(aliases: list[str]) -> re.Pattern[str]:
     )
 
 
-# Pre-compile once; reused across all scanned files.
 _DIST_PATS: list[tuple[str, re.Pattern[str]]] = [
     (name, _dist_pattern(name)) for name, _ in BANNED
 ]
@@ -131,23 +54,12 @@ _IMPORT_PATS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Manifest scanning (requirements*.txt / requirements*.in)
-# ---------------------------------------------------------------------------
-
-
 def _is_pkg_line(line: str) -> bool:
-    """True when a requirements line specifies a package (not a comment or option)."""
     s = line.strip()
     return bool(s) and not s.startswith("#") and not s.startswith("-")
 
 
 def _pkg_name(line: str) -> str:
-    """Extract the bare package name from a requirements line.
-
-    Stops at the first version specifier character, bracket, space, comment,
-    semicolon, or line-continuation backslash.
-    """
     name = line.strip()
     for stop in ("[", "=", "<", ">", "!", "~", "@", " ", "\t", "#", ";", "\\"):
         idx = name.find(stop)
@@ -157,22 +69,15 @@ def _pkg_name(line: str) -> str:
 
 
 def _scan_pyproject(root: Path, pyproject_path: Path) -> list[str]:
-    """Scan pyproject.toml for banned libs in [project.dependencies] / [tool.poetry.dependencies].
-
-    Uses ``tomllib`` (stdlib since Python 3.11) for correct TOML parsing.
-    Checks both PEP 621 (``[project]``) and Poetry (``[tool.poetry]``) tables.
-    Line numbers are omitted because tomllib does not expose them; the TOML
-    section is included in the violation string so the location is still clear.
-    """
     hits: list[str] = []
     rel = str(pyproject_path.relative_to(root))
     try:
         with pyproject_path.open("rb") as fh:
             data = tomllib.load(fh)
-    except Exception:  # noqa: BLE001 — treat any TOML error as non-fatal
+    except Exception:
         return hits
 
-    # PEP 621: [project.dependencies] — a list of PEP 508 dependency strings.
+
     pep621_deps: list[str] = data.get("project", {}).get("dependencies", [])
     for dep in pep621_deps:
         if not isinstance(dep, str):
@@ -187,7 +92,7 @@ def _scan_pyproject(root: Path, pyproject_path: Path) -> list[str]:
                     f"(found '{pkg}')"
                 )
 
-    # Poetry: [tool.poetry.dependencies] — a table keyed by package name.
+
     poetry_deps: dict = data.get("tool", {}).get("poetry", {}).get("dependencies", {})
     for dep_name in poetry_deps:
         if not isinstance(dep_name, str):
@@ -203,12 +108,6 @@ def _scan_pyproject(root: Path, pyproject_path: Path) -> list[str]:
 
 
 def scan_manifests(root: Path) -> list[str]:
-    """Return violation descriptions for banned libs found in requirements manifests.
-
-    Scanned surfaces:
-      * ``requirements*.txt`` and ``requirements*.in`` at the repo root.
-      * ``pyproject.toml`` at the repo root (PEP 621 and Poetry dependency tables).
-    """
     hits: list[str] = []
     manifests = sorted(root.glob("requirements*.txt")) + sorted(
         root.glob("requirements*.in")
@@ -239,17 +138,7 @@ def scan_manifests(root: Path) -> list[str]:
     return hits
 
 
-# ---------------------------------------------------------------------------
-# Import scanning (scripts/*.py)
-# ---------------------------------------------------------------------------
-
-
 def scan_imports(root: Path) -> list[str]:
-    """Return violation descriptions for banned imports in scripts/ and tests/ (recursive).
-
-    Scans all ``*.py`` files found by ``rglob`` under both ``scripts/`` and
-    ``tests/``, so nested sub-packages (e.g. ``scripts/dgox/``) are covered.
-    """
     hits: list[str] = []
     for scan_dir_name in ("scripts", "tests"):
         scan_dir = root / scan_dir_name
@@ -263,13 +152,13 @@ def scan_imports(root: Path) -> list[str]:
             lines = text.splitlines()
             rel = py_file.relative_to(root).as_posix()
             for lib_name, pat in _IMPORT_PATS:
-                # Sanctioned-substrate carve-out (ADR-0035): a narrowly allowed
-                # (lib, path) pair is not a violation. Other libs/paths unaffected.
+
+
                 if _is_sanctioned_import(lib_name, rel):
                     continue
                 for m in pat.finditer(text):
                     lineno = text[: m.start()].count("\n") + 1
-                    # Skip lines that are comments (leading # after stripping).
+
                     raw_line = lines[lineno - 1] if lineno <= len(lines) else ""
                     if raw_line.lstrip().startswith("#"):
                         continue
@@ -280,18 +169,12 @@ def scan_imports(root: Path) -> list[str]:
     return hits
 
 
-# ---------------------------------------------------------------------------
-# Public API + CLI
-# ---------------------------------------------------------------------------
-
-
 def check(root: Path) -> list[str]:
-    """Return all violations (manifests + imports). Empty list = clean."""
     return scan_manifests(root) + scan_imports(root)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='check_import_ban.py — GATE-4 clean-room: fail on any banned donor library.')
     parser.add_argument(
         "--root",
         type=Path,

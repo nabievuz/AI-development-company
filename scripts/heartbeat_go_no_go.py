@@ -1,67 +1,5 @@
 #!/usr/bin/env python3
-"""heartbeat_go_no_go.py — the ONE Founder-facing go/no-go readiness report (DAS-1619).
 
-The Founder is asked to make exactly one irreversible edit — ``heartbeat_enabled:
-false -> true`` in ``config/features.yaml`` (ADR-0027 SI-7 / SPEC-010 FR-006, a
-QONUN-5 never-auto-approve human act). Today that decision requires reading five
-different tools and knowing which absent file means "fine" and which means "no
-evidence at all". This script is the single artifact that answers it.
-
-**It composes; it decides nothing new.** Every verdict below is produced by an
-existing, `done`-ticket-owned check, called directly:
-
-  * ``check_heartbeat_readiness.assess``      — the >=3-day clean-shadow-window bar
-                                                 (SI-7) and the FR-004 monthly
-                                                 credit-ceiling precondition
-  * ``ws_b_health_check.check_budget_ceiling_drift``
-                                              — the OWNER of the FR-004 monthly
-                                                 credit-ceiling contract (SI-5
-                                                 caps, ``on_exhaustion``, and the
-                                                 strict ``metered_overflow is
-                                                 False`` guard under which a
-                                                 REMOVED key fails like a flip)
-  * ``kill_switch_drill.run_all_drills``      — the 6 safety rails (SI-2..SI-7)
-  * ``kill_switch_drill.scan_gate_approval_violations``
-                                              — the event-log auto-approval scanner
-  * ``check_loop_mode.main``                  — the SI-2 loop-off tripwire
-  * ``check_never_auto_approve.main``         — the QONUN-5 board-level CI blocker
-  * ``tests/test_no_daemon.py``               — the SI-1 AST daemon scanner
-  * ``loop_controller.clean_live_days``       — the clean-day streak arithmetic
-
-There is **no readiness rule of its own** here: no threshold, no streak
-arithmetic, no cost arithmetic, no second decision engine. If a rule needs
-changing, it changes in the tool that owns it.
-
-Three states, never two
------------------------
-``PASS``    checked against real evidence, and clean.
-``FAIL``    checked against real evidence, and failing.
-``UNKNOWN`` **COULD NOT CHECK** — the evidence source is absent/empty, or the
-            check could not run. UNKNOWN is *never* a pass and always blocks GO.
-
-That third state is the whole point. ``board/.events.jsonl`` and
-``board/.metrics-history.jsonl`` do not exist yet; a naive composition would scan
-zero events, find zero violations, and report a clean bill of health from no data
-at all. Absent evidence is NOT READY, never "no issues found".
-
-Read-only
----------
-This module writes nothing, anywhere. It has no path — parameter, flag, or env
-var — that can set ``heartbeat_enabled``, and it never recommends the flip; a
-``GO`` means only that the evidence bar is met. The flip stays the Founder's act.
-(``tests/test_heartbeat_go_no_go.py`` asserts the no-write property structurally,
-over this module's AST.)
-
-Exit codes: 0 = GO, 1 = NO-GO, 2 = usage/IO error.
-
-Like ``check_heartbeat_readiness.py`` this is an OPERATOR tool, deliberately NOT
-a blocking CI step: by design it is red until go-live.
-
-Usage:
-    python3 scripts/heartbeat_go_no_go.py
-    python3 scripts/heartbeat_go_no_go.py --json
-    python3 scripts/heartbeat_go_no_go.py --history /tmp/scratch-history.jsonl
-"""
 from __future__ import annotations
 
 import argparse
@@ -77,21 +15,21 @@ from pathlib import Path
 from typing import Any
 
 _SCRIPTS = Path(__file__).resolve().parent
-if str(_SCRIPTS) not in sys.path:  # pragma: no cover - import bootstrap
+if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import check_heartbeat_readiness as hr  # noqa: E402
-import feature_flags  # noqa: E402
-import kill_switch_drill as ksd  # noqa: E402
-import loop_controller as lc  # noqa: E402
-from _paths import ROOT  # noqa: E402
+import check_heartbeat_readiness as hr
+import feature_flags
+import kill_switch_drill as ksd
+import loop_controller as lc
+from _paths import ROOT
 
-# --- the three states -------------------------------------------------------
+
 PASS = "PASS"
 FAIL = "FAIL"
 UNKNOWN = "UNKNOWN"
 
-#: Rendered banner for the composed verdict.
+
 GO = "GO"
 NO_GO = "NO-GO"
 
@@ -105,14 +43,12 @@ DEFAULT_TAXONOMY = ROOT / "config" / "risk_taxonomy.yaml"
 DEFAULT_FEATURES = ROOT / "config" / "features.yaml"
 DAEMON_SCAN_TEST = ROOT / "tests" / "test_no_daemon.py"
 
-#: The one edit this report informs. Named as data so the report can print it
-#: without any code path that could perform it.
+
 THE_FLIP = "config/features.yaml:  heartbeat_enabled: false  ->  true"
 
 
 @dataclass(frozen=True)
 class Check:
-    """One composed evidence line. ``gating`` lines decide GO/NO-GO."""
 
     key: str
     si: str
@@ -135,19 +71,10 @@ class Check:
 
 
 def _unknown(key: str, si: str, title: str, why: str, source: str) -> Check:
-    """A COULD-NOT-CHECK line. Always blocks GO — never silently a pass."""
     return Check(key, si, title, UNKNOWN, why, source)
 
 
-# ---------------------------------------------------------------------------
-# Probes — each one CALLS an existing checker and translates its result.
-# Each is individually failure-isolated to UNKNOWN: a probe that blows up must
-# never be able to disappear from the report or read as a pass.
-# ---------------------------------------------------------------------------
-
-
 def probe_flag(features_path: Path) -> Check:
-    """SI-7 — the flag whose flip this whole report informs is still OFF."""
     try:
         if not features_path.is_file():
             return _unknown(
@@ -156,7 +83,7 @@ def probe_flag(features_path: Path) -> Check:
                 _rel(features_path),
             )
         on = bool(feature_flags.enabled("heartbeat_enabled", features_path))
-    except Exception as exc:  # noqa: BLE001 — a broken probe is UNKNOWN, never a pass
+    except Exception as exc:
         return _unknown("flag_state", "SI-7", "heartbeat_enabled is still OFF",
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", _rel(features_path))
     if on:
@@ -170,11 +97,6 @@ def probe_flag(features_path: Path) -> Check:
 
 def probe_readiness(history_path: Path, budgets_path: Path, events_path: Path,
                     features_path: Path) -> tuple[Check, Check, dict[str, Any]]:
-    """SI-7 shadow window + SI-5/FR-004 credit ceiling — both from ``hr.assess``.
-
-    Returns (window_check, credit_check, raw_report). The verdicts are the
-    readiness reporter's own; this function re-derives nothing.
-    """
     win_title = "clean shadow window >= 3 days"
     cred_title = "monthly credit ceiling enforceable (FR-004)"
     try:
@@ -186,7 +108,7 @@ def probe_readiness(history_path: Path, budgets_path: Path, events_path: Path,
         )
         report = hr.assess(history, flag_on, active_plan=active_plan,
                            credit_exhausted=credit_exhausted)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         why = f"COULD NOT CHECK — {type(exc).__name__}: {exc}"
         return (
             _unknown("shadow_window", "SI-7", win_title, why, _rel(history_path)),
@@ -194,7 +116,7 @@ def probe_readiness(history_path: Path, budgets_path: Path, events_path: Path,
             {},
         )
 
-    # --- the >=3-day clean shadow window (raw counts, never a percentage) ---
+
     src_note = "" if history_path.is_file() else "  [evidence file ABSENT]"
     window = Check(
         "shadow_window", "SI-7", win_title,
@@ -204,7 +126,7 @@ def probe_readiness(history_path: Path, budgets_path: Path, events_path: Path,
         _rel(history_path),
     )
 
-    # --- the FR-004 monthly credit ceiling as a go-live precondition ---
+
     if not budgets_path.is_file():
         credit = _unknown("credit_ceiling", "SI-5/FR-004", cred_title,
                           f"COULD NOT CHECK — budgets file absent: {_rel(budgets_path)}",
@@ -225,12 +147,6 @@ def probe_readiness(history_path: Path, budgets_path: Path, events_path: Path,
 
 
 def _si5_cap_note(budgets_path: Path) -> str:
-    """The SI-5 per-run/per-day cap figures, or ``MISSING`` — never an invented value.
-
-    Display only: this string can never change the gate's state (the verdict
-    above comes from ``check_budget_ceiling_drift`` alone). A cap that is not in
-    the file renders as ``MISSING``; nothing is defaulted, coerced, or guessed.
-    """
     try:
         import ws_b_admission
 
@@ -238,7 +154,7 @@ def _si5_cap_note(budgets_path: Path) -> str:
         caps = (mustaqil or {}).get("caps") or {}
         run = (caps.get("per_run") or {}).get("max_cost_usd", "__absent__")
         day = (caps.get("per_day") or {}).get("max_cost_usd", "__absent__")
-    except Exception:  # noqa: BLE001 — a display helper never decides anything
+    except Exception:
         return "SI-5 caps: UNREADABLE"
     def fmt(value: Any) -> str:
         return "MISSING" if value == "__absent__" else f"${value}"
@@ -247,21 +163,6 @@ def _si5_cap_note(budgets_path: Path) -> str:
 
 
 def probe_credit_ceiling_shape(budgets_path: Path) -> Check:
-    """FR-004 — the ceiling is DOCUMENTED as an outer cap resolving to a sanctioned pause.
-
-    Distinct from the enforceability precondition above: this line confirms the
-    *declaration* (`on_exhaustion: sanctioned_pause`, `metered_overflow: false`,
-    the SI-5 caps, the per-plan credit table) that makes credit exhaustion an
-    expected idle rather than a false-green.
-
-    **This gate owns no predicate.** ``scripts/ws_b_health_check.py ::
-    check_budget_ceiling_drift`` (DAS-1559) is the owner of the ceiling contract
-    — including its strict ``metered_overflow is False`` identity guard, under
-    which a *removed* key fails exactly like a flip to true. This function calls
-    that checker and reports its verdict verbatim. It parses no budget field of
-    its own, so it can never assert a value the file does not contain, and it
-    cannot drift away from the owner if the contract changes.
-    """
     title = "credit exhaustion resolves to a sanctioned pause, not a false-green"
     src = (f"{_rel(budgets_path)} :: mustaqil  "
            "(owner: scripts/ws_b_health_check.py :: check_budget_ceiling_drift)")
@@ -272,7 +173,7 @@ def probe_credit_ceiling_shape(budgets_path: Path) -> Check:
         import ws_b_health_check
 
         result = ws_b_health_check.check_budget_ceiling_drift(budgets_path)
-    except Exception as exc:  # noqa: BLE001 — a probe that blows up is UNKNOWN, never a pass
+    except Exception as exc:
         return _unknown("credit_semantics", "SI-5/FR-004", title,
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", src)
     if not isinstance(result, dict) or not isinstance(result.get("ok"), bool):
@@ -285,13 +186,6 @@ def probe_credit_ceiling_shape(budgets_path: Path) -> Check:
 
 
 def probe_kill_switch_drill(*, skip: bool = False) -> Check:
-    """SI-2..SI-7 — the real 6-rail kill-switch / break-glass drill.
-
-    Calls ``kill_switch_drill.main(["--smoke"])`` so the drill owns its own
-    throwaway workspace end to end: this module never creates, writes, or
-    removes a file of its own (see ``tests/test_heartbeat_go_no_go.py``'s
-    structural no-write assertion).
-    """
     title = "kill-switch + safety-rail drill (6 rails)"
     src = "scripts/kill_switch_drill.py --smoke"
     if skip:
@@ -301,7 +195,7 @@ def probe_kill_switch_drill(*, skip: bool = False) -> Check:
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             rc = ksd.main(["--smoke"])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _unknown("kill_switch_drill", "SI-3..SI-7", title,
                         f"COULD NOT CHECK — drill raised {type(exc).__name__}: {exc}", src)
     rails = next((ln.split(":", 1)[-1].strip()
@@ -310,7 +204,7 @@ def probe_kill_switch_drill(*, skip: bool = False) -> Check:
         return _unknown("kill_switch_drill", "SI-3..SI-7", title,
                         "COULD NOT CHECK — drill usage error", src)
     if not rails:
-        # No per-rail line means we cannot say which rails held; do not claim a pass.
+
         return _unknown("kill_switch_drill", "SI-3..SI-7", title,
                         "COULD NOT CHECK — drill produced no per-rail result line", src)
     return Check("kill_switch_drill", "SI-3..SI-7", title,
@@ -318,7 +212,6 @@ def probe_kill_switch_drill(*, skip: bool = False) -> Check:
 
 
 def probe_loop_mode(loop_config: Path) -> Check:
-    """SI-2 — the self-optimizing loop stays shadow / auto_apply:false."""
     title = "self-optimizing loop stays OFF"
     src = "scripts/check_loop_mode.py"
     try:
@@ -327,16 +220,14 @@ def probe_loop_mode(loop_config: Path) -> Check:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             rc = check_loop_mode.main(["--config", str(loop_config)])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _unknown("loop_mode", "SI-2", title,
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", src)
     out = buf.getvalue().strip().splitlines()
     detail = out[-1] if out else f"exit {rc}"
     if rc == 2:
-        # Usage / config-not-found — the SAME rc=2 meaning as check_never_auto_approve.
-        # A could-not-check is reported as one, never as a checked failure. (Both
-        # block GO either way; this is about telling the Founder the truth about
-        # WHICH kind of red it is.)
+
+
         return _unknown("loop_mode", "SI-2", title, f"COULD NOT CHECK — {detail}", src)
     return Check("loop_mode", "SI-2", title, PASS if rc == 0 else FAIL, detail, src)
 
@@ -345,7 +236,6 @@ _CHECKED_RE = re.compile(r"OK:\s*(\d+)\s+tickets checked")
 
 
 def probe_never_auto_approve(board: Path, taxonomy: Path) -> Check:
-    """SI-7 / QONUN-5 — zero never-auto-approve violations on the board."""
     title = "never-auto-approve violations on the board"
     src = "scripts/check_never_auto_approve.py"
     try:
@@ -354,7 +244,7 @@ def probe_never_auto_approve(board: Path, taxonomy: Path) -> Check:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             rc = naa.main(["--board", str(board), "--config", str(taxonomy)])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _unknown("never_auto_approve", "SI-7", title,
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", src)
     text = buf.getvalue().strip()
@@ -367,8 +257,8 @@ def probe_never_auto_approve(board: Path, taxonomy: Path) -> Check:
         return Check("never_auto_approve", "SI-7", title, PASS,
                      f"0 violations across {m.group(1)} ticket(s) checked", src)
     if rc == 0:
-        # Exit 0 but no parsable ticket count: we cannot say how much was scanned,
-        # so we do not claim a clean scan.
+
+
         return _unknown("never_auto_approve", "SI-7", title,
                         "COULD NOT CHECK — checker returned 0 but reported no ticket count", src)
     last = text.strip().splitlines()[-1] if text.strip() else "violations reported"
@@ -376,12 +266,6 @@ def probe_never_auto_approve(board: Path, taxonomy: Path) -> Check:
 
 
 def probe_event_log_violations(events_path: Path) -> Check:
-    """SI-7 — zero AUTO-approved gate/interrupt events in the real event log.
-
-    The single most likely way this whole report could lie: an absent or empty
-    event store scans to zero violations. Zero events is **no evidence**, not a
-    clean bill of health — so both cases return UNKNOWN, never PASS.
-    """
     title = "zero auto-approved gate/interrupt events in the event log"
     src = _rel(events_path)
     if not events_path.is_file():
@@ -390,7 +274,7 @@ def probe_event_log_violations(events_path: Path) -> Check:
                         "NOT evidence of 0 violations", src)
     try:
         events = lc._load_jsonl(events_path)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _unknown("event_log", "SI-7", title,
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", src)
     if not events:
@@ -407,14 +291,6 @@ def probe_event_log_violations(events_path: Path) -> Check:
 
 
 def probe_interrupt_cards(interrupts_dir: Path) -> Check:
-    """SI-7 — no interrupt-card is still waiting on the Founder.
-
-    A *card* is a JSON object carrying a ``question`` — the first field
-    ``board/interrupts/schema.json`` marks required. The schema file itself
-    therefore is not a card and is not counted as an open question. An
-    unparseable file IS counted as open: we cannot read it, so we cannot claim
-    it is answered.
-    """
     title = "no interrupt-card awaiting a Founder answer"
     src = _rel(interrupts_dir)
     if not interrupts_dir.is_dir():
@@ -425,12 +301,12 @@ def probe_interrupt_cards(interrupts_dir: Path) -> Check:
     for card in sorted(interrupts_dir.glob("*.json")):
         try:
             data = json.loads(card.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001 — an unreadable file is an OPEN question
+        except Exception:
             total += 1
             open_cards.append(f"{card.name} (unreadable)")
             continue
         if not (isinstance(data, dict) and "question" in data):
-            continue  # not an interrupt card (e.g. schema.json)
+            continue
         total += 1
         answer = data.get("resume")
         if not (isinstance(answer, str) and answer.strip()):
@@ -444,7 +320,6 @@ def probe_interrupt_cards(interrupts_dir: Path) -> Check:
 
 
 def probe_no_daemon(*, skip: bool = False) -> Check:
-    """SI-1 — the in-repo half: no daemon pattern in any scheduler file."""
     title = "scheduler is one-shot, not a daemon (in-repo half)"
     src = "tests/test_no_daemon.py"
     if skip:
@@ -454,11 +329,11 @@ def probe_no_daemon(*, skip: bool = False) -> Check:
         return _unknown("no_daemon", "SI-1", title,
                         f"COULD NOT CHECK — scanner absent: {src}", src)
     try:
-        proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        proc = subprocess.run(
             [sys.executable, "-m", "pytest", str(DAEMON_SCAN_TEST), "-q"],
             cwd=ROOT, capture_output=True, text=True, timeout=300, check=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _unknown("no_daemon", "SI-1", title,
                         f"COULD NOT CHECK — {type(exc).__name__}: {exc}", src)
     tail = [ln.strip(" =").strip() for ln in proc.stdout.strip().splitlines() if ln.strip(" =").strip()]
@@ -467,16 +342,10 @@ def probe_no_daemon(*, skip: bool = False) -> Check:
                  PASS if proc.returncode == 0 else FAIL, detail, src)
 
 
-# ---------------------------------------------------------------------------
-# Context lines — reported, never gating (they inform, they do not decide).
-# ---------------------------------------------------------------------------
-
-
 def context_lines(history_path: Path, events_path: Path, loop_config: Path) -> list[Check]:
-    """The two other '>=N' numbers plus SI-1's external half — INFO, never gates."""
     out: list[Check] = []
 
-    # Clock 2 — the LADDER promotion clock (SI-2). Gates config/loop.yaml, NOT the flip.
+
     try:
         history = lc._load_jsonl(history_path)
         mode = str(lc._load_yaml(loop_config).get("mode") or "unknown")
@@ -490,12 +359,12 @@ def context_lines(history_path: Path, events_path: Path, loop_config: Path) -> l
             "scripts/loop_controller.py (MIN_CLEAN_DAYS=7) + a human-approved GATE-6 record",
             gating=False,
         ))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         out.append(Check("ladder_clock", "SI-2", "loop-promotion ladder clock (a DIFFERENT clock)",
                          UNKNOWN, f"COULD NOT CHECK — {type(exc).__name__}: {exc}",
                          "scripts/loop_controller.py", gating=False))
 
-    # Release criterion — >=7 ROLLING WAVES. Not a clock at all; gates VERSION only.
+
     if not events_path.is_file():
         out.append(Check("rolling_waves", "—", "release criterion: >= 7 rolling waves",
                          UNKNOWN,
@@ -513,12 +382,12 @@ def context_lines(history_path: Path, events_path: Path, loop_config: Path) -> l
                              "not days, gates a VERSION bump only, authorizes no autonomy "
                              "— NOT a blocker for this decision",
                              _rel(events_path), gating=False))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             out.append(Check("rolling_waves", "—", "release criterion: >= 7 rolling waves",
                              UNKNOWN, f"COULD NOT CHECK — {type(exc).__name__}: {exc}",
                              _rel(events_path), gating=False))
 
-    # SI-1's external half — covered-by-construction, no repo-side artifact exists.
+
     out.append(Check(
         "os_scheduler", "SI-1", "OS scheduler entry (external half)", UNKNOWN,
         "COVERED-BY-CONSTRUCTION — the cadence lives in a Founder-owned launchd/cron "
@@ -528,11 +397,6 @@ def context_lines(history_path: Path, events_path: Path, loop_config: Path) -> l
         "board/schedule.yaml", gating=False,
     ))
     return out
-
-
-# ---------------------------------------------------------------------------
-# Composition + verdict
-# ---------------------------------------------------------------------------
 
 
 def collect(
@@ -548,7 +412,6 @@ def collect(
     skip_drill: bool = False,
     skip_daemon_scan: bool = False,
 ) -> tuple[list[Check], list[Check], dict[str, Any]]:
-    """Run every probe. Returns (gating_checks, context_checks, raw_readiness)."""
     window, credit, raw = probe_readiness(history, budgets, events, features)
     gating = [
         probe_flag(features),
@@ -566,19 +429,8 @@ def collect(
 
 
 def verdict(gating: list[Check]) -> dict[str, Any]:
-    """GO iff every gating line is PASS. UNKNOWN never counts as a pass.
-
-    A **whitelist**, deliberately: GO requires positive evidence of PASS on every
-    gating line, not merely the absence of the two failure states we happen to
-    know about. Under the earlier blacklist form a gate carrying any *novel*
-    state string counted as neither failed nor unknown and so aggregated to GO —
-    the opposite of this instrument's thesis. Any state that is not exactly
-    ``PASS`` blocks GO and is reported as a could-not-check.
-
-    An empty gating list is NO-GO: no evidence is not a pass either.
-    """
     failed = [c for c in gating if c.state == FAIL]
-    # UNKNOWN *and* any unrecognised state: we cannot read it as a pass.
+
     unknown = [c for c in gating if c.state not in (PASS, FAIL)]
     go = bool(gating) and all(c.state == PASS for c in gating)
     return {
@@ -591,7 +443,6 @@ def verdict(gating: list[Check]) -> dict[str, Any]:
 
 
 def build_report(**kwargs: Any) -> dict[str, Any]:
-    """The whole report as data (the ``--json`` payload)."""
     gating, context, raw = collect(**kwargs)
     v = verdict(gating)
     return {
@@ -606,10 +457,6 @@ def build_report(**kwargs: Any) -> dict[str, Any]:
         "readiness_reporter": raw,
     }
 
-
-# ---------------------------------------------------------------------------
-# Rendering — the Founder-facing surface
-# ---------------------------------------------------------------------------
 
 _W = 78
 
@@ -628,15 +475,14 @@ def _wrap(text: str, indent: int, width: int = _W) -> list[str]:
 
 
 def _para(text: str, indent: int, *, hang: int | None = None) -> list[str]:
-    """Wrapped text, actually indented (first line at *indent*, rest at *hang*)."""
     lines = _wrap(text, indent)
     hang_n = indent if hang is None else hang
     return [" " * indent + lines[0]] + [" " * hang_n + ln for ln in lines[1:]]
 
 
 def _block(state: str, title: str, detail: str, si: str) -> list[str]:
-    # An unrecognised state renders as itself — never as PASS, and never as a
-    # KeyError that would take the whole Founder-facing report down.
+
+
     label = {PASS: "PASS   ", FAIL: "FAIL   ", UNKNOWN: "UNKNOWN"}.get(state, f"{state[:7]:<7}")
     lines = [f"  [{label}] {title}  ({si})"]
     lines += [f"            {ln}" for ln in _wrap(detail, 12)]
@@ -748,13 +594,8 @@ def render(report: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='heartbeat_go_no_go.py — the ONE Founder-facing go/no-go readiness report (DAS-1619).')
     ap.add_argument("--history", type=Path, default=DEFAULT_HISTORY)
     ap.add_argument("--events", type=Path, default=DEFAULT_EVENTS)
     ap.add_argument("--budgets", type=Path, default=DEFAULT_BUDGETS)

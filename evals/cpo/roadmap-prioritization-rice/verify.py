@@ -1,15 +1,3 @@
-"""Deterministic verifier — cpo / roadmap-prioritization-rice.
-
-Computes RICE = (reach * impact * confidence) / effort_weeks for every
-candidate feature, then brute-forces the capacity-feasible subset with the
-maximum total RICE value (n is small, so 2**n subsets is cheap and exact).
-
-credit = 0.0                                   if submission violates capacity
-credit = clamp01(achieved_value / optimal_value) otherwise
-
-Deterministic (no clock/model/randomness). An empty submission scores 0.0.
-The optimal subset is derived here only — never spelled out in fixtures/task.md.
-"""
 
 from __future__ import annotations
 
@@ -45,7 +33,6 @@ def _optimal_value(capacity: int, features: dict[str, tuple[float, int]]) -> flo
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     capacity, features = _load(fixtures)
     optimal_value = _optimal_value(capacity, features)
     if optimal_value <= 0:

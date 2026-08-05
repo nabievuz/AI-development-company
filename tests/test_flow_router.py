@@ -1,36 +1,17 @@
 #!/usr/bin/env python3
-"""tests/test_flow_router.py — unit tests for scripts/flow_router.py (WS4 HEARTBEAT, P14).
 
-Covers, per the acceptance criteria:
-  - a decision test for EACH of the 5 triggers (ticket_created, wave_completed,
-    interrupt_answered, after_n_runs, cron_tick);
-  - determinism (same event stream -> same decision);
-  - the closed decision alphabet (dispatch/validate/idle only — SI-7 no "answer");
-  - SI-6 max-1-wave (in-flight -> dispatch degrades to idle);
-  - SI-3/SI-4/SI-5 dispatch gates (break-glass / quiet-hours / budget);
-  - failure isolation (malformed events, unknown trigger, reader error -> idle,
-    never a crash);
-  - the store reader reuses wave_kpi.read_events (ADR-0025), never re-parses;
-  - the router never auto-answers a gate/interrupt (SI-7).
-"""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Import the module under test from scripts/ (same pattern as the other suites).
-# ---------------------------------------------------------------------------
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import flow_router as fr  # noqa: E402
-
-# ---------------------------------------------------------------------------
-# Event-stream fixtures (shape per scripts/dgox/events.py: run_start/run_end)
-# ---------------------------------------------------------------------------
+import flow_router as fr
 
 
 def _run_start(rid: str) -> dict:
@@ -46,7 +27,6 @@ def _run_end(rid: str) -> dict:
 
 
 def _n_completed_runs(n: int) -> list[dict]:
-    """n fully-paired (started+ended) runs — no wave in flight."""
     events: list[dict] = []
     for i in range(n):
         rid = f"run-{i:04d}"
@@ -55,17 +35,11 @@ def _n_completed_runs(n: int) -> list[dict]:
     return events
 
 
-# ===========================================================================
-# Decision alphabet & value objects
-# ===========================================================================
-
-
 class TestDecisionAlphabet:
     def test_decisions_are_exactly_three(self) -> None:
         assert {"dispatch", "validate", "idle"} == fr.DECISIONS
 
     def test_no_answer_or_approve_action_exists(self) -> None:
-        """SI-7: the closed alphabet structurally cannot answer a gate/interrupt."""
         for forbidden in ("answer", "approve", "resume", "sign", "gate"):
             assert forbidden not in fr.DECISIONS
 
@@ -80,18 +54,12 @@ class TestDecisionAlphabet:
         assert d.as_dict() == {"action": "idle", "trigger": "cron_tick", "reason": "why"}
 
 
-# ===========================================================================
-# One decision test PER trigger (acceptance criterion)
-# ===========================================================================
-
-
 class TestTriggerTicketCreated:
     def test_dispatches_when_idle(self) -> None:
         d = fr.route(fr.TickContext(trigger="ticket_created", events=[]))
         assert d.action == fr.DISPATCH
 
     def test_idle_when_wave_in_flight(self) -> None:
-        """SI-6: a new ticket does not stack a second wave."""
         d = fr.route(fr.TickContext(trigger="ticket_created", events=[_run_start("r1")]))
         assert d.action == fr.IDLE
         assert "SI-6" in d.reason
@@ -103,7 +71,6 @@ class TestTriggerWaveCompleted:
         assert d.action == fr.VALIDATE
 
     def test_validate_is_safe_even_with_wave_in_flight(self) -> None:
-        """validate is read-only, so SI-6 does not downgrade it."""
         events = [*_n_completed_runs(1), _run_start("live")]
         d = fr.route(fr.TickContext(trigger="wave_completed", events=events))
         assert d.action == fr.VALIDATE
@@ -113,15 +80,13 @@ class TestTriggerInterruptAnswered:
     def test_dispatches_to_resume_when_idle(self) -> None:
         d = fr.route(fr.TickContext(trigger="interrupt_answered", events=[]))
         assert d.action == fr.DISPATCH
-        assert "SI-7" in d.reason  # documents "never auto-answers"
+        assert "SI-7" in d.reason
 
     def test_idle_when_wave_in_flight(self) -> None:
         d = fr.route(fr.TickContext(trigger="interrupt_answered", events=[_run_start("r1")]))
         assert d.action == fr.IDLE
 
     def test_never_auto_answers_only_dispatches(self) -> None:
-        """SI-7: the resume trigger can only ever produce dispatch/idle — never an
-        'answer'. The router acts on a human-supplied answer; it never makes one."""
         idle = fr.route(fr.TickContext(trigger="interrupt_answered", events=[_run_start("r")]))
         disp = fr.route(fr.TickContext(trigger="interrupt_answered", events=[]))
         assert {idle.action, disp.action} <= fr.DECISIONS
@@ -165,11 +130,6 @@ class TestTriggerCronTick:
         assert d.action == fr.IDLE
 
 
-# ===========================================================================
-# SI-3 / SI-4 / SI-5 dispatch gates (ADR-0027)
-# ===========================================================================
-
-
 class TestDispatchSafetyGates:
     def test_break_glass_forces_idle(self) -> None:
         d = fr.route(fr.TickContext(trigger="ticket_created", events=[], break_glass_active=True))
@@ -188,7 +148,6 @@ class TestDispatchSafetyGates:
         assert "SI-5" in d.reason
 
     def test_monthly_credit_exhausted_forces_idle(self) -> None:
-        """FR-004/DAS-1618: the outer monthly credit ceiling blocks dispatch too."""
         d = fr.route(fr.TickContext(
             trigger="ticket_created", events=[], monthly_credit_exhausted=True))
         assert d.action == fr.IDLE
@@ -196,8 +155,6 @@ class TestDispatchSafetyGates:
         assert "sanctioned pause" in d.reason
 
     def test_monthly_credit_exhausted_is_a_reason_never_a_fourth_action(self) -> None:
-        """sanctioned_pause is a REASON STRING, never a new decision action —
-        the closed alphabet {dispatch, validate, idle} does not widen."""
         d = fr.route(fr.TickContext(
             trigger="interrupt_answered", events=[], monthly_credit_exhausted=True))
         assert d.action in fr.DECISIONS
@@ -205,29 +162,20 @@ class TestDispatchSafetyGates:
         assert frozenset({"dispatch", "validate", "idle"}) == fr.DECISIONS
 
     def test_monthly_credit_exhausted_never_blocks_validate(self) -> None:
-        """Blocks dispatch only — never validate (quiet-hours precedent)."""
         d = fr.route(fr.TickContext(
             trigger="wave_completed", events=[], monthly_credit_exhausted=True))
         assert d.action == fr.VALIDATE
 
     def test_monthly_credit_exhausted_never_raises_or_errors(self) -> None:
-        """Exhaustion must not raise and must not be an error decision — it is
-        an expected idle, like a gate."""
         d = fr.route(fr.TickContext(
             trigger="cron_tick", events=[], pending_work=True, monthly_credit_exhausted=True))
         assert d.action == fr.IDLE
 
     def test_gates_do_not_block_validate(self) -> None:
-        """A validate decision is read-only; the dispatch gates never touch it."""
         d = fr.route(fr.TickContext(
             trigger="wave_completed", events=[], break_glass_active=True,
             in_quiet_hours=True, per_day_budget_exceeded=True, monthly_credit_exhausted=True))
         assert d.action == fr.VALIDATE
-
-
-# ===========================================================================
-# SI-6 in-flight detection helpers
-# ===========================================================================
 
 
 class TestInFlightDetection:
@@ -240,11 +188,6 @@ class TestInFlightDetection:
 
     def test_max_concurrent_waves_is_one(self) -> None:
         assert fr.MAX_CONCURRENT_WAVES == 1
-
-
-# ===========================================================================
-# Determinism
-# ===========================================================================
 
 
 class TestDeterminism:
@@ -265,11 +208,6 @@ class TestDeterminism:
             assert a in fr.DECISIONS
 
 
-# ===========================================================================
-# Failure isolation
-# ===========================================================================
-
-
 class TestFailureIsolation:
     def test_unknown_trigger_degrades_to_idle(self) -> None:
         d = fr.route(fr.TickContext(trigger="not_a_trigger", events=[]))
@@ -277,7 +215,7 @@ class TestFailureIsolation:
 
     def test_malformed_events_do_not_crash(self) -> None:
         junk = [None, 42, "string", [], {"no": "type"}, {"event_type": "run_start"}]
-        # No run_id on the run_start => not counted in-flight; must not raise.
+
         d = fr.route(fr.TickContext(trigger="ticket_created", events=junk))
         assert d.action in fr.DECISIONS
 
@@ -297,14 +235,9 @@ class TestFailureIsolation:
             raise OSError("disk gone")
 
         monkeypatch.setattr(wave_kpi, "read_events", boom)
-        # route_from_store must not propagate the reader error.
+
         d = fr.route_from_store("ticket_created")
         assert d.action in fr.DECISIONS
-
-
-# ===========================================================================
-# Store reader (ADR-0025 — reuse wave_kpi.read_events, no re-parse)
-# ===========================================================================
 
 
 class TestStoreReader:
@@ -312,7 +245,6 @@ class TestStoreReader:
         assert fr.read_event_stream(str(tmp_path / "nope.jsonl")) == []
 
     def test_route_from_store_reads_via_wave_kpi(self, tmp_path: Path, monkeypatch) -> None:
-        """route_from_store must go through wave_kpi.read_events, not a private parser."""
         import wave_kpi
 
         called: dict[str, object] = {}
@@ -325,7 +257,7 @@ class TestStoreReader:
         monkeypatch.setattr(wave_kpi, "read_events", fake_read_events)
         d = fr.route_from_store("ticket_created", path="X")
         assert called["path"] == "X"
-        # sentinel has a wave in flight => ticket_created dispatch withheld (SI-6).
+
         assert d.action == fr.IDLE
 
     def test_route_from_store_end_to_end_with_real_reader(self, tmp_path: Path) -> None:
@@ -336,11 +268,6 @@ class TestStoreReader:
                 fh.write(_json.dumps(ev) + "\n")
         d = fr.route_from_store("after_n_runs", path=str(store), checkpoint_every=10)
         assert d.action == fr.VALIDATE
-
-
-# ===========================================================================
-# CLI (evaluator/reporter — exit 0, never mutates)
-# ===========================================================================
 
 
 class TestCLI:

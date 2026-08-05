@@ -1,22 +1,7 @@
-# config/budgets.yaml — DasLab cost budget SSOT (ORGANISM WS3 P12 / DAS-1459)
-#
-# Pricing source: claude-api skill, Current Models table cached 2026-06-04.
-# Re-verify these numbers when model IDs or list prices change.
-#
-# Unit prices are USD per 1 million tokens.
-# cached_input_per_1m = cache-read price ≈ 0.1× base input (per shared/prompt-caching.md).
-#
-# To update: check the claude-api skill "Current Models" table, confirm new
-# model IDs in governance/policies/model-allocation.md, then update the tier
-# sections below and re-run `python3 scripts/check_cost.py`.
 
 version: 1
 updated: 2026-07-03
 
-# ---------------------------------------------------------------------------
-# Per-tier unit prices  (opus / sonnet / haiku — Model Allocation Law)
-# ---------------------------------------------------------------------------
-# Pricing source: claude-api skill, Current Models table cached 2026-06-04
 tiers:
   opus:
     model_id: claude-opus-4-8
@@ -36,164 +21,56 @@ tiers:
     cached_input_per_1m: 0.10
     output_per_1m: 5.00
 
-# ---------------------------------------------------------------------------
-# Per-run caps  (informational — not a blocking gate until C1 is promoted)
-# ---------------------------------------------------------------------------
 caps:
   per_run:
-    max_input_tokens: 10_000_000      # 10M input tokens per run
-    max_output_tokens: 2_000_000      # 2M output tokens per run
-    max_cost_usd: 50.00               # $50 estimated cost per run
+    max_input_tokens: 10_000_000
+    max_output_tokens: 2_000_000
+    max_cost_usd: 50.00
 
   per_day:
-    max_input_tokens: 100_000_000     # 100M input tokens per calendar day
-    max_output_tokens: 20_000_000     # 20M output tokens per calendar day
-    max_cost_usd: 500.00              # $500 estimated cost per calendar day
+    max_input_tokens: 100_000_000
+    max_output_tokens: 20_000_000
+    max_cost_usd: 500.00
 
-# ---------------------------------------------------------------------------
-# MUSTAQIL program budget (DAS-1543 / discovery Q3 + Q9)
-# ---------------------------------------------------------------------------
-# The MUSTAQIL autonomous finisher runs on a **Claude subscription** via the
-# ADR-0034 Agent SDK runner (account auth, not a metered API key), so its budget
-# stance is stricter and different from the org-wide informational `caps:` above.
-#
-# Discovery answers (docs/research/2026-07-23-daslab-mustaqil-discovery-answers.md):
-#   Q3 = "Conservative defaults" — low per-run / per-day caps; a wave that would
-#        breach a cap evaluates to **idle + alert** (ADR-0027 SI-5), dispatching
-#        nothing (breach -> scripts/alerting.py).
-#   Q9 = "Must work on a Claude subscription" — Agent SDK usage draws from the
-#        plan's **monthly credit** first; that monthly credit is the **outer
-#        ceiling** (ADR-0027 SI-5 hard dispatch ceiling for the substrate).
-#
-# Semantics the MUSTAQIL runner MUST honor:
-#   - per_run / per_day caps below are the runner's HARD dispatch ceiling
-#     (self-imposed autonomy budget, stricter than the shared gate — SI-5).
-#     A `--tick` that would breach either evaluates to idle + alert, never a
-#     partial/degraded dispatch and never a false-green.
-#   - monthly_credit_ceiling is the OUTER ceiling: when the subscription's
-#     monthly credit depletes, further Agent SDK requests stop until the credit
-#     refreshes. This halt is a **sanctioned pause, not a failure** — treat a
-#     credit-refresh wait like a gate (an expected idle), never a crash/false-green.
-#   - metered_overflow: OFF. Usage credits (standard API-rate overflow) stay
-#     DISABLED so spend can never exceed the subscription — the "subscription-only,
-#     no metered $" intent. Flipping this ON is a Founder-only budget decision.
-#   - Size waves to fit the monthly credit; do not assume overflow exists.
 mustaqil:
-  # Runner is on a subscription, so cost is bounded by credit, not a metered bill;
-  # these caps are the conservative self-imposed per-run/per-day dispatch ceiling.
   caps:
     per_run:
-      max_input_tokens: 2_000_000     # 2M input tokens per wave (conservative)
-      max_output_tokens: 400_000      # 400K output tokens per wave
-      max_cost_usd: 5.00              # ~$5 estimated equivalent per wave
+      max_input_tokens: 2_000_000
+      max_output_tokens: 400_000
+      max_cost_usd: 5.00
     per_day:
-      max_input_tokens: 20_000_000    # 20M input tokens per calendar day
-      max_output_tokens: 4_000_000    # 4M output tokens per calendar day
-      max_cost_usd: 15.00             # ~$15 estimated equivalent per day
-  # breach of a cap above -> the runner idles and alerts (does not dispatch).
-  on_breach: idle_and_alert           # ADR-0027 SI-5; wired via scripts/alerting.py
-  # The subscription monthly credit is the OUTER ceiling (Q9). Values are the
-  # per-plan monthly credit; the active plan's figure is the real ceiling.
+      max_input_tokens: 20_000_000
+      max_output_tokens: 4_000_000
+      max_cost_usd: 15.00
+  on_breach: idle_and_alert
   monthly_credit_ceiling:
-    # Active subscription plan (DAS-1629). Founder-stated verbatim 2026-07-25:
-    # "active_plan is max_20x". Keys into plan_credit_usd below -> $200/mo
-    # ceiling. This is the selector loop_controller._monthly_credit_exhausted /
-    # check_heartbeat_readiness read to make the FR-004 outer ceiling enforceable;
-    # while undeclared the tick path stayed inert by design. Changing the plan is
-    # a Founder-only budget decision.
     active_plan: max_20x
     plan_credit_usd:
-      pro: 20                         # Claude Pro   ($20/mo credit)
-      max_5x: 100                     # Claude Max 5x ($100/mo credit)
-      max_20x: 200                    # Claude Max 20x ($200/mo credit)
-    on_exhaustion: sanctioned_pause   # credit depleted -> expected halt, NOT a failure
-    metered_overflow: false           # usage-credit / API-rate overflow stays OFF
-  # [NEEDS VERIFICATION at WS-B go-live] the credit-based subscription model was
-  # announced 2026-06-15 then paused; confirm the live plan's Agent-SDK terms,
-  # per-plan credit, and headless-use policy before the runner goes live.
+      pro: 20
+      max_5x: 100
+      max_20x: 200
+    on_exhaustion: sanctioned_pause
+    metered_overflow: false
 
-# ---------------------------------------------------------------------------
-# Third-party per-call spend (DAS-1647, routed from DAS-1645's security
-# sign-off — governance/policies/third-party-model-tools.md §5)
-# ---------------------------------------------------------------------------
-# SHAPE DECISION, recorded per the ticket's explicit instruction: this is a
-# NEW top-level section, not a generalisation of `tiers:` above.
-#
-#   `tiers:` prices Claude models in USD PER 1,000,000 TOKENS — that unit is
-#   the SI-5-metered Anthropic rail every prior spend line in this org bills
-#   through (see the file header). An image call from mcp__imagegen bills a
-#   REAL EXTERNAL ACCOUNT (OPENROUTER_API_KEY) and is priced PER IMAGE, a
-#   different, non-token unit. Reusing a `tiers:` entry for it — e.g. writing
-#   a per-image dollar figure into an `input_per_1m` field, or adding a
-#   fractional "tokens per image" fudge factor to force the shape to fit —
-#   would make a field's meaning depend on which model reads it, which is
-#   exactly the kind of rot this file's own header warns against ("re-verify
-#   these numbers when model IDs or list prices change" only works if a
-#   reader can trust what unit a number is already in). `third_party_tools:`
-#   is a parallel section, `usd_per_image` a distinct unit name — nothing
-#   here can be misread as a token price, and nothing in `tiers:` had to
-#   change shape to accommodate it.
 third_party_tools:
   imagegen:
-    # Sidecar: tools/mcp_bridges/imagegen_tool_bridge.py (mcp__imagegen),
-    # admitted via the ADR-0033 edge. Grant today: cdo, design-lead,
-    # product-designer only (governance/policies/third-party-model-tools.md
-    # §5) — widening is blocked until this ceiling is mechanically enforced.
     provider: openrouter
     unit: usd_per_image
     models:
-      # google/gemini-3-pro-image-preview ("Nano Banana Pro") — the
-      # sidecar's default/quality model.
-      #   PRICE: $0.134 per image (<=2K resolution; $0.24 at 4K — this uses
-      #   the cheaper/standard figure, i.e. NOT the conservative one for an
-      #   individual call, see the per_day cap note below for how that's
-      #   compensated).
-      #   SOURCE: https://ai.google.dev/gemini-api/docs/pricing — Google's
-      #   direct-API list price ("$120.00 per 1M output tokens ... equivalent
-      #   to $0.134 per 1K/2K image"). Read 2026-08-04.
-      #   ASSUMPTION, recorded per the ticket's instruction: the sidecar
-      #   calls this model THROUGH OpenRouter, not Google's direct API.
-      #   OpenRouter's own model page
-      #   (https://openrouter.ai/google/gemini-3-pro-image-preview, read
-      #   2026-08-04) publishes only token pricing ("$2 / $12 per 1M") — no
-      #   per-image figure — and that token rate does not match Google's
-      #   direct rate, so it is not a simple pass-through. Absent a published
-      #   OpenRouter per-image number, Google's direct-API list price is used
-      #   as the best available documented figure, not a confirmed OpenRouter
-      #   invoice line. Re-verify against a real OpenRouter invoice/receipt
-      #   before relying on this for anything tighter than the conservative
-      #   per_day cap below.
       google/gemini-3-pro-image-preview:
         usd_per_image: 0.134
         source: "https://ai.google.dev/gemini-api/docs/pricing"
         source_read_date: 2026-08-04
         pricing_basis: "google_direct_api_list_price_used_as_openrouter_stand_in"
 
-      # google/gemini-2.5-flash-image ("Nano Banana") — the sidecar's cheap
-      # draft model.
-      #   PRICE: $0.039 per image (<=1024x1024; Google states a standard
-      #   image is 1290 output tokens at $30/1M output tokens = $0.039).
-      #   SOURCE: https://ai.google.dev/gemini-api/docs/pricing — read
-      #   2026-08-04.
-      #   Same OpenRouter caveat as above: OpenRouter's page
-      #   (https://openrouter.ai/google/gemini-2.5-flash-image, read
-      #   2026-08-04) shows "$0.30 / $2.50 per 1M" token pricing, not a
-      #   per-image figure, and does not match Google's direct rate.
       google/gemini-2.5-flash-image:
         usd_per_image: 0.039
         source: "https://ai.google.dev/gemini-api/docs/pricing"
         source_read_date: 2026-08-04
         pricing_basis: "google_direct_api_list_price_used_as_openrouter_stand_in"
 
-    # Mechanical ceiling — governance/policies/third-party-model-tools.md §5
-    # requires that exceeding this DENIES (scripts/check_cost.py exits 1),
-    # never just warns. Deliberately conservative rather than tightly tuned:
-    # the reviewer's framing is that today's grant (3 design roles) is
-    # bounded, not urgent — the provider account already carries its own
-    # credit ceiling, so this is a repo-side backstop against a runaway
-    # retry loop, not an attempt to predict real design-wave volume.
     caps:
       per_day:
-        max_calls: 40        # generous vs. 3 roles' realistic daily draft volume
-        max_cost_usd: 6.00    # >= 40 calls at the pricier model's rate (40 * 0.134 = 5.36)
-    on_breach: deny            # exceeding EITHER field above = deny, not a warning
+        max_calls: 40
+        max_cost_usd: 6.00
+    on_breach: deny

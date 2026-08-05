@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""consolidate_memory.py — read-only idle-time memory consolidation (R10 / P21).
 
-The "sleep-time" consolidation pass over the durable memory outbox
-(``board/.arcrift-outbox.jsonl``). It applies the composite recall RANKING
-(similarity + recency half-life + importance — ``scripts/memory_lib.py``) to the
-ACTUAL store, runs an A/B ordering comparison (composite ranker vs a
-similarity-only baseline), and REPORTS prune-hygiene candidates — writing a
-consolidation run log.
-
-STRICTLY READ-ONLY. It never calls ``prune_memory`` / ``store_memory`` and never
-mutates the store: actual pruning stays a Founder-gated ArcRift act
-(``memory_lib.prune_hygiene_candidates`` is a pure candidate list; see its module
-comment "Schedule via WS4 HEARTBEAT; do NOT wire a live loop here"). This CLI is
-exactly the "idle-time consolidation job" ``board/schedule.yaml`` declares
-(documented, not installed) — it EVALUATES and LOGS what a consolidation would
-consider; it dispatches and mutates nothing (ADR-0027 SI-7).
-
-The recall weights come from ``config/memory_governance.yaml`` (``ranking:`` — the
-SSOT); an outbox write that carries no explicit ``trust_score`` gets an honest,
-explicit ``--default-trust`` (never a fabricated per-record metric).
-"""
 
 from __future__ import annotations
 
@@ -33,35 +13,26 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
 
-import memory_lib as ml  # noqa: E402
-import yaml  # noqa: E402
+import memory_lib as ml
+import yaml
 
 DEFAULT_STORE = _ROOT / "board" / ".arcrift-outbox.jsonl"
 DEFAULT_CONFIG = _ROOT / "config" / "memory_governance.yaml"
-# Neutral provenance for an outbox write with no explicit trust_score. An explicit
-# knob (never a hidden fabricated metric); 0.5 == the config's cited_source tier.
+
+
 DEFAULT_TRUST = 0.5
 
 
 def _utcnow_naive() -> dt.datetime:
-    """Current UTC as a NAIVE datetime (memory_lib.parse_iso returns naive UTC)."""
     return dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
 
 
 def _normalize_ts(raw: object) -> str:
-    """Return a parse_iso-compatible 'YYYY-MM-DDTHH:MM:SSZ' from a tolerant ISO input.
-
-    memory_lib.parse_iso only accepts whole-second 'Z' or plain-date forms, but the
-    live ArcRift outbox writes MICROSECOND stamps (e.g. '2026-06-24T19:56:15.614434Z')
-    and offset forms. Without this normalization, parse_iso returns None and the
-    recency term silently collapses to 0 for exactly the format the real store uses.
-    Returns '' when the value cannot be parsed at all (recency then honestly 0).
-    """
     if not raw:
         return ""
     s = str(raw).strip()
     if ml.parse_iso(s) is not None:
-        return s  # already an accepted whole-second / date form
+        return s
     try:
         parsed = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
@@ -77,7 +48,6 @@ def load_config(path: str | Path) -> dict:
 
 
 def load_outbox(path: str | Path) -> list[dict]:
-    """Return raw records from the JSONL outbox (tolerant: skips blank/bad lines)."""
     p = Path(path)
     if not p.is_file():
         return []
@@ -96,14 +66,6 @@ def load_outbox(path: str | Path) -> list[dict]:
 
 
 def normalize(record: dict, index: int, default_trust: float = DEFAULT_TRUST) -> dict:
-    """Map a heterogeneous outbox record to the dict shape memory_lib expects.
-
-    Outbox writes use a ``memory`` / ``fact`` / ``content`` key + ``ts`` +
-    ``project`` and carry no id / trust_score / created_at; missing fields get
-    honest defaults (``trust_score = default_trust`` — an explicit knob, never a
-    fabricated per-record value). ``mem_type`` (not ``type``) is the key
-    ``ttl_for`` reads.
-    """
     content = record.get("content") or record.get("memory") or record.get("fact") or ""
     return {
         "id": str(record.get("id") or f"outbox-{index}"),
@@ -113,14 +75,13 @@ def normalize(record: dict, index: int, default_trust: float = DEFAULT_TRUST) ->
         "trust_score": float(
             default_trust if record.get("trust_score") is None else record.get("trust_score")
         ),
-        "importance": record.get("importance"),  # None -> composite falls back to trust
+        "importance": record.get("importance"),
         "status": record.get("status", ""),
         "mem_type": record.get("mem_type") or record.get("type") or "fact",
     }
 
 
 def _similarity_order(memories: list[dict], query: str) -> list[dict]:
-    """Filter-only baseline: order by token-Jaccard similarity alone."""
     return sorted(
         memories,
         key=lambda m: ml.jaccard(query, str(m.get("content", ""))),
@@ -131,7 +92,6 @@ def _similarity_order(memories: list[dict], query: str) -> list[dict]:
 def consolidate(
     memories: list[dict], query: str, now: dt.datetime, config: dict, top_k: int = 3
 ) -> dict:
-    """Run the read-only consolidation and return a JSON-able run-log dict."""
     ranking_cfg = config.get("ranking", {}) or {}
     recallable = ml.recallable(memories, now, config)
     ranked = ml.rank_memories(memories, query, now, config)
@@ -172,7 +132,7 @@ def consolidate(
                 "tests/test_memory_governance.py::test_rank_memories_ab_vs_filter_baseline"
             ),
         },
-        # ALWAYS empty — this pass is read-only; prune/store are Founder-gated.
+
         "mutations": [],
     }
 

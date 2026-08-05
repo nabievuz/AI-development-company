@@ -1,11 +1,3 @@
-"""tests/test_artifact_schemas.py — pytest suite for scripts/artifact_schemas.py.
-
-Covers the pydantic-backed (stdlib-fallback) artifact-schema loader introduced by
-DAS-1467: valid load, unknown field type, missing required keys, name/stem
-mismatch, non-mapping / invalid YAML, version bounds, and the registry helpers.
-The behaviour is identical whether or not pydantic is installed (the fallback
-enforces the same constraints), so these tests do not depend on pydantic.
-"""
 
 from __future__ import annotations
 
@@ -15,8 +7,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-import pytest  # noqa: E402
-from artifact_schemas import (  # noqa: E402
+import pytest
+from artifact_schemas import (
     ALLOWED_FIELD_TYPES,
     SchemaError,
     available_schema_names,
@@ -45,10 +37,6 @@ def _write(tmp_path: Path, name: str, text: str) -> Path:
     return p
 
 
-# ---------------------------------------------------------------------------
-# Valid loads
-# ---------------------------------------------------------------------------
-
 def test_load_valid_schema(tmp_path: Path) -> None:
     p = _write(tmp_path, "alpha", _VALID.format(name="alpha"))
     schema = load_schema_file(p)
@@ -56,11 +44,10 @@ def test_load_valid_schema(tmp_path: Path) -> None:
     assert schema.version == 1
     assert [f.name for f in schema.fields] == ["run_id", "count"]
     assert schema.fields[0].required is True
-    assert schema.fields[1].required is False  # default
+    assert schema.fields[1].required is False
 
 
 def test_shipped_example_schemas_are_valid() -> None:
-    """The two example artifact schemas ship well-formed (DAS-1467 AC)."""
     schemas_dir = _REPO_ROOT / "governance" / "schemas"
     names = available_schema_names(schemas_dir)
     assert {"task-ledger", "typed-contracts"} <= names
@@ -71,10 +58,6 @@ def test_default_field_types_cover_json_kinds() -> None:
         ALLOWED_FIELD_TYPES
     )
 
-
-# ---------------------------------------------------------------------------
-# Malformed / invalid — every path raises SchemaError
-# ---------------------------------------------------------------------------
 
 def test_unknown_field_type_fails(tmp_path: Path) -> None:
     text = _VALID.format(name="beta").replace("type: string", "type: bogus")
@@ -105,7 +88,7 @@ def test_empty_fields_list_fails(tmp_path: Path) -> None:
 
 
 def test_name_must_equal_file_stem(tmp_path: Path) -> None:
-    # name says 'other' but the file stem is 'zeta'
+
     p = _write(tmp_path, "zeta", _VALID.format(name="other"))
     with pytest.raises(SchemaError):
         load_schema_file(p)
@@ -130,13 +113,9 @@ def test_version_below_one_fails(tmp_path: Path) -> None:
         load_schema_file(p)
 
 
-# ---------------------------------------------------------------------------
-# Registry helpers
-# ---------------------------------------------------------------------------
-
 def test_registry_skips_malformed(tmp_path: Path) -> None:
     _write(tmp_path, "good", _VALID.format(name="good"))
-    _write(tmp_path, "broken", "name: broken\n")  # missing description/fields
+    _write(tmp_path, "broken", "name: broken\n")
     names = available_schema_names(tmp_path)
     assert names == {"good"}
     reg = schema_registry(tmp_path)

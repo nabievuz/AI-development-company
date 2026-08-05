@@ -1,20 +1,3 @@
-"""WS-D eval/guardrail tool-admission tests (ADR-0033 reused / DAS-1574).
-
-Admits promptfoo, AgentShield, and Presidio through the *existing* ADR-0033
-governed MCP edge (WS-A: `audit_external_tool.decide()` + the compiled
-TB-2 allow-list + PreToolUse audit/deny) — no second admission path, no
-bulk import, no blanket grant. Design: `docs/design/ws-d-langfuse-lens.md`
-§5 (FR-005/FR-006); ticket: DAS-1574.
-
-  * a non-allow-listed eval tool is refused by the SAME `decide()` WS-A uses
-  * audit-skip is denied (the PreToolUse binding + fail-closed decode holds
-    for these three tools exactly as for any other external tool)
-  * every decision is audited (allow AND deny)
-  * the compiled allow-list has NO "*" roles value, and grants only the
-    designed roles (least privilege, no blanket grant)
-  * Presidio's own tool I/O is redacted (the design §5.1 caveat)
-  * flag OFF ⇒ the sidecars are inert/absent-by-default; dispatch unchanged
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -37,7 +20,7 @@ def _load(rel: str, name: str):
 
 def _load_gen_subagents():
     sys.path.insert(0, str(ROOT / "scripts"))
-    import gen_subagents  # noqa: PLC0415
+    import gen_subagents
 
     return gen_subagents
 
@@ -48,14 +31,7 @@ agentshield = _load("tools/mcp_bridges/agentshield_tool_bridge.py", "agentshield
 presidio = _load("tools/mcp_bridges/presidio_tool_bridge.py", "presidio_tool_bridge")
 
 
-# --------------------------------------------------------------------------- #
-# FR-005 — one admission path only; least-privilege compiled allow-list
-# --------------------------------------------------------------------------- #
-
 def test_compiled_allowlist_grants_only_designed_roles():
-    """board/.tool-allowlist.json (the tracked, generate-and-diff artifact) grants
-    exactly the design §5.2 roles — no blanket/global grant, no drift from the
-    overlays."""
     committed = json.loads((ROOT / "board" / ".tool-allowlist.json").read_text())
     assert committed["mcp__promptfoo__run_eval"] == ["qa-eng", "qa-lead"]
     assert committed["mcp__agentshield__scan_action"] == ["security-lead"]
@@ -70,7 +46,6 @@ def test_compiled_allowlist_matches_overlays_no_drift():
 
 
 def test_compiled_allowlist_has_no_wildcard_roles():
-    """C2 — no ``"*"`` roles value anywhere in the compiled map."""
     committed = json.loads((ROOT / "board" / ".tool-allowlist.json").read_text())
     for value in committed.values():
         assert value != "*"
@@ -78,22 +53,18 @@ def test_compiled_allowlist_has_no_wildcard_roles():
 
 
 def test_non_allowlisted_eval_tool_refused_by_same_decide():
-    """A role WITHOUT the overlay entry is refused by the identical `decide()`
-    WS-A uses — no WS-D-specific bypass, no exemption."""
     allow = json.loads((ROOT / "board" / ".tool-allowlist.json").read_text())
-    # granted role passes for each of the three tools
+
     assert hook.decide("mcp__promptfoo__run_eval", "qa-eng", allow)[0] == "allow"
     assert hook.decide("mcp__agentshield__scan_action", "security-lead", allow)[0] == "allow"
     assert hook.decide("mcp__presidio__analyze_text", "security-lead", allow)[0] == "allow"
-    # an ungranted role is denied for every one of the three
+
     assert hook.decide("mcp__promptfoo__run_eval", "backend-eng-1", allow)[0] == "deny"
     assert hook.decide("mcp__agentshield__scan_action", "backend-eng-1", allow)[0] == "deny"
     assert hook.decide("mcp__presidio__analyze_text", "backend-eng-1", allow)[0] == "deny"
 
 
 def test_tool_present_in_mcp_json_but_no_overlay_denies_every_role():
-    """A tool wired in .mcp.json but declared by NO overlay compiles to no key
-    and denies structurally for every role (WS-A §1.3 reused verbatim)."""
     allow = json.loads((ROOT / "board" / ".tool-allowlist.json").read_text())
     assert hook.decide("mcp__presidio__some_other_tool", "security-lead", allow)[0] == "deny"
 
@@ -110,12 +81,7 @@ def test_mcp_json_wires_all_three_sidecars():
         assert script in servers[name]["args"][-1]
 
 
-# --------------------------------------------------------------------------- #
-# FR-005 — every decision is audited; audit-skip is denied
-# --------------------------------------------------------------------------- #
-
 def _features(tmp_path: Path, on: bool) -> Path:
-    """A features file selecting the WS-A flag state (the hook honours no env var)."""
     p = tmp_path / "features.yaml"
     p.write_text(f"ws_a_tool_bridge: {'true' if on else 'false'}\n", encoding="utf-8")
     return p
@@ -173,9 +139,6 @@ def test_every_decision_is_audited_allow_and_deny(tmp_path):
 
 
 def test_audit_skip_denied_malformed_event(tmp_path):
-    """An unparseable/malformed PreToolUse event with the flag ON is a
-    fail-closed deny — this IS the "audit-skip denied" behaviour: a call
-    cannot dodge governance by sending an event the hook can't parse."""
     audit_log = tmp_path / "audit.jsonl"
     r = subprocess.run(
         [
@@ -193,13 +156,10 @@ def test_audit_skip_denied_malformed_event(tmp_path):
     out = json.loads(r.stdout)
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert r.returncode == 2
-    assert audit_log.exists()  # the attempt IS audited, not skipped
+    assert audit_log.exists()
 
 
 def test_settings_binding_present_covers_these_tools_too():
-    """.claude/settings.json's mcp__.* PreToolUse binding is untouched (not
-    re-edited by this ticket) — it already matches mcp__promptfoo__*,
-    mcp__agentshield__*, mcp__presidio__* via the mcp__.* wildcard matcher."""
     settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
     pre = settings["hooks"]["PreToolUse"]
     entry = next(e for e in pre if e.get("matcher") == "mcp__.*")
@@ -214,10 +174,6 @@ def test_settings_binding_present_covers_these_tools_too():
     ):
         assert matcher.match(tool)
 
-
-# --------------------------------------------------------------------------- #
-# FR-005 — Presidio's own tool I/O is redacted (design §5.1 caveat)
-# --------------------------------------------------------------------------- #
 
 def test_presidio_never_echoes_raw_pii():
     out = presidio.analyze_text("contact me at jane.doe@example.com or +1 415 555 0100")
@@ -244,10 +200,6 @@ def test_presidio_no_findings_reports_zero_entities():
     assert "presidio: 0 entities" in out
 
 
-# --------------------------------------------------------------------------- #
-# FR-006 / flag semantics — flag OFF is inert; no WS-D-specific bypass
-# --------------------------------------------------------------------------- #
-
 def test_flag_off_is_inert_for_all_three_tools(tmp_path):
     audit_log = tmp_path / "audit.jsonl"
     for tool in (
@@ -260,16 +212,11 @@ def test_flag_off_is_inert_for_all_three_tools(tmp_path):
             {"DASLAB_TOOL_AUDIT_LOG": str(audit_log)},
             features=_features(tmp_path, on=False),
         )
-        assert json.loads(r.stdout) == {}  # allow (inert passthrough)
-    assert not audit_log.exists()  # no side effect while flag OFF
+        assert json.loads(r.stdout) == {}
+    assert not audit_log.exists()
 
 
 def test_features_yaml_ws_d_flag_on_after_activation():
-    """ws_d_langfuse_lens was ACTIVATED 2026-07-26 (Founder-authorized): self-host
-    Langfuse v3 is deployed in-tenant (loopback 127.0.0.1:3000, OTLP verified), so
-    the committed config carries the flag ON. The DEFAULTS SSOT (scripts/
-    feature_flags.py) still ships it OFF — see test_feature_flags.py's live
-    contract."""
     text = (ROOT / "config" / "features.yaml").read_text()
     assert "ws_d_langfuse_lens: true" in text
 
@@ -280,10 +227,6 @@ def test_egress_profile_for_eval_tools_is_deny_all():
     data = yaml.safe_load((ROOT / "config" / "egress-allowlist.yaml").read_text())
     assert data["profiles"]["eval-guardrail-deny-all"] == []
 
-
-# --------------------------------------------------------------------------- #
-# Sidecar reference-backend sanity (proves the bridge pattern end to end)
-# --------------------------------------------------------------------------- #
 
 def test_promptfoo_run_eval_against_local_fixture(tmp_path):
     fixture = tmp_path / "eval.json"

@@ -1,7 +1,3 @@
-# Artifact schema — task-ledger
-# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
-# The file stem MUST equal `name`; tickets reference this via
-# produces: task-ledger / consumes: task-ledger.
 name: task-ledger
 version: 1
 description: >-

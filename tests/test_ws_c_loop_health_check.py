@@ -1,10 +1,3 @@
-"""WS-C loop/sandbox Maintenance health/eval tests (ADR-0035 GATE-6 / DAS-1569).
-
-Covers ``scripts/ws_c_loop_health_check.py``: board-canonical (checkpoint
-never a tiebreaker) drift, sandbox fail-closed-wall drift, import-ban
-carve-out drift, and the Maintenance-schedule registration
-(``scripts/stage_gate.py:maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -20,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses (stage_gate.py) need self in sys.modules
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -31,11 +24,6 @@ def _load_health_check():
     return _load("scripts/ws_c_loop_health_check.py", "_ws_c_loop_health_check")
 
 
-# --------------------------------------------------------------------------- #
-# run() end-to-end on the real repo
-# --------------------------------------------------------------------------- #
-
-
 def test_healthy_repo_reports_no_drift():
     mod = _load_health_check()
     result = mod.run()
@@ -43,11 +31,6 @@ def test_healthy_repo_reports_no_drift():
     assert result["checks"]["board_canonical_drift"]["ok"] is True
     assert result["checks"]["sandbox_wall_drift"]["ok"] is True
     assert result["checks"]["import_ban_carveout_drift"]["ok"] is True
-
-
-# --------------------------------------------------------------------------- #
-# 1. Board-canonical drift
-# --------------------------------------------------------------------------- #
 
 
 def test_board_canonical_drift_ok_board_wins():
@@ -62,9 +45,8 @@ def test_board_canonical_drift_flags_checkpoint_winning(monkeypatch):
     ll = mod._load_langgraph_loop()
 
     def _checkpoint_wins(projected, board_state):
-        # Simulate a regression: the checkpoint/projection value is returned
-        # instead of the board value — exactly the LG-1/§1.3 violation this
-        # check exists to catch.
+
+
         bogus = ll.GraphState(ticket_id=board_state.ticket_id, dept=projected.channels["identity"]["dept"])
         return ll.Reconciliation(board_state=bogus, diverged=[("identity", "dept")], event={"rule": "board_wins_reconciliation"})
 
@@ -101,11 +83,6 @@ def test_board_canonical_drift_flags_missing_reconciliation_event(monkeypatch):
     result = mod.check_board_canonical_drift()
     assert result["ok"] is False
     assert "event" in result["detail"]
-
-
-# --------------------------------------------------------------------------- #
-# 2. Sandbox-wall drift
-# --------------------------------------------------------------------------- #
 
 
 def test_sandbox_wall_drift_ok_all_walls_deny():
@@ -156,8 +133,8 @@ def test_sandbox_wall_drift_flags_unscoped_credential_allowed(monkeypatch):
 
     class _CredLeak(local_stub.LocalStubSandbox):
         def open(self, *, task_id, scope):
-            # Regression simulation: strip the mis-scoped credential before
-            # delegating, so the real wall never sees it and never raises.
+
+
             safe_scope = contract.SandboxScope(
                 task_id=scope.task_id,
                 workdir_mounts=scope.workdir_mounts,
@@ -190,11 +167,6 @@ def test_sandbox_wall_drift_flags_egress_allowed(monkeypatch):
     result = mod.check_sandbox_wall_drift()
     assert result["ok"] is False
     assert "egress wall" in result["detail"]
-
-
-# --------------------------------------------------------------------------- #
-# 3. Import-ban carve-out drift
-# --------------------------------------------------------------------------- #
 
 
 def test_import_ban_carveout_drift_ok_on_the_real_repo():
@@ -242,11 +214,6 @@ def test_import_ban_carveout_drift_flags_a_live_violation(monkeypatch):
     result = mod.check_import_ban_carveout_drift()
     assert result["ok"] is False
     assert "violation" in result["detail"]
-
-
-# --------------------------------------------------------------------------- #
-# CLI + Maintenance-schedule registration
-# --------------------------------------------------------------------------- #
 
 
 def test_cli_exits_zero_when_healthy():

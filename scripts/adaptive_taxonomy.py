@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""adaptive_taxonomy.py — Adaptive Risk Taxonomy.
 
-Self-calibrates the SOFT risk tiers (low / medium / high) from approval + GATE-6
-outcome history: a class consistently approved without incident may be proposed
-for relaxation; one frequently reverted / incident is proposed for escalation.
-
-HARD CONSTRAINTS (non-negotiable, enforced in propose_recalibration):
-  - it NEVER touches the hard-coded never-auto-approve list (QONUN-5, immutable),
-  - it NEVER recalibrates 'critical',
-  - it NEVER auto-applies — every proposal is emitted as a GATE-6 record DRAFT
-    (max_quality_drop 0, human approval required), and the loop stays OFF.
-Inert when there is not enough history (trigger-gated).
-
-Usage:
-    python3 scripts/adaptive_taxonomy.py [--history board/.events.jsonl]
-"""
 from __future__ import annotations
 
 import argparse
@@ -26,19 +11,16 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
-MIN_SAMPLES = 10          # need enough evidence before proposing anything
-ESCALATE_RATE = 0.20      # >= 20% reverted/incident -> propose escalate
-RELAX_RATE = 0.95         # >= 95% clean -> propose relax
-IMMUTABLE_CLASSES = frozenset({"critical"})   # never recalibrated
-# The QONUN-5 never-auto-approve FLOOR — HARD-CODED, never read from config/schema.
-# The generated Org-Schema SSOT may ADD categories, so we UNION the
-# generated set onto this floor. The floor can never shrink (even if the generated
-# module is shortened or absent), so this module can never propose relaxing one of the
-# seven QONUN-5 categories regardless of import state, casing, or a tampered schema.
+MIN_SAMPLES = 10
+ESCALATE_RATE = 0.20
+RELAX_RATE = 0.95
+IMMUTABLE_CLASSES = frozenset({"critical"})
+
+
 _QONUN5_FLOOR = frozenset({
     "new_goal", "security_sensitive", "schema_migration", "gate5_deployment",
     "governance_or_policy", "permission_change", "secret_change",
@@ -71,16 +53,13 @@ def _aggregate(history: list[dict]) -> dict:
 
 
 def propose_recalibration(history: list[dict], taxonomy: dict) -> list[dict]:
-    """Soft-tier recalibration proposals. The immutability guard is enforced HERE:
-    'critical' and EVERY never-auto-approve category (hard-coded + config, normalized)
-    are skipped no matter the history, casing, or a missing/empty/null config list."""
     raw = taxonomy.get("never_auto_approve")
     config_never = {_norm(x) for x in raw} if isinstance(raw, list) else set()
     protected = IMMUTABLE_NEVER_AUTO | IMMUTABLE_CLASSES | config_never
     proposals: list[dict] = []
     for cls, s in _aggregate(history).items():
         if cls in protected:
-            continue  # IMMUTABLE — never propose recalibrating these
+            continue
         if s["total"] < MIN_SAMPLES:
             continue
         bad_rate = s["bad"] / s["total"]
@@ -95,7 +74,6 @@ def propose_recalibration(history: list[dict], taxonomy: dict) -> list[dict]:
 
 
 def to_gate6_draft(proposal: dict, created_at: str) -> dict:
-    """Wrap a proposal as a GATE-6 record DRAFT — evidence-gated, never auto-applied."""
     return {
         "gate_6_record": {
             "id": f"GATE6-ADAPTIVE-{proposal['class']}-{proposal['action']}",
@@ -135,7 +113,7 @@ def _load_history(path: Path) -> list[dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='adaptive_taxonomy.py — Adaptive Risk Taxonomy.')
     ap.add_argument("--history", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--config", type=Path, default=ROOT / "config" / "risk_taxonomy.yaml")
     args = ap.parse_args(argv)

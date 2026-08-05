@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_gen_subagents_effort.py — ADR-0013 effort-tier mapping (ADR-0002 coverage).
 
-Locks the per-role effort bands that `gen_subagents.load_alloc()` derives from the
-4-column `governance/policies/model-allocation.md` table, so a future edit that drops
-the effort cell (falling back to defaults) or re-bands a role is caught here in
-addition to the `gen_subagents && git diff` drift gate.
-"""
 from __future__ import annotations
 
 import sys
@@ -17,7 +11,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import gen_subagents as gs  # noqa: E402  (import after path manipulation)
+import gen_subagents as gs
 
 OPUS_HIGH = {
     "cto", "security-lead", "ceo", "chairman", "cpo", "senior-pm",
@@ -67,6 +61,6 @@ def test_haiku_takes_no_effort():
 
 
 def test_no_role_runs_at_max_effort():
-    # ADR-0013 retired uniform `max`; nothing should regress to it.
+
     _, efforts = gs.load_alloc()
     assert "max" not in set(efforts.values())

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_alerting.py — threshold alerting + Quiet Mode (R21 / RFC-003)."""
+
 from __future__ import annotations
 
 import sys
@@ -10,13 +10,13 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import alerting as al  # noqa: E402  (import after path manipulation)
+import alerting as al
 
 TH = {"t1_busy_min": 0.60, "memory_health_min": 0.80}
 
 
 def test_no_alerts_when_inert():
-    # all readings absent (no live data) -> no alerts
+
     assert al.evaluate_alerts({"t1_busy_fraction": None, "memory_health": None, "break_glass_active": False}, TH) == []
 
 

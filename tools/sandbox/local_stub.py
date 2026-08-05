@@ -1,32 +1,3 @@
-"""``LocalStubSandbox`` — the host-free reference/stub backend, DasLab WS-C
-(ADR-0035 LG-5, `docs/design/ws-c-langgraph-loop.md` §5, DAS-1565).
-
-Satisfies :class:`tools.sandbox.contract.SandboxBackend` by running against a
-**temporary, per-task working directory** with the mount / egress / credential
-/ resource-limit checks enforced **in-process**, deny-by-default. It proves the
-*contract shape and refusal logic* — it is explicitly **not** a security
-boundary for real untrusted code (no kernel/namespace isolation; see design
-§5.1). The live `DockerSandbox` (DAS-1566, blocked) provides that.
-
-Zero third-party dependencies — stdlib only (``tempfile``, ``pathlib``,
-``time``, ``secrets``, ``urllib.parse``) — so this module is importable and
-testable with nothing installed (WS-A pattern: absent optional deps ⇒ the
-*live* sandbox does not exist, but the stub always works).
-
-Supported ``argv`` verbs (an internal, safe operation set — deliberately NOT a
-generic subprocess passthrough, since shelling out to the real OS would defeat
-"host-free": a subprocess's cwd does not, by itself, stop an absolute-path or
-``..`` escape from reaching the real host filesystem):
-
-  ``["read", <relpath>]``            — read a file inside a granted mount
-  ``["write", <relpath>, <content>]`` — write a file inside a (writable) mount
-  ``["exists", <relpath>]``          — existence probe inside a granted mount
-  ["net", <url>]                    — egress decision only (no real request)
-  ["cred", <name>]                  — fetch a scoped credential's value
-  ["sleep", <seconds>]              — resource-limit probe (wallclock cap)
-
-Any other verb is refused (unknown-verb ⇒ fail-closed deny, not best-effort).
-"""
 from __future__ import annotations
 
 import os
@@ -38,12 +9,9 @@ from pathlib import Path
 from tempfile import mkdtemp
 from urllib.parse import urlparse
 
-# Sibling-module import that works whether this file is imported as part of
-# the ``tools.sandbox`` package (``-m pytest`` from repo root) or loaded
-# directly by file path (as the WS-A tests load ``tools/mcp_bridges/*.py``) —
-# same pattern as ``audit_external_tool.py``'s ``redaction`` import.
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from contract import (  # noqa: E402
+from contract import (
     ExecResult,
     Mount,
     SandboxBackend,
@@ -65,12 +33,6 @@ class _Registration:
 
 
 def _resolve_within(mount_root: Path, rel: str) -> Path | None:
-    """Confine *rel* to *mount_root*. ``None`` on any escape attempt.
-
-    Rejects: absolute paths, any ``..`` path component, and (defense in
-    depth against symlink tricks) a resolved path that lands outside the
-    mount root even after traversal-free joining.
-    """
     if not rel:
         return None
     try:
@@ -83,35 +45,24 @@ def _resolve_within(mount_root: Path, rel: str) -> Path | None:
         candidate = (mount_root / candidate_raw).resolve()
         candidate.relative_to(root)
     except (OSError, ValueError):
-        # Fail CLOSED on any path-resolution error (e.g. an embedded NUL byte
-        # raises ValueError from Path()/.resolve()) — same denial as a '..'
-        # or absolute-path escape, never an uncaught exception.
+
+
         return None
     return candidate
 
 
 class LocalStubSandbox(SandboxBackend):
-    """Host-free reference backend. One temp workdir per ``task_id``.
-
-    An instance holds its own in-memory registry — ``task_id`` isolation is
-    per-instance, matching the design's "one sandbox per task_id": two
-    :meth:`open` calls with different ``task_id`` values never share a mount,
-    and a handle from one registration can never be used to reach another's
-    workdir, even via a crafted path (caught by :func:`_resolve_within`).
-    """
 
     def __init__(self) -> None:
         self._registry: dict[str, _Registration] = {}
 
-    # -- SandboxBackend -----------------------------------------------------
 
     def open(self, *, task_id: str, scope: SandboxScope) -> SandboxHandle:
         if not task_id:
             raise SandboxEscapeError("open() refused: empty task_id")
         if scope.task_id != task_id:
-            # Unscoped-credential / other-task wall at construction time: a
-            # scope built for one task_id can never be used to open another's
-            # sandbox — fail closed before any workdir/credential exists.
+
+
             raise SandboxEscapeError(
                 f"open() refused: scope.task_id {scope.task_id!r} != task_id {task_id!r}"
             )
@@ -128,7 +79,7 @@ class LocalStubSandbox(SandboxBackend):
             reg = _Registration(task_id=task_id, scope=scope, workdir=workdir)
             self._registry[task_id] = reg
         token = secrets.token_hex(16)
-        reg.token = token  # type: ignore[attr-defined]  # last-issued token wins
+        reg.token = token
         return SandboxHandle(task_id=task_id, backend="local-stub", token=token)
 
     def exec(self, handle: SandboxHandle, argv: list[str]) -> ExecResult:
@@ -139,7 +90,7 @@ class LocalStubSandbox(SandboxBackend):
                 denied_reason=f"other-task wall: no live sandbox for task_id {handle.task_id!r}",
             )
         if getattr(reg, "token", None) != handle.token:
-            # A stale/foreign handle claiming this task_id — deny, no side effect.
+
             return ExecResult(
                 ok=False, exit_code=-1,
                 denied_reason="other-task wall: handle token does not match live registration",
@@ -164,7 +115,6 @@ class LocalStubSandbox(SandboxBackend):
         if reg is not None:
             reg.closed = True
 
-    # -- internal verb handlers ----------------------------------------------
 
     def _mounts(self, reg: _Registration) -> list[Mount]:
         return reg.scope.workdir_mounts or [Mount(host_path=str(reg.workdir))]
@@ -228,9 +178,8 @@ class LocalStubSandbox(SandboxBackend):
                 ok=False, exit_code=-1,
                 denied_reason=f"egress wall: host {host!r} not in allow-list for profile {profile!r}",
             )
-        # Host-free: this is a decision only — the stub never performs a real
-        # network I/O call, matching "not a security boundary for real
-        # untrusted code" (design §5.1). No side effect either way.
+
+
         return ExecResult(ok=True, exit_code=0, stdout=f"egress allowed: {host} (profile={profile})")
 
     def _exec_cred(self, reg: _Registration, args: list[str]) -> ExecResult:
@@ -244,10 +193,8 @@ class LocalStubSandbox(SandboxBackend):
                         ok=False, exit_code=-1,
                         denied_reason=f"unscoped-credential wall: {name!r} not scoped to task {reg.task_id!r}",
                     )
-                # The VALUE is returned to the in-sandbox caller (the task's own
-                # process), which is the intended consumer. It must never be
-                # copied into an ExecResult field other than stdout by any
-                # caller building an event — see ScopedSecret.to_event_fields().
+
+
                 return ExecResult(ok=True, exit_code=0, stdout=cred.value)
         return ExecResult(
             ok=False, exit_code=-1,

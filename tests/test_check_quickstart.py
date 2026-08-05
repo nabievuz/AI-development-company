@@ -1,8 +1,3 @@
-"""tests/test_check_quickstart.py — pytest for check_quickstart.py.
-
-Hermetic: synthetic READMEs prove the parser extracts the commands and the order
-guard fails a doctor-first Quickstart while passing a bootstrap-first one.
-"""
 from __future__ import annotations
 
 import sys
@@ -11,7 +6,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from check_quickstart import main, order_problem, quickstart_commands  # noqa: E402
+from check_quickstart import main, order_problem, quickstart_commands
 
 _GOOD = """# X
 

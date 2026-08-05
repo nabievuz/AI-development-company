@@ -1,41 +1,3 @@
-"""tests/test_created_at_contract.py — DAS-1633 created_at format contract.
-
-Found by SRE Lead in the DAS-1618 round-2 re-review: ``dgox.events.
-validate_envelope`` used to accept ANY non-empty string as ``created_at``,
-while every downstream consumer (``cost_ledger``, ``metrics_history_feeder``,
-``wave_kpi``, ``metrics_lib``, ``trends``) silently required exactly
-``%Y-%m-%dT%H:%M:%SZ`` and silently skipped anything else — no error, no
-warning, no dropped-record count. A caller emitting
-``datetime.now(UTC).isoformat()`` (``+00:00``, possibly with microseconds)
-therefore wrote an event that validated cleanly at the write seam and then
-vanished from every KPI: invisible to the budget ceiling (fails OPEN, i.e.
-under-counts) and invisible to the clean-day evidence window.
-
-THE TEST THAT MATTERS (per the ticket): an event whose ``created_at`` is
-``datetime.now(UTC).isoformat()`` must be either REJECTED at the write seam
-or COUNTED downstream — never accepted-then-silently-dropped. A test that only
-asserts well-formed ``...Z`` events work would pass against the buggy code and
-prove nothing; every test class below therefore also exercises the buggy
-shape explicitly.
-
-Coverage:
-    1. ``TestWriteSeamRejectsBuggyShape`` — the failing shape from the ticket
-       (``datetime.now(UTC).isoformat()``) is rejected by ``validate_envelope``
-       and by ``EventStore.append`` (raises, nothing written) — before/after
-       behavior recorded verbatim in the ticket log.
-    2. ``TestEveryBuilderStillRoundTrips`` — every existing ``build_*``
-       producer in ``dgox/events.py`` still emits a ``created_at`` that
-       validates cleanly (the write-seam tightening does not break a single
-       real producer — demonstrated, not assumed).
-    3. ``TestDroppedCountIsObservable`` — a scratch stream with one good and
-       one (already-conforming-shape-but-hypothetically-bad — constructed by
-       bypassing the builder) record makes the drop count observable in
-       ``cost_ledger``, ``metrics_history_feeder``, ``wave_kpi``,
-       ``metrics_lib``, and ``trends`` — never silent.
-    4. ``TestExclusionSemanticsUnchanged`` — undated/unparseable records are
-       still EXCLUDED from window filtering (DAS-1618's permanent-latch fix is
-       not reintroduced); DAS-1633 only makes the exclusion visible.
-"""
 from __future__ import annotations
 
 import json
@@ -51,36 +13,28 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import metrics_lib  # noqa: E402
-import trends  # noqa: E402
-import wave_kpi  # noqa: E402
-from cost.cost_ledger import aggregate_spans  # noqa: E402
-from dgox import events  # noqa: E402
-from dgox.created_at import (  # noqa: E402
+import metrics_lib
+import trends
+import wave_kpi
+from cost.cost_ledger import aggregate_spans
+from dgox import events
+from dgox.created_at import (
     CREATED_AT_FORMAT,
     DropCounter,
     count_invalid,
     is_valid_created_at,
     parse_created_at,
 )
-from metrics_history_feeder import filter_events_by_window  # noqa: E402
+from metrics_history_feeder import filter_events_by_window
 
 _TS = "2026-07-24T12:00:00Z"
 
-# The exact failing shape called out by the ticket: datetime.now(UTC).isoformat()
-# yields a '+00:00' offset and (usually) microseconds — never a bare 'Z'.
+
 _BUGGY_SHAPE = datetime.now(tz=UTC).isoformat()
-
-
-# ---------------------------------------------------------------------------
-# 1. Write-seam rejection of the exact buggy shape from the ticket
-# ---------------------------------------------------------------------------
 
 
 class TestWriteSeamRejectsBuggyShape:
     def test_isoformat_shape_is_not_the_canonical_shape(self):
-        """Sanity: confirm the shape under test really is off-contract (has an
-        offset and/or fractional seconds, never a bare 'Z')."""
         assert not _BUGGY_SHAPE.endswith("Z") or "." in _BUGGY_SHAPE
 
     def test_buggy_shape_rejected_by_is_valid_created_at(self):
@@ -88,8 +42,6 @@ class TestWriteSeamRejectsBuggyShape:
         assert parse_created_at(_BUGGY_SHAPE) is None
 
     def test_buggy_shape_rejected_by_validate_envelope(self):
-        """BEFORE this fix: validate_envelope accepted any non-empty string,
-        so this returned []. AFTER: it must return a created_at error."""
         ev = {
             "event_type": "routing_decision",
             "ticket_id": "DAS-1633",
@@ -101,8 +53,6 @@ class TestWriteSeamRejectsBuggyShape:
         )
 
     def test_buggy_shape_rejected_by_event_store_append(self, tmp_path):
-        """The write seam: EventStore.append must raise and write NOTHING for
-        an off-contract created_at — never silently accept it."""
         store_path = tmp_path / "scratch.events.jsonl"
         store = events.EventStore(path=store_path)
         ev = events.build_routing_decision(
@@ -122,8 +72,6 @@ class TestWriteSeamRejectsBuggyShape:
         assert not store_path.exists() or store_path.read_text() == ""
 
     def test_conforming_shape_is_accepted(self, tmp_path):
-        """Control: the canonical shape (what utcnow() actually emits) is
-        accepted end-to-end — the seam rejects only the ambiguous shape."""
         store_path = tmp_path / "scratch.events.jsonl"
         store = events.EventStore(path=store_path)
         ev = events.build_routing_decision(
@@ -138,16 +86,10 @@ class TestWriteSeamRejectsBuggyShape:
             fallback="block",
             created_at=events.utcnow(),
         )
-        store.append(ev)  # must not raise
+        store.append(ev)
         lines = store_path.read_text().splitlines()
         assert len(lines) == 1
         assert json.loads(lines[0])["created_at"] == ev["created_at"]
-
-
-# ---------------------------------------------------------------------------
-# 2. Every existing build_* producer still round-trips through the tightened
-#    validator — demonstrated for each shape, not assumed.
-# ---------------------------------------------------------------------------
 
 
 def _created_at_errors(ev: dict[str, Any]) -> list[str]:
@@ -237,19 +179,7 @@ class TestEveryBuilderStillRoundTrips:
         assert _created_at_errors(ev) == []
 
 
-# ---------------------------------------------------------------------------
-# 3. Dropped/undated count is observable, never silent (acceptance #2)
-# ---------------------------------------------------------------------------
-
-
 def _good_and_bad_span() -> list[dict[str, Any]]:
-    """One well-formed span + one span carrying the buggy created_at shape.
-
-    Built by hand (not via build_span/EventStore) to simulate an already
-    non-conforming record reaching a consumer — e.g. from before this fix, or
-    a bypassed seam — so the *consumer-side* counting is exercised
-    independently of the write-seam rejection tested above.
-    """
     good = {
         "event_type": "span", "ticket_id": "DAS-1633", "trace_id": "DAS-1633",
         "span_id": "s-good", "parent_span_id": None, "kind": "chat",
@@ -271,20 +201,18 @@ class TestDroppedCountIsObservable:
         with open(store_path, "w", encoding="utf-8") as fh:
             for ev in _good_and_bad_span():
                 fh.write(json.dumps(ev) + "\n")
-        # Lifetime aggregation (since=None): both spans counted in totals, but
-        # the bad one is still surfaced via dropped_undated (visibility even
-        # when nothing is excluded).
+
+
         ledger = aggregate_spans(store_path)
         assert ledger is not None
         assert ledger.raw_span_count == 2
         assert ledger.dropped_undated == 1
 
-        # Windowed aggregation (since=...): the bad span is EXCLUDED from the
-        # window (D1/DAS-1618 semantics unchanged) but the drop is counted.
+
         windowed = aggregate_spans(store_path, since=datetime(2020, 1, 1))
         assert windowed is not None
-        assert windowed.raw_span_count == 1  # only the good span
-        assert windowed.dropped_undated == 1  # the bad one is now visible
+        assert windowed.raw_span_count == 1
+        assert windowed.dropped_undated == 1
 
     def test_metrics_history_feeder_surfaces_dropped_undated(self):
         good = {"event_type": "run_end", "created_at": _TS}
@@ -296,8 +224,8 @@ class TestDroppedCountIsObservable:
             end=datetime(2030, 1, 1),
             drop_counter=counter,
         )
-        assert result == [good]  # bad excluded — semantics unchanged
-        assert counter.count == 1  # but now counted, not silent
+        assert result == [good]
+        assert counter.count == 1
 
     def test_wave_kpi_surfaces_dropped_undated(self):
         events_batch = [
@@ -313,9 +241,8 @@ class TestDroppedCountIsObservable:
             {"event_type": "run_end", "run_id": "r1", "created_at": _BUGGY_SHAPE},
         ]
         stats = metrics_lib.concurrency_stats(events_batch)
-        # No paired interval (the bad run_end never parses), so concurrency_stats
-        # itself is None (T3 evidence-only contract) — assert via the shared
-        # helper instead, matching what concurrency_stats would report if paired.
+
+
         assert stats is None
         assert metrics_lib._dropped_undated(
             events_batch, frozenset({"run_start", "run_end"})
@@ -354,16 +281,8 @@ class TestDroppedCountIsObservable:
         assert count_invalid([good, good]) == 0
 
 
-# ---------------------------------------------------------------------------
-# 4. Exclusion semantics unchanged — D1/DAS-1618's fix is not reintroduced
-# ---------------------------------------------------------------------------
-
-
 class TestExclusionSemanticsUnchanged:
     def test_unparseable_created_at_never_counts_in_every_window(self):
-        """An undated event must NOT count toward a window it does not belong
-        to (the permanent-latch failure D1/DAS-1618 was about). Confirmed here
-        for the shared filter used by the clean-day evidence window."""
         bad = {"event_type": "run_end", "created_at": _BUGGY_SHAPE}
         for start, end in (
             (datetime(2020, 1, 1), datetime(2020, 12, 31)),
@@ -371,7 +290,7 @@ class TestExclusionSemanticsUnchanged:
             (None, None),
         ):
             if start is None and end is None:
-                # No window at all -> pass-through is correct (nothing filtered).
+
                 assert filter_events_by_window([bad], start, end) == [bad]
             else:
                 assert filter_events_by_window([bad], start, end) == []

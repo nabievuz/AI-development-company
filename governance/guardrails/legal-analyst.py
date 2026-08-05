@@ -1,16 +1,3 @@
-"""Guardrail for the ``legal-analyst`` role (R4 — rollout 2->32).
-
-INPUT: the shared scope screen plus a legal-relevance screen — a legal /
-compliance ticket must actually name a legal, compliance, privacy, or contractual
-concern, mirroring security-lead's terms screen for its specialist discipline.
-
-OUTPUT: a legal / compliance review is only accepted when the produced work
-anchors its conclusion to a compliance standard or citation (GDPR / SOC2 / a
-clause / a policy / a regulation). This encodes the discipline's Definition of
-Done — "the analysis is delivered with sourced findings and a clear, actionable
-recommendation" over a "risk-ethics review" (role overlay): a legal opinion with
-no reference is unsourced and cannot be accepted.
-"""
 from __future__ import annotations
 
 import re
@@ -26,7 +13,7 @@ from guardrails import (
 
 ROLE = "legal-analyst"
 
-# A legal ticket names at least one legal / compliance concern in its scope.
+
 _LEGAL_TERMS = re.compile(
     r"\b(legal|complian\w*|privacy|gdpr|ccpa|hipaa|soc\s?2|license|licence|"
     r"licens\w*|contract|terms|policy|policies|regulat\w*|liabilit\w*|"
@@ -35,8 +22,7 @@ _LEGAL_TERMS = re.compile(
     re.IGNORECASE,
 )
 
-# Positive evidence that the conclusion is anchored to a compliance standard or
-# citation — a named regime, an instrument, or an explicit citation.
+
 _COMPLIANCE_REF = re.compile(
     r"\b(gdpr|ccpa|hipaa|soc\s?2|iso\s?\d|pci|dpa|dpia|compl(?:iance|iant)|"
     r"regulat(?:ion|ory)|statute|clause|licen[cs]e|terms|privacy|policy|"
@@ -46,7 +32,6 @@ _COMPLIANCE_REF = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Shared scope screen + a legal-relevance screen."""
     ok, feedback = default_input_guardrail(ctx)
     if not ok:
         return (ok, feedback)
@@ -61,7 +46,6 @@ def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only a legal review anchored to a compliance standard or citation."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

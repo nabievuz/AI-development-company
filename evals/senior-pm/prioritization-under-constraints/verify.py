@@ -1,11 +1,3 @@
-"""Deterministic verifier — senior-pm / prioritization-under-constraints.
-
-Computes the TRUE optimal value (brute force over all subsets — the item
-count is small enough, 2**6 = 64) directly from the fixture, so nothing is
-leaked into fixtures/: the answer key is derived, not spelled out. A
-submission must be feasible (within capacity, dependencies satisfied) or it
-scores 0.0; otherwise credit is the achieved value as a fraction of optimal.
-"""
 from __future__ import annotations
 
 import itertools

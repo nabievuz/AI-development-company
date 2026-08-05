@@ -1,16 +1,3 @@
-"""Guardrail for the ``product-designer`` role (design-dept — DAS-1471 family).
-
-INPUT: the shared scope screen (wrong-dept / missing-consumes / gate-open) is
-sufficient; a product-designer ticket is any design-dept ticket, and a broad
-keyword screen would risk falsely refusing a legitimate design ticket, so none
-is layered on.
-
-OUTPUT: a product-designer deliverable is only accepted when the produced work
-references a concrete visual artifact. This encodes the discipline's Definition
-of Done — "the design artifact is produced, token-compliant, reviewed, and
-handed to engineering with the spec it needs to build" (role overlay), whose
-mission is "mockups, components, design tokens — visually checked".
-"""
 from __future__ import annotations
 
 import re
@@ -26,8 +13,7 @@ from guardrails import (
 
 ROLE = "product-designer"
 
-# Positive evidence that a concrete visual artifact was produced. Broad and
-# tolerant so any real mockup / component / token deliverable carries a marker.
+
 _DESIGN_ARTIFACT = re.compile(
     r"\b(mockup|wireframe|prototype|figma|component|token|design[- ]?system|"
     r"variant|screen|frame|artboard|icon|style[- ]?guide|spec)\b",
@@ -36,12 +22,10 @@ _DESIGN_ARTIFACT = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """The Product Designer accepts any in-department, gate-clear ticket."""
     return default_input_guardrail(ctx)
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only a product-designer deliverable that references an artifact."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

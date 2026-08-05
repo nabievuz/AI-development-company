@@ -1,30 +1,5 @@
 #!/usr/bin/env python3
-"""check_heartbeat_readiness.py — evidence-gated readiness for the HEARTBEAT go-live.
 
-The WS4 HEARTBEAT autonomous-tempo substrate is code-complete, but its live-dispatch
-flag ``heartbeat_enabled`` (``config/features.yaml``) defaults OFF. Per ADR-0027 SI-7
-and the ORGANISM §5 contract, flipping it to ``true`` is a FOUNDER-ONLY act
-(QONUN-5 never-auto-approve) that must not happen on vibes: it requires a **>= 3-day
-CLEAN shadow window** — T1 busy_fraction >= 0.60, T2 idle_wave_rate <= 0.15, and T7
-quality holding on each day — plus a passing kill-switch drill and zero gate/approval
-violations.
-
-This is the read-only, evidence-gated REPORTER for that decision. It inspects the
-shadow window (``board/.metrics-history.jsonl``, fed by ``metrics_history_feeder.py``)
-and reports, criterion by criterion, whether the bar is met. It NEVER flips the flag,
-and it NEVER fabricates readiness — an empty/short/unclean window reports NOT READY,
-honestly. The clean-day logic is REUSED from ``loop_controller`` (``day_is_clean`` /
-``clean_live_days``) — no forked threshold logic.
-
-Exit codes: 0 = READY (the Founder MAY flip), 1 = NOT READY, 2 = usage/IO error.
-
-This is an OPERATOR / Founder tool. It is deliberately NOT wired as a blocking CI
-step: by design the loop is off and this would be permanently red until go-live.
-
-Usage:
-    python3 scripts/check_heartbeat_readiness.py
-    python3 scripts/check_heartbeat_readiness.py --history board/.metrics-history.jsonl --json
-"""
 from __future__ import annotations
 
 import argparse
@@ -37,18 +12,13 @@ from _paths import ROOT
 
 try:
     import feature_flags
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     feature_flags = None
 
-#: HEARTBEAT go-live needs a shorter, narrower bar than the self-optimizing LADDER
-#: (loop_controller.MIN_CLEAN_DAYS = 7, full T1-T5). ADR-0027 / §5 WS4: >= 3 clean days
-#: on T1/T2/T7 only. We reuse day_is_clean by neutralising the ladder-only T3/T4/T5
-#: (min 0 => always pass), so a "clean day" here means exactly T1 >= 0.60, T2 <= 0.15,
-#: T7 holds — no forked threshold logic.
+
 MIN_CLEAN_DAYS_HEARTBEAT = 3
-#: ``day_is_clean`` defaults an ABSENT metric to -1 (a fail), so to neutralise the
-#: ladder-only T3/T4/T5 we set their mins to -inf (absent or present, always pass).
-#: T1 (>=), T2 (<=), and T7 keep their real bars — that is exactly the WS4 window.
+
+
 HEARTBEAT_TARGETS = {
     "t1_min": 0.60, "t2_max": 0.15,
     "t3_min": float("-inf"), "t4_min": float("-inf"), "t5_min": float("-inf"),
@@ -60,14 +30,9 @@ DEFAULT_EVENTS = ROOT / "board" / ".events.jsonl"
 
 
 def _active_plan(budgets_path: Path) -> str | None:
-    """Read ``mustaqil.monthly_credit_ceiling.active_plan`` from budgets.yaml.
-
-    Returns ``None`` when absent/malformed/unreadable — failure-isolated, and
-    it never guesses a plan (design §3.5: silently inheriting a default plan
-    would under- or over-report exhaustion)."""
     try:
         data = yaml.safe_load(budgets_path.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     if not isinstance(data, dict):
         return None
@@ -83,22 +48,12 @@ def assess(
     active_plan: str | None = None,
     credit_exhausted: bool = False,
 ) -> dict:
-    """Report (never apply) HEARTBEAT go-live readiness. Pure — no I/O, no flip.
-
-    ``active_plan``/``credit_exhausted`` give the reporter the FR-004 monthly
-    credit ceiling as a go-live PRECONDITION (design §3.5): an undeclared
-    ``active_plan`` makes the ceiling unenforceable and blocks readiness (never
-    guessed); a declared-but-exhausted ceiling likewise blocks readiness. This
-    is deliberately a READINESS blocker, not a `--tick` fabricated pause — an
-    inert `--tick` keeps the shadow window accumulating.
-    """
     streak = loop_controller.clean_live_days(history, HEARTBEAT_TARGETS)
     window_met = streak >= MIN_CLEAN_DAYS_HEARTBEAT
     credit_declared = isinstance(active_plan, str) and bool(active_plan.strip())
     credit_precondition_met = credit_declared and not credit_exhausted
-    # A clean window + an enforceable, unexhausted credit ceiling are the things
-    # this reporter can verify from evidence. The kill-switch drill +
-    # zero-gate-violations are surfaced as Founder-verified gates.
+
+
     ready = (not flag_on) and window_met and credit_precondition_met
     blockers: list[str] = []
     if flag_on:
@@ -126,7 +81,7 @@ def assess(
         "credit_ceiling_enforceable": credit_declared,
         "credit_exhausted": credit_exhausted,
         "blockers": blockers,
-        # Gates this reporter CANNOT verify — the Founder confirms them before flipping:
+
         "founder_verified_gates": [
             "kill-switch drill passes: python3 scripts/kill_switch_drill.py --smoke",
             "zero gate/approval violations in the event log (check_never_auto_approve + interrupts answered)",
@@ -171,7 +126,7 @@ def _render(report: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_heartbeat_readiness.py — evidence-gated readiness for the HEARTBEAT go-live.')
     ap.add_argument("--history", type=Path, default=DEFAULT_HISTORY)
     ap.add_argument("--budgets", type=Path, default=DEFAULT_BUDGETS,
                     help="path to config/budgets.yaml (FR-004 monthly credit ceiling)")

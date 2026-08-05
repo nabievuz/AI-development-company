@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_dependency_graph.py — Phase 3 dependency graph (ADR-0016 / ADR-0002)."""
+
 from __future__ import annotations
 
 import sys
@@ -10,11 +10,10 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_dependency_graph as dg  # noqa: E402  (import after path manipulation)
+import check_dependency_graph as dg
 
 
 def _board(tmp_path: Path, *tickets: tuple[str, str, str]) -> Path:
-    """tickets: (id, depends_on_inline, zone). '' omits the field."""
     bdir = tmp_path / "board"
     bdir.mkdir(exist_ok=True)
     for tid, deps, zone in tickets:
@@ -89,17 +88,7 @@ def test_real_repo_passes():
     assert dg.main([]) == 0
 
 
-# --- producer / consumer checks (DAS-1468) ---
-
 def _board_pc(tmp_path: Path, *tickets: tuple) -> Path:
-    """Extended ticket builder supporting produces: and consumes: fields.
-
-    tickets: (id, depends_on_inline, zone, produces, consumes[, goal])
-      zone     : '' = present-and-empty (validator error), '_OMIT_' = absent
-      produces : '' = absent
-      consumes : '' = absent
-      goal     : '' = absent
-    """
     bdir = tmp_path / "board"
     bdir.mkdir(exist_ok=True)
     for item in tickets:
@@ -126,7 +115,6 @@ def _board_pc(tmp_path: Path, *tickets: tuple) -> Path:
 
 
 def test_missing_producer_fails(tmp_path):
-    """Consumer declares consumes: foo but no ticket on the board produces it."""
     board = _board_pc(
         tmp_path,
         ("DAS-1", "", "_OMIT_", "", "foo"),
@@ -135,7 +123,6 @@ def test_missing_producer_fails(tmp_path):
 
 
 def test_matched_producer_passes(tmp_path):
-    """Producer declares produces: foo, consumer declares consumes: foo — no violation."""
     board = _board_pc(
         tmp_path,
         ("DAS-1", "", "_OMIT_", "foo", ""),
@@ -145,20 +132,18 @@ def test_matched_producer_passes(tmp_path):
 
 
 def test_disconnected_pc_goal_fails(tmp_path):
-    """Tickets sharing a goal that uses produces/consumes but have no depends_on link."""
     board = _board_pc(
         tmp_path,
-        # DAS-1 produces foo (goal g1), DAS-2 consumes foo (goal g1) but no dep
+
         ("DAS-1", "", "_OMIT_", "foo", "", "g1"),
         ("DAS-2", "", "_OMIT_", "", "foo", "g1"),
     )
-    # producer/consumer match is satisfied (DAS-1 produces foo),
-    # but the graph is disconnected within goal g1 → exit 1
+
+
     assert _run(board) == 1
 
 
 def test_board_without_pc_fields_passes(tmp_path):
-    """CI-safe / dormant: a board with no produces:/consumes: still passes."""
     board = _board(
         tmp_path,
         ("DAS-1", "", "_OMIT_"),
@@ -166,8 +151,6 @@ def test_board_without_pc_fields_passes(tmp_path):
     )
     assert _run(board) == 0
 
-
-# --- skill-rule guards (the runtime same-zone / dep-blocked rules live in the skill) ---
 
 def _cycle_skill_flat() -> str:
     p = REPO_ROOT / ".claude" / "skills" / "daslab-cycle" / "SKILL.md"

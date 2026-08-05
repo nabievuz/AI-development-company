@@ -1,14 +1,3 @@
-"""Guardrail for the ``sre-eng`` role (R4 rollout — DAS-1471).
-
-INPUT: the shared scope screen (wrong-dept / missing-consumes / gate-open) is
-sufficient; an SRE ticket is any engineering-dept ticket routed to this role.
-
-OUTPUT: the SRE Engineer is **rollback-first** and owns runbooks, deploy
-mechanics, and monitoring wiring, so a deploy/ops change is only accepted when
-the work references a **rollback / runbook / health-check / monitoring** control.
-This encodes the SRE Definition of Done at the guardrail layer so a bare "shipped
-to prod" with no operational safety net never passes the tripwire.
-"""
 from __future__ import annotations
 
 import re
@@ -24,8 +13,7 @@ from guardrails import (
 
 ROLE = "sre-eng"
 
-# Positive evidence of an operational safety net (rollback-first discipline).
-# Tolerant + case-insensitive: a real SRE deliverable names at least one.
+
 _SRE_EVIDENCE = re.compile(
     r"\b(roll[- ]?back|run[- ]?book|health[- ]?check|healthcheck|"
     r"monitor(?:ing|s)?|observability|alert(?:ing|s)?|dashboard|on[- ]?call|"
@@ -35,12 +23,10 @@ _SRE_EVIDENCE = re.compile(
 
 
 def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """SRE engineers accept any in-department, gate-clear ticket."""
     return default_input_guardrail(ctx)
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    """Accept only an ops change that names a rollback / runbook / monitoring control."""
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)

@@ -1,23 +1,10 @@
-"""Deterministic verifier — legal-analyst / regulatory-flag-scan.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ missing| - |reported \\ missing|) / |missing| )
-
-The "missing" set is derived by scanning the SAME privacy-policy fixture the
-agent was given for substantive coverage of each checklist disclosure — doing
-the task correctly reproduces it, so nothing is leaked beyond the checklist
-itself (already spelled out in task.md). Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-# disclosure ID -> regex patterns that indicate the disclosure is substantively
-# present in the policy text.
+
 _REQUIRED_DISCLOSURES: dict[str, str] = {
     "legal_basis": r"legal basis",
     "right_to_access": r"right to access|access to your data|request a copy of",
@@ -43,7 +30,6 @@ def _missing_disclosures(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _missing_disclosures(fixtures)
     if not expected:
         return 0.0

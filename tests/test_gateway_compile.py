@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_gateway_compile.py — WS7 GATEWAY intake pipeline (O7-T02, DAS-1493).
 
-Covers the binding acceptance surface (docs/specs/PROJECT-OS-PACK.md FR-001…FR-010):
-
-- a deliberately BROKEN pack is rejected with actionable errors (file + field + fix);
-- the discovery gate provably BLOCKS (<10 Q&A, no waiver) and GENERATES the questions,
-  and no downstream stage runs while it is open;
-- the pipeline WIRES the existing check_approved_goal_queue.py (unapproved queue blocks);
-- a valid minimal sample pack compiles end-to-end into self-contained, project-scoped
-  story tickets that are themselves board_lint-clean;
-- Constitution: a constraint that RELAXES org law is rejected, the tightening twin passes.
-
-Everything runs in tmp/scratch dirs — never the org board.
-"""
 from __future__ import annotations
 
 import sys
@@ -23,12 +10,9 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import board_lint  # noqa: E402
-import gateway_compile as gc  # noqa: E402
+import board_lint
+import gateway_compile as gc
 
-# --------------------------------------------------------------------------- #
-# Fixtures — build a well-formed pack on disk, then mutate for the negative cases
-# --------------------------------------------------------------------------- #
 
 _MANIFEST = """\
 name: {slug}
@@ -72,7 +56,6 @@ _STAGE_DIRS = (
 
 
 def build_pack(tmp_path: Path, slug: str = "acme-helpdesk", **overrides: str) -> Path:
-    """Write a well-formed pack at tmp_path/projects/<slug>/ and return the pack root."""
     root = tmp_path / "projects" / slug
     for d in _STAGE_DIRS:
         (root / "docs" / d).mkdir(parents=True, exist_ok=True)
@@ -86,35 +69,31 @@ def build_pack(tmp_path: Path, slug: str = "acme-helpdesk", **overrides: str) ->
     return root
 
 
-# --------------------------------------------------------------------------- #
-# Happy path — a valid pack compiles to self-contained story tickets
-# --------------------------------------------------------------------------- #
-
 def test_valid_pack_compiles_end_to_end(tmp_path):
     root = build_pack(tmp_path)
     res = gc.run_pipeline(root)
 
     assert res.ok, [str(e) for e in res.errors]
     assert res.rejected_stage is None
-    # 1 epic + 6 stage tickets for the single approved goal.
+
     assert len(res.tickets) == 7
     board = root / "board-tickets"
     assert board.is_dir()
 
     for p in res.tickets:
         text = p.read_text(encoding="utf-8")
-        assert "project: acme-helpdesk" in text  # FR-008 project-scoped
+        assert "project: acme-helpdesk" in text
     stage_tickets = [p for p in res.tickets if "epic" not in p.name]
     assert len(stage_tickets) == 6
     for p in stage_tickets:
         text = p.read_text(encoding="utf-8")
-        # self-contained: embedded context, acceptance, produces/consumes, stage tag, gate ref
+
         assert "Embedded context" in text
         assert "## Acceptance criteria" in text
         assert "## Produces / Consumes" in text
         assert "AADL stage:" in text
         assert "GATE-" in text
-    # research-enrichment stored ONLY in the project folder
+
     assert res.research_path is not None
     assert res.research_path.is_file()
     assert (root / "docs" / "01-planning") in res.research_path.parents
@@ -129,7 +108,7 @@ def test_compiled_tickets_are_board_lint_clean(tmp_path):
     tickets = board_lint.load_tickets(root / "board-tickets")
     errors = board_lint.lint_tickets(tickets, known_roles)
     assert errors == [], errors
-    # project board path uses board-tickets/ (hyphen) so R9 project: rule is exempt
+
     assert all(
         "board/tickets/" not in str(p).replace("\\", "/") for p, _ in tickets
     )
@@ -147,10 +126,6 @@ def test_stage_tags_cover_all_six_aadl_gates(tmp_path):
     assert gates == {f"GATE-{i}" for i in range(1, 7)}
 
 
-# --------------------------------------------------------------------------- #
-# Stage 1 — a broken pack is rejected with actionable errors
-# --------------------------------------------------------------------------- #
-
 def test_broken_pack_missing_required_key_rejected(tmp_path):
     bad_manifest = _MANIFEST.format(slug="acme-helpdesk").replace("budget:", "budgetX:")
     root = build_pack(tmp_path, manifest=bad_manifest)
@@ -158,11 +133,11 @@ def test_broken_pack_missing_required_key_rejected(tmp_path):
 
     assert not res.ok
     assert res.rejected_stage == "validate"
-    assert not (root / "board-tickets").exists()  # nothing compiled
+    assert not (root / "board-tickets").exists()
     budget_errs = [e for e in res.errors if e.field == "budget"]
     assert budget_errs, [str(e) for e in res.errors]
     e = budget_errs[0]
-    assert e.file == "PROJECT-OS.yaml" and e.problem and e.fix  # actionable: file + field + fix
+    assert e.file == "PROJECT-OS.yaml" and e.problem and e.fix
 
 
 def test_broken_pack_placeholder_and_deadlink_rejected(tmp_path):
@@ -189,7 +164,7 @@ def test_name_folder_mismatch_rejected(tmp_path):
 
 def test_noncanonical_doctree_rejected(tmp_path):
     root = build_pack(tmp_path)
-    (root / "docs" / "02-prd").mkdir()  # a divergent non-canonical name
+    (root / "docs" / "02-prd").mkdir()
     res = gc.run_pipeline(root)
     assert not res.ok and res.rejected_stage == "validate"
     assert any("non-canonical" in e.problem for e in res.errors)
@@ -199,13 +174,9 @@ def test_unknown_manifest_key_is_a_warning_not_reject(tmp_path):
     manifest = _MANIFEST.format(slug="acme-helpdesk") + "\nmascot: penguin\n"
     root = build_pack(tmp_path, manifest=manifest)
     res = gc.run_pipeline(root)
-    assert res.ok  # unknown key does not reject
+    assert res.ok
     assert any("mascot" in w for w in res.warnings)
 
-
-# --------------------------------------------------------------------------- #
-# Stage 2 — discovery gate provably BLOCKS and GENERATES questions
-# --------------------------------------------------------------------------- #
 
 def test_discovery_gate_blocks_and_generates_questions(tmp_path):
     thin = "# Discovery\n\nQ1: only one question?\nA1: only one answer.\n"
@@ -214,8 +185,8 @@ def test_discovery_gate_blocks_and_generates_questions(tmp_path):
 
     assert not res.ok
     assert res.rejected_stage == "discovery-gate"
-    assert len(res.questions) >= 10  # GENERATES the missing questions
-    # provably blocks: no downstream stage ran, no tickets, no approved-check
+    assert len(res.questions) >= 10
+
     assert res.tickets == []
     assert not (root / "board-tickets").exists()
     stage_names = [s.name for s in res.stages]
@@ -226,16 +197,12 @@ def test_discovery_gate_blocks_and_generates_questions(tmp_path):
 def test_discovery_waiver_passes_gate(tmp_path):
     root = build_pack(tmp_path, discovery="# Discovery\n\nDISCOVERY-WAIVED by Founder 2026-07-03.\n")
     res = gc.run_pipeline(root)
-    assert res.ok  # explicit waiver satisfies the gate
+    assert res.ok
 
-
-# --------------------------------------------------------------------------- #
-# Stage 4 — wires check_approved_goal_queue.py
-# --------------------------------------------------------------------------- #
 
 def test_unapproved_queue_blocks_compilation(tmp_path):
-    # No APPROVED / TASDIQLANDI / founder_approved token anywhere → the wired
-    # check_approved_goal_queue gate treats it as un-approved and blocks.
+
+
     unapproved = (
         "# Goal queue (draft)\n\nawaiting Founder sign-off\n\n"
         "| order | goal_slug | outcome | why_now | research_basis | owner | status | ticket_refs |\n"
@@ -250,7 +217,6 @@ def test_unapproved_queue_blocks_compilation(tmp_path):
 
 
 def test_approved_check_uses_wired_module(tmp_path, monkeypatch):
-    """The approved-check must invoke check_approved_goal_queue (not reimplement it)."""
     root = build_pack(tmp_path)
     calls: list[str] = []
     real = gc.approved_queue._queue_approved
@@ -262,12 +228,8 @@ def test_approved_check_uses_wired_module(tmp_path, monkeypatch):
     monkeypatch.setattr(gc.approved_queue, "_queue_approved", spy)
     res = gc.run_pipeline(root)
     assert res.ok
-    assert calls == ["acme-helpdesk"]  # the wired gate was actually called
+    assert calls == ["acme-helpdesk"]
 
-
-# --------------------------------------------------------------------------- #
-# Stage 1 — Constitution: tighten OK, relax rejected (FR-009 / SC-005)
-# --------------------------------------------------------------------------- #
 
 def test_constraint_that_relaxes_org_law_rejected(tmp_path):
     manifest = _MANIFEST.format(slug="acme-helpdesk").replace(
@@ -290,10 +252,6 @@ def test_constraint_that_tightens_org_law_passes(tmp_path):
     assert res.ok, [str(e) for e in res.errors]
 
 
-# --------------------------------------------------------------------------- #
-# FR-010 — project-agnostic: a second, different pack compiles unchanged
-# --------------------------------------------------------------------------- #
-
 def test_second_different_pack_compiles_with_no_code_change(tmp_path):
     root = build_pack(tmp_path, slug="fleet-router")
     res = gc.run_pipeline(root)
@@ -301,10 +259,6 @@ def test_second_different_pack_compiles_with_no_code_change(tmp_path):
     assert len(res.tickets) == 7
     assert all("project: fleet-router" in p.read_text(encoding="utf-8") for p in res.tickets)
 
-
-# --------------------------------------------------------------------------- #
-# CLI smoke
-# --------------------------------------------------------------------------- #
 
 def test_cli_returns_1_on_rejection(tmp_path, capsys):
     root = build_pack(tmp_path, discovery="# Discovery\n\nnothing here\n")

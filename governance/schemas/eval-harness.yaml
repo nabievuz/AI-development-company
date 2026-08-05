@@ -1,7 +1,3 @@
-# Artifact schema — eval-harness
-# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
-# The file stem MUST equal `name`; tickets reference this via
-# produces: eval-harness / consumes: eval-harness.
 name: eval-harness
 version: 1
 description: >-

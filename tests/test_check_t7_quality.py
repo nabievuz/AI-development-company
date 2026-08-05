@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_t7_quality.py — T7 hard-blocker validator (R-3 / ADR-002).
 
-Proves: the real rubric is intact; weights cannot be silently lowered; the
-weighted score math is correct; and any T7 regression vs baseline fails closed.
-"""
 from __future__ import annotations
 
 import json
@@ -18,7 +14,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_t7_quality as t7  # noqa: E402  (import after path manipulation)
+import check_t7_quality as t7
 
 REAL_RUBRIC = REPO_ROOT / "config" / "t7_rubric.yaml"
 
@@ -37,10 +33,6 @@ def _canonical_rubric() -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Rubric integrity
-# --------------------------------------------------------------------------- #
-
 def test_real_rubric_is_intact():
     rubric = t7.load_rubric(REAL_RUBRIC)
     assert t7.check_rubric_integrity(rubric) == []
@@ -48,14 +40,14 @@ def test_real_rubric_is_intact():
 
 def test_weights_must_sum_to_one():
     bad = _canonical_rubric()
-    bad["dimensions"]["correctness"]["weight"] = 0.50  # now sums to 1.20
+    bad["dimensions"]["correctness"]["weight"] = 0.50
     problems = t7.check_rubric_integrity(bad)
     assert any("sum" in p for p in problems)
 
 
 def test_silently_lowered_weight_is_caught():
     bad = _canonical_rubric()
-    # Lower correctness, raise maintainability so the sum still equals 1.00.
+
     bad["dimensions"]["correctness"]["weight"] = 0.20
     bad["dimensions"]["maintainability"]["weight"] = 0.20
     problems = t7.check_rubric_integrity(bad)
@@ -99,10 +91,6 @@ def test_bool_drop_is_caught():
     assert any("max_quality_drop must be 0" in p for p in t7.check_rubric_integrity(bad))
 
 
-# --------------------------------------------------------------------------- #
-# Weighted score + no-degradation gate
-# --------------------------------------------------------------------------- #
-
 def test_weighted_score_all_ones_is_one():
     rubric = _canonical_rubric()
     perfect = dict.fromkeys(t7.EXPECTED_DIMENSIONS, 1.0)
@@ -118,7 +106,7 @@ def test_no_degradation_equal_is_ok():
 def test_any_drop_fails_with_zero_max_drop():
     rubric = _canonical_rubric()
     base = dict.fromkeys(t7.EXPECTED_DIMENSIONS, 1.0)
-    worse = dict(base, correctness=0.99)  # tiny drop on a 0.30-weight dim
+    worse = dict(base, correctness=0.99)
     assert t7.check_no_degradation(rubric, base, worse, 0.0)
 
 
@@ -128,10 +116,6 @@ def test_improvement_is_ok():
     better = dict.fromkeys(t7.EXPECTED_DIMENSIONS, 0.95)
     assert t7.check_no_degradation(rubric, base, better, 0.0) == []
 
-
-# --------------------------------------------------------------------------- #
-# CLI / exit codes
-# --------------------------------------------------------------------------- #
 
 def test_main_exit_0_on_real_rubric():
     assert t7.main(["--rubric", str(REAL_RUBRIC)]) == 0

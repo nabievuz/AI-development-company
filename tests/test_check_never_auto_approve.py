@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_never_auto_approve.py — QONUN-5 never-auto-approve (R-4 / ADR-004).
 
-Proves every never-auto-approve category is caught when auto-approved, that a
-non-category auto-approval is allowed, the missing-config / missing-board error
-paths, and that the REAL repo board passes the gate as-is.
-"""
 from __future__ import annotations
 
 import sys
@@ -17,7 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_never_auto_approve as na  # noqa: E402  (import after path manipulation)
+import check_never_auto_approve as na
 
 REAL_CONFIG = REPO_ROOT / "config" / "risk_taxonomy.yaml"
 
@@ -36,10 +31,6 @@ def _run(tmp_path: Path, *tickets: dict) -> int:
     return na.main(["--board", str(board), "--config", str(REAL_CONFIG)])
 
 
-# --------------------------------------------------------------------------- #
-# Clean / skipped
-# --------------------------------------------------------------------------- #
-
 def test_clean_board_passes(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "human:founder", "ticket_type": "goal"}) == 0
 
@@ -51,10 +42,6 @@ def test_no_approval_field_is_skipped(tmp_path):
 def test_non_category_auto_is_allowed(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto", "ticket_type": "feature"}) == 0
 
-
-# --------------------------------------------------------------------------- #
-# Each never-auto-approve category, auto-approved -> violation (exit 1)
-# --------------------------------------------------------------------------- #
 
 def test_new_goal_auto_fails(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto", "ticket_type": "goal"}) == 1
@@ -81,8 +68,8 @@ def test_migration_path_auto_fails(tmp_path):
 
 
 def test_alembic_ini_auto_fails(tmp_path):
-    # alembic.ini is apply-time migration config (holds sqlalchemy.url) -> schema_migration
-    # never-auto-approve, so a repoint-the-DB edit cannot be auto-approved (E-004 R-13).
+
+
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto", "paths": ["alembic.ini"]}) == 1
 
 
@@ -91,11 +78,9 @@ def test_secret_path_auto_fails(tmp_path):
 
 
 def test_governance_config_path_auto_fails(tmp_path):
-    # editing the loop mode / T7 rubric is governance -> never-auto-approve
+
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto", "paths": ["config/loop.yaml"]}) == 1
 
-
-# --- bypass-shape regression tests (review-found false negatives) ---
 
 def test_toplevel_secret_path_auto_fails(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto", "paths": [".env"]}) == 1
@@ -135,7 +120,7 @@ def test_unparseable_frontmatter_fails_closed(tmp_path):
 
 
 def test_smuggled_safety_fence_fails_closed(tmp_path):
-    # approval/ticket_type hidden AFTER a premature second fence must not slip past
+
     board = tmp_path / "board"
     board.mkdir()
     (board / "DAS-9.md").write_text(
@@ -159,10 +144,6 @@ def test_bare_directory_path_auto_fails(tmp_path):
 def test_auto_prefix_variants_detected(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "auto:classifier", "ticket_type": "epic-root"}) == 1
 
-
-# --------------------------------------------------------------------------- #
-# Error paths + real board
-# --------------------------------------------------------------------------- #
 
 def test_missing_config_exit_2(tmp_path):
     board = _board(tmp_path, {"id": "DAS-2000"})

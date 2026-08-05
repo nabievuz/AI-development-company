@@ -1,4 +1,3 @@
-"""Deterministic verifier — content-lead / style-guide-violations."""
 from __future__ import annotations
 
 import json
@@ -12,7 +11,7 @@ def verify(submission: dict, fixtures: Path) -> float:
     banned = [str(t).strip().lower() for t in guide.get("banned_terms", [])]
     required = {term for term in banned if term in draft}
     if not required:
-        # Task defect guard: a task with no violations at all can't discriminate.
+
         return 0.0
 
     violations = submission.get("violations")

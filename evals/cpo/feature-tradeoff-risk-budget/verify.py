@@ -1,15 +1,3 @@
-"""Deterministic verifier — cpo / feature-tradeoff-risk-budget.
-
-Brute-forces every subset of initiatives (n is small) to find the maximum
-total expected_value_usd achievable within BOTH the budget and the
-high-risk-count cap.
-
-credit = 0.0  if the submission violates the budget or the risk cap
-credit = clamp01(achieved_value / optimal_value)  otherwise
-
-Deterministic (no clock/model/randomness). An empty submission scores 0.0.
-The optimal set is derived here only — never spelled out in fixtures/task.md.
-"""
 
 from __future__ import annotations
 
@@ -53,7 +41,6 @@ def _optimal_value(budget: int, max_high_risk: int, initiatives: dict) -> float:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     budget, max_high_risk, initiatives = _load(fixtures)
     optimal_value = _optimal_value(budget, max_high_risk, initiatives)
     if optimal_value <= 0:

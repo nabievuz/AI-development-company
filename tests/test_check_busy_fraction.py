@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_busy_fraction.py — T1 busy-fraction gate (R-1 / ADR-002).
 
-Proves the union-interval math, the inert (unmeasured) path when there is no
-live data, and the >=0.60 threshold enforcement on synthetic run events.
-"""
 from __future__ import annotations
 
 import datetime as dt
@@ -18,10 +14,10 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_busy_fraction as cbf  # noqa: E402  (import after path manipulation)
-import wave_kpi  # noqa: E402
+import check_busy_fraction as cbf
+import wave_kpi
 
-T = "2026-06-21T10:%02d:00Z"  # minute-parameterised ISO timestamps
+T = "2026-06-21T10:%02d:00Z"
 
 
 def _ev(event_type: str, run_id: str, ts: str, model: str | None = None) -> dict:
@@ -41,23 +37,15 @@ def _mk(minute: int) -> dt.datetime:
     return dt.datetime(2026, 6, 21, 10, minute, 0)
 
 
-# --------------------------------------------------------------------------- #
-# Union-interval math
-# --------------------------------------------------------------------------- #
-
 def test_union_disjoint():
-    # [0,4] + [5,10] = 4m + 5m = 540s
+
     assert wave_kpi._union_seconds([(_mk(0), _mk(4)), (_mk(5), _mk(10))]) == 540.0
 
 
 def test_union_overlap_not_double_counted():
-    # [0,6] overlaps [4,10] -> union [0,10] = 600s
+
     assert wave_kpi._union_seconds([(_mk(0), _mk(6)), (_mk(4), _mk(10))]) == 600.0
 
-
-# --------------------------------------------------------------------------- #
-# busy_fraction_from_events
-# --------------------------------------------------------------------------- #
 
 def test_none_when_empty():
     frac, stats = wave_kpi.busy_fraction_from_events([])
@@ -73,8 +61,8 @@ def test_none_when_no_completed_runs():
 
 
 def test_fraction_computed():
-    # span 0:00..0:10 = 600s; active [0:00-0:04] + [0:05-0:10] = 540s -> 0.90
-    # model lives on run_end (the completion; ADR-0023 §4), never run_start.
+
+
     evs = [
         _ev("run_start", "r1", T % 0),
         _ev("run_end", "r1", T % 4),
@@ -86,10 +74,6 @@ def test_fraction_computed():
     assert stats["runs_completed"] == 2
     assert stats["model_mix"]["sonnet"] == 1
 
-
-# --------------------------------------------------------------------------- #
-# CLI / exit codes
-# --------------------------------------------------------------------------- #
 
 def test_cli_missing_store_is_inert_exit_0(tmp_path):
     assert cbf.main(["--events", str(tmp_path / "nope.jsonl")]) == 0
@@ -106,17 +90,17 @@ def test_cli_above_target_exit_0(tmp_path):
         _ev("run_end", "r1", T % 4),
         _ev("run_start", "r2", T % 5),
         _ev("run_end", "r2", T % 10),
-    ]  # 0.90 >= 0.60
+    ]
     p = _write(tmp_path, evs)
     assert cbf.main(["--events", str(p), "--target", "0.60"]) == 0
 
 
 def test_cli_below_target_exit_1(tmp_path):
-    # active [0:00-0:02] = 120s; span 0:00..0:10 = 600s -> 0.20 < 0.60
+
     evs = [
         _ev("run_start", "r1", T % 0),
         _ev("run_end", "r1", T % 2),
-        _ev("run_start", "r2", T % 10),  # start only: extends span, no interval
+        _ev("run_start", "r2", T % 10),
     ]
     p = _write(tmp_path, evs)
     assert cbf.main(["--events", str(p), "--target", "0.60"]) == 1

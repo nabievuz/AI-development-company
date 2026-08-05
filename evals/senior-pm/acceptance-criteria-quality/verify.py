@@ -1,15 +1,3 @@
-"""Deterministic verifier — senior-pm / acceptance-criteria-quality.
-
-The user story's support-ticket context implies four distinct edge-case
-scenarios. Each is defined here as a set of keywords that must ALL appear
-(case-insensitive substring) in a submitted criterion for it to "cover" that
-scenario. Structure credit rewards Given/When/Then phrasing. Neither key is
-present in fixtures/ — only here.
-
-credit = clamp01( 0.7 * scenario_coverage + 0.3 * structure_fraction )
-
-An empty/missing ``acceptance_criteria`` list scores 0.0.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,7 +22,7 @@ def _is_gwt(text: str) -> bool:
     return sum(marker in lowered for marker in _GWT_MARKERS) >= 2
 
 
-def verify(submission: dict, fixtures: Path) -> float:  # noqa: ARG001
+def verify(submission: dict, fixtures: Path) -> float:
     criteria = submission.get("acceptance_criteria")
     if not isinstance(criteria, list) or not criteria:
         return 0.0

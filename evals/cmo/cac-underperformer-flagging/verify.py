@@ -1,15 +1,3 @@
-"""Deterministic verifier — cmo / cac-underperformer-flagging.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ underperforming| - |reported \\ underperforming|) / |underperforming| )
-
-The underperforming-channel set is derived from the SAME fixture the agent
-was given — actual CAC (spend / conversions) strictly greater than
-`target_cac` — so nothing is leaked into the prompt: applying the CAC-vs-target
-rule correctly *is* the graded skill. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -25,7 +13,7 @@ def _underperforming(fixtures: Path) -> set[str]:
         conversions = float(channel.get("conversions", 0) or 0)
         spend = float(channel.get("spend", 0) or 0)
         if conversions <= 0:
-            # No conversions at all is the worst-case CAC (infinite) — always bad.
+
             bad.add(str(channel.get("name")))
             continue
         cac = spend / conversions
@@ -35,7 +23,6 @@ def _underperforming(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _underperforming(fixtures)
     if not expected:
         return 0.0

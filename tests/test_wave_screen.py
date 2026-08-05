@@ -1,11 +1,3 @@
-"""tests/test_wave_screen.py — R3 wave-level pre-dispatch INPUT screen.
-
-The deterministic dispatch-time scope gate (``guardrail_dispatch.screen_wave_inputs``)
-runs the INPUT guardrail over a wave's candidate tickets BEFORE dispatch, at the
-ORCHESTRATOR decision point — never inside ``wave_runner`` (ADR-0031: no decision
-inside it). Verifies it accepts an in-scope ticket and refuses / re-routes
-wrong-department and open-predecessor-gate candidates.
-"""
 
 from __future__ import annotations
 
@@ -15,7 +7,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-import guardrail_dispatch as gd  # noqa: E402
+import guardrail_dispatch as gd
 
 _ROUTING = """\
 # Role routing
@@ -56,7 +48,7 @@ def test_in_scope_ticket_accepted(tmp_path: Path) -> None:
 
 def test_wrong_department_rejected_and_rerouted(tmp_path: Path) -> None:
     routing, board = _setup(tmp_path)
-    # a marketing-dept ticket assigned to an engineering role -> wrong-dept trip.
+
     t = _ticket(board, "DAS-1002", assignee="backend-eng-1", dept="marketing")
     res = gd.screen_wave_inputs([t], routing_path=routing, board_dir=board)
     assert res.accepted == []
@@ -89,7 +81,7 @@ def test_cli_screen_wave_exits_nonzero_on_reject(tmp_path: Path) -> None:
     _ticket(board, "DAS-3001", assignee="backend-eng-1", dept="engineering")
     _ticket(board, "DAS-3002", assignee="backend-eng-1", dept="marketing")
     rc = gd.main(["--screen-wave", str(board), "--routing", str(routing), "--board", str(board)])
-    assert rc == 1  # a rejected candidate -> non-zero
-    (board / "DAS-3002-fixture.md").unlink()  # remove the bad one
+    assert rc == 1
+    (board / "DAS-3002-fixture.md").unlink()
     rc2 = gd.main(["--screen-wave", str(board), "--routing", str(routing), "--board", str(board)])
-    assert rc2 == 0  # all-clean wave -> 0
+    assert rc2 == 0

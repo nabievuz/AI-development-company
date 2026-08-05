@@ -1,38 +1,5 @@
 #!/usr/bin/env python3
-"""DasLab release-gate scorer: the weighted 7-dimension 100/100 diagnostic.
 
-This is the single source of truth for the release gate. It computes a weighted
-score over seven dimensions:
-
-    Docs           20
-    Architecture   20
-    Code-quality   15
-    Consistency    15
-    Portability    15
-    Security       10
-    Git-hygiene     5
-    --------------- ---
-    TOTAL          100
-
-Each dimension is all-or-nothing: it earns its full weight only if *every*
-automated check in that dimension passes, otherwise it scores 0. The total is
-the sum of earned weights. The process exits non-zero unless the total is
-exactly 100.
-
-Design note: a missing or unbuilt artifact must make its dimension fail
-*gracefully* (score 0 with a human-readable reason) and must never crash the
-scorer. Each check is wrapped so that any unexpected exception is reported as a
-failed check rather than a traceback.
-
-Usage::
-
-    python3 scripts/diagnostics.py                 # score all dimensions
-    python3 scripts/diagnostics.py --check docs     # score one dimension
-    python3 scripts/diagnostics.py --check board    # board-consistency only
-    python3 scripts/diagnostics.py --json           # machine-readable output
-
-Wire as the final CI job.
-"""
 
 from __future__ import annotations
 
@@ -46,14 +13,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --------------------------------------------------------------------------- #
-# Repository roots (path-independent: derived from this file's location)
-# --------------------------------------------------------------------------- #
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 TICKETS_DIR: Path = REPO_ROOT / "board" / "tickets"
 
-# (dimension key, human label, weight). Order is the §8 canonical order.
+
 DIMENSIONS: list[tuple[str, str, int]] = [
     ("docs", "Docs", 20),
     ("architecture", "Architecture", 20),
@@ -64,49 +28,24 @@ DIMENSIONS: list[tuple[str, str, int]] = [
     ("git_hygiene", "Git-hygiene", 5),
 ]
 
-# --------------------------------------------------------------------------- #
-# Status enum — derived from board_lint's SSOT (DAS-1646)
-# --------------------------------------------------------------------------- #
-# This file used to redeclare the ticket-status enum as its own literal set,
-# which silently drifted from scripts/board_lint.py's VALID_STATUSES (the real
-# SSOT) when "interrupted" was added there — a validly-formed interrupted
-# ticket then zeroed the whole Consistency dimension while board_lint passed
-# the same board clean. Derive from board_lint instead so the two definitions
-# cannot disagree again.
-#
-# `scripts/` is normally sys.path[0] when this file runs as `python3
-# scripts/diagnostics.py`, but a white-box importer (e.g. a test that loads
-# this module via importlib.util.spec_from_file_location, or a subprocess
-# launched with a different cwd) may not have scripts/ on sys.path — so make
-# the import self-sufficient rather than assuming a bare `import board_lint`
-# resolves.
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 try:
-    import board_lint as _board_lint  # noqa: E402 - needs sys.path patched above
-except Exception:  # noqa: BLE001 - fail-closed, never let an import error crash the gate
-    _board_lint = None  # type: ignore[assignment]
+    import board_lint as _board_lint
+except Exception:
+    _board_lint = None
 
-# The status enum a valid ticket frontmatter must use. Sourced from
-# board_lint.VALID_STATUSES; empty only when board_lint could not be imported
-# at all, in which case every status fails closed (see check_consistency,
-# which also reports the import failure as its own check) rather than
-# silently accepting anything.
+
 VALID_STATUS: frozenset[str] = (
     frozenset(_board_lint.VALID_STATUSES) if _board_lint is not None else frozenset()
 )
 
 
-# --------------------------------------------------------------------------- #
-# Result containers
-# --------------------------------------------------------------------------- #
-
-
 @dataclass
 class CheckResult:
-    """Outcome of a single automated check within a dimension."""
 
     name: str
     passed: bool
@@ -115,7 +54,6 @@ class CheckResult:
 
 @dataclass
 class DimensionResult:
-    """Aggregated outcome for one weighted dimension."""
 
     key: str
     label: str
@@ -124,7 +62,6 @@ class DimensionResult:
 
     @property
     def passed(self) -> bool:
-        """A dimension passes only when *every* check passes."""
         return bool(self.checks) and all(c.passed for c in self.checks)
 
     @property
@@ -145,17 +82,7 @@ class DimensionResult:
         }
 
 
-# --------------------------------------------------------------------------- #
-# Low-level helpers
-# --------------------------------------------------------------------------- #
-
-
 def _is_substantive_doc(path: Path, min_chars: int = 200) -> bool:
-    """True if a doc is non-trivial: >= min_chars of content and has a heading.
-
-    De-hollows file-exists-only checks — a present-but-empty stub is not evidence
-    that something is documented.
-    """
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -166,11 +93,6 @@ def _is_substantive_doc(path: Path, min_chars: int = 200) -> bool:
 
 
 def _git(*args: str) -> tuple[int, str]:
-    """Run a git command at the repo root; return (returncode, stdout).
-
-    Never raises: a missing git, a non-repo, or a failed command all surface as
-    a non-zero return code so callers can treat it as a failed check.
-    """
     try:
         proc = subprocess.run(
             ["git", "-C", str(REPO_ROOT), *args],
@@ -179,17 +101,12 @@ def _git(*args: str) -> tuple[int, str]:
             timeout=30,
         )
         return proc.returncode, proc.stdout
-    except Exception as exc:  # noqa: BLE001 - degrade gracefully, never crash
+    except Exception as exc:
         return 1, f"git invocation failed: {exc}"
 
 
 @functools.lru_cache(maxsize=1)
 def _tracked_files() -> tuple[str, ...]:
-    """Return git-tracked paths (cached per run — ADR-0002/P14), or () if git is unavailable.
-
-    Memoised: the tracked-file set is constant within one diagnostics run, so the two
-    callers share a single `git ls-files` instead of two (P14 _tracked_files cache).
-    """
     code, out = _git("ls-files")
     if code != 0:
         return ()
@@ -197,7 +114,6 @@ def _tracked_files() -> tuple[str, ...]:
 
 
 def _tracked_symlinks() -> list[str]:
-    """Return git-tracked symlink paths (mode 120000), or [] on failure."""
     code, out = _git("ls-files", "-s")
     if code != 0:
         return []
@@ -210,11 +126,6 @@ def _tracked_symlinks() -> list[str]:
 
 
 def _read_frontmatter(text: str) -> dict[str, str]:
-    """Parse the leading YAML-ish frontmatter block into a flat dict.
-
-    Tolerant by design: returns {} when no frontmatter is present rather than
-    raising, so a malformed ticket is reported as a failed check.
-    """
     if not text.startswith("---"):
         return {}
     end = text.find("\n---", 3)
@@ -229,14 +140,7 @@ def _read_frontmatter(text: str) -> dict[str, str]:
     return fields
 
 
-# --------------------------------------------------------------------------- #
-# Dimension checks. Each returns a list of CheckResult.
-# A check that probes a not-yet-built artifact returns passed=False, never raises.
-# --------------------------------------------------------------------------- #
-
-
 def check_docs() -> list[CheckResult]:
-    """Docs (EPIC F): root README, docs index, and the full ADR set present."""
     results: list[CheckResult] = []
 
     readme = REPO_ROOT / "README.md"
@@ -261,16 +165,15 @@ def check_docs() -> list[CheckResult]:
         "0004-project-agnostic-engine.md",
         "0005-worktree-per-ticket-dispatch-ownership.md",
     ]
-    # A tracked symlink that dangles in a worktree still counts as present in a
-    # full checkout, so accept either a real file or a (possibly dangling) link.
+
+
     missing = [
         name
         for name in expected_adrs
         if not (adr_dir / name).is_file() and not (adr_dir / name).is_symlink()
     ]
-    # De-hollowed: a real ADR file must be substantive (non-empty + has a heading),
-    # not just present — a stub no longer satisfies "documented". Symlinks may
-    # legitimately dangle in a worktree, so they keep existence-only acceptance.
+
+
     weak = [
         name
         for name in expected_adrs
@@ -300,7 +203,7 @@ def check_docs() -> list[CheckResult]:
         )
     )
 
-    # Link integrity: check_links.py must find no broken relative links.
+
     import subprocess
 
     links = subprocess.run(
@@ -336,15 +239,6 @@ def check_docs() -> list[CheckResult]:
 
 
 def check_architecture() -> list[CheckResult]:
-    """Architecture (EPIC A): repo is self-contained — no tracked symlinks left.
-
-    EPIC A materializes the 14 git-tracked symlinks into real files so a clean
-    clone needs no out-of-tree targets. This check is path-independent: it counts
-    *tracked* symlinks rather than resolving them on disk, so it does not falsely
-    fail when run from a git worktree (where ignored dirs are absent and links
-    dangle). It correctly fails while symlinks remain and passes once they are
-    materialized.
-    """
     results: list[CheckResult] = []
 
     symlinks = _tracked_symlinks()
@@ -358,7 +252,7 @@ def check_architecture() -> list[CheckResult]:
         )
     )
 
-    # The architecture must be documented: the project-agnostic-engine ADR exists.
+
     arch_adr = REPO_ROOT / "docs" / "adr" / "0004-project-agnostic-engine.md"
     documented = arch_adr.is_file() or arch_adr.is_symlink()
     results.append(
@@ -371,7 +265,7 @@ def check_architecture() -> list[CheckResult]:
         )
     )
 
-    # LAW C: the engine must stay project-agnostic.
+
     import subprocess
 
     iso = subprocess.run(
@@ -404,9 +298,7 @@ def check_architecture() -> list[CheckResult]:
         )
     )
 
-    # ADR-0031 (GATE-4 / DAS-1500): every committed wave attestation is COMPLETE
-    # and its hash-chain is intact. Inert (exit 0) only when none exist; the
-    # committed sample under metrics/attestations/ gives the gate real teeth.
+
     attest = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_attestation.py")],
         capture_output=True,
@@ -422,10 +314,7 @@ def check_architecture() -> list[CheckResult]:
         )
     )
 
-    # ADR-0032 (GATE-4 / DAS-1506): the committed dispatch record reconciles —
-    # ledger ⇄ attestation bijection, per-run wave-chain continuity, board
-    # terminality, and post-baseline coverage. Inert (exit 0) only when both the
-    # ledger and the attestations are empty; the committed sample gives it teeth.
+
     reconcile = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_wave_reconciliation.py")],
         capture_output=True,
@@ -444,11 +333,6 @@ def check_architecture() -> list[CheckResult]:
 
 
 def check_code_quality() -> list[CheckResult]:
-    """Code-quality (EPIC D): the validator suite + tests exist AND lint is clean.
-
-    Presence alone is gameable by a stub (atom-audit P2); the ruff gate below measures
-    real lint quality so a hollow file cannot score 100 (ADR-0017).
-    """
     results: list[CheckResult] = []
 
     scripts_dir = REPO_ROOT / "scripts"
@@ -493,10 +377,7 @@ def check_code_quality() -> list[CheckResult]:
         )
     )
 
-    # ADR-0017 (P2): a REAL lint gate so the score reflects quality, not just presence.
-    # Ruff is the repo linter (ci.yml), installed in CI + local. FAIL-CLOSED (ADR-0021):
-    # if ruff is absent the lint gate cannot run, so this check FAILS — an unmeasured
-    # lint gate must never let the score reach 100/100.
+
     try:
         ruff = subprocess.run(
             ["ruff", "check", str(REPO_ROOT / "scripts"), str(REPO_ROOT / "tests")],
@@ -511,7 +392,7 @@ def check_code_quality() -> list[CheckResult]:
         ruff_ok, ruff_detail = False, "ruff unavailable — lint gate cannot run; install ruff (fail-closed, ADR-0021)"
     results.append(CheckResult("ruff-clean", ruff_ok, ruff_detail))
 
-    # ADR-0018 (P3): every role overlay carries the Mission/Scope/DoD/Escalation contract.
+
     overlay = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_overlay_sections.py"), "--strict"],
         capture_output=True,
@@ -530,12 +411,6 @@ def check_code_quality() -> list[CheckResult]:
 
 
 def check_consistency() -> list[CheckResult]:
-    """Consistency (EPIC D, board dim): every ticket has valid frontmatter.
-
-    Validates frontmatter schema (id, status enum, assignee, author) and the
-    no-self-review rule (in_review => assignee != author) across the board. This
-    is the dimension exercised by `--check board`.
-    """
     results: list[CheckResult] = []
 
     if not TICKETS_DIR.is_dir():
@@ -546,20 +421,14 @@ def check_consistency() -> list[CheckResult]:
 
     ticket_files = sorted(TICKETS_DIR.glob("DAS-*.md"))
     if not ticket_files:
-        # An empty live board is a VALID steady state, not a failure: board/tickets/
-        # is platform-only (project tickets live in projects/<slug>/board-tickets/),
-        # so it is empty whenever no org-engine work is in flight. With zero tickets
-        # there is nothing to validate => the board is trivially consistent.
-        # (QONUN — Project Placement Law.)
+
+
         results.append(
             CheckResult("board-valid", True, "live board empty (platform-only); nothing to lint")
         )
         return results
 
-    # DAS-1646: the status enum is derived from board_lint.VALID_STATUSES at
-    # import time (see module top). Surface a failed import as its own check
-    # rather than letting every ticket fail-closed on "status-enum" with no
-    # explanation of why.
+
     results.append(
         CheckResult(
             "status-enum-ssot-importable",
@@ -578,7 +447,7 @@ def check_consistency() -> list[CheckResult]:
     for path in ticket_files:
         try:
             fm = _read_frontmatter(path.read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001 - unreadable ticket is a defect
+        except Exception as exc:
             missing_fields.append(f"{path.name} (unreadable: {exc})")
             continue
         if not {"id", "status", "author"} <= fm.keys():
@@ -617,8 +486,7 @@ def check_consistency() -> list[CheckResult]:
         )
     )
 
-    # Precedence enforced in code: no lower-precedence charter/overlay relaxes a
-    # binding board rule (governance/charter.md §7 / AGENTS.md §2).
+
     prec = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_precedence.py")],
         capture_output=True,
@@ -634,9 +502,7 @@ def check_consistency() -> list[CheckResult]:
         )
     )
 
-    # ADR-0014 native Clarify gate (Definition of Ready). Fail-closed since the
-    # ADR-0013 effort-tier ratification (2026-06-26): an unresolved marker in an
-    # active ticket fails the consistency dimension. The real board is clean today.
+
     clarify = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_clarifications.py"), "--strict"],
         capture_output=True,
@@ -652,9 +518,7 @@ def check_consistency() -> list[CheckResult]:
         )
     )
 
-    # ADR-0014 QONUN-3: every existing approved-goal-queue carries an explicit
-    # Founder approval marker (fail-closed; projects/ is gitignored, so the empty
-    # CI tree passes — see check_approved_goal_queue.py scope note).
+
     queue = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_approved_goal_queue.py")],
         capture_output=True,
@@ -670,8 +534,7 @@ def check_consistency() -> list[CheckResult]:
         )
     )
 
-    # ADR-0015 Phase 2: any SPEC.md present is well-formed and its ticket refs resolve
-    # (passes with 0 specs — the dormant default; size-gate is a plan-time judgement).
+
     spec = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_spec_consistency.py")],
         capture_output=True,
@@ -687,8 +550,7 @@ def check_consistency() -> list[CheckResult]:
         )
     )
 
-    # ADR-0016 Phase 3: the depends_on graph is acyclic with no dangling refs and no
-    # empty zone (passes with 0 ticket deps — the dormant default).
+
     depgraph = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_dependency_graph.py")],
         capture_output=True,
@@ -707,15 +569,14 @@ def check_consistency() -> list[CheckResult]:
 
 
 def check_portability() -> list[CheckResult]:
-    """Portability (EPIC C): zero hardcoded user paths in tracked files."""
     results: list[CheckResult] = []
 
-    # Split needle so this scanner is never counted as its own offender.
+
     needle = "/Users/" + "owner"
     offenders: list[str] = []
     for rel in _tracked_files():
-        # board/ (tickets + archive) are work records that quote the path inside
-        # verify commands (allowlisted, like gitleaks fixtures) — not load-bearing.
+
+
         if rel.startswith("board/"):
             continue
         path = REPO_ROOT / rel
@@ -723,7 +584,7 @@ def check_portability() -> list[CheckResult]:
             if path.is_symlink() or not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:  # noqa: BLE001 - binary/unreadable file: skip, do not crash
+        except Exception:
             continue
         if needle in text:
             offenders.append(rel)
@@ -738,7 +599,7 @@ def check_portability() -> list[CheckResult]:
         )
     )
 
-    # LAW A gate: the dedicated scanner (covers /Users/<any> and /home/<any>).
+
     import subprocess
 
     nohp = subprocess.run(
@@ -761,7 +622,7 @@ def check_portability() -> list[CheckResult]:
         try:
             mcp_text = mcp.read_text(encoding="utf-8", errors="ignore")
             portable = needle not in mcp_text
-        except Exception:  # noqa: BLE001
+        except Exception:
             portable = False
         results.append(
             CheckResult(
@@ -776,7 +637,6 @@ def check_portability() -> list[CheckResult]:
 
 
 def check_security() -> list[CheckResult]:
-    """Security (EPIC A1): no nested dept .git histories, no obvious secrets."""
     results: list[CheckResult] = []
 
     nested_git: list[str] = []
@@ -801,10 +661,7 @@ def check_security() -> list[CheckResult]:
         )
     )
 
-    # Real Anthropic keys are sk-ant-<type><digits>-<long base64url body>, e.g.
-    # sk-ant-api03-... / sk-ant-oat01-... — the body is high-entropy and long, so
-    # require the structured prefix plus a 40+ char body to skip doc placeholders
-    # like "sk-ant-placeholder-replace-me".
+
     secret_pat = re.compile(
         r"(sk-ant-[a-z]+\d{2}-[A-Za-z0-9_-]{40,}"
         r"|AKIA[0-9A-Z]{16}"
@@ -817,7 +674,7 @@ def check_security() -> list[CheckResult]:
             if path.is_symlink() or not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
         if secret_pat.search(text):
             leaks.append(rel)
@@ -831,8 +688,7 @@ def check_security() -> list[CheckResult]:
         )
     )
 
-    # GATE-4 clean-room (§2.3): no banned donor agent-framework library in
-    # manifests or imports.  A hit means the clean-room boundary was breached.
+
     import subprocess
 
     import_ban = subprocess.run(
@@ -850,9 +706,7 @@ def check_security() -> list[CheckResult]:
         )
     )
 
-    # TN-1 (DAS-1543): every code/IP endpoint must resolve in-tenant; only the
-    # Claude model call is an accepted external exception. Inert when no
-    # config/tenant_boundary.yaml is declared (exit 0).
+
     in_tenant = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "check_in_tenant.py")],
         capture_output=True,
@@ -871,13 +725,6 @@ def check_security() -> list[CheckResult]:
 
 
 def check_git_hygiene() -> list[CheckResult]:
-    """Git-hygiene: a well-formed VERSION + CHANGELOG, a .gitignore that keeps
-    per-project workspaces out of the engine, the CI workflow and repo templates,
-    and CODEOWNERS coverage.
-
-    DasLab is semantically versioned (ADR 0022): VERSION holds MAJOR.MINOR.PATCH
-    and CHANGELOG.md records each release.
-    """
     results: list[CheckResult] = []
 
     version = REPO_ROOT / "VERSION"
@@ -888,7 +735,7 @@ def check_git_hygiene() -> list[CheckResult]:
             raw = version.read_text(encoding="utf-8").strip()
             ok_version = bool(re.fullmatch(r"\d+\.\d+\.\d+", raw))
             detail = f"VERSION={raw}" if ok_version else f"VERSION malformed: {raw!r}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             detail = f"VERSION unreadable: {exc}"
     results.append(CheckResult("version-file", ok_version, detail))
 
@@ -915,7 +762,7 @@ def check_git_hygiene() -> list[CheckResult]:
                 if ignore_ok
                 else ".gitignore does not ignore projects/"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             detail = f".gitignore unreadable: {exc}"
     results.append(CheckResult("gitignore-sane", ignore_ok, detail))
 
@@ -957,7 +804,6 @@ def check_git_hygiene() -> list[CheckResult]:
     return results
 
 
-# Registry mapping dimension key -> its check function.
 CHECK_FUNCS: dict[str, Callable[[], list[CheckResult]]] = {
     "docs": check_docs,
     "architecture": check_architecture,
@@ -969,30 +815,19 @@ CHECK_FUNCS: dict[str, Callable[[], list[CheckResult]]] = {
 }
 
 
-# --------------------------------------------------------------------------- #
-# Scoring engine
-# --------------------------------------------------------------------------- #
-
-
 def score_dimension(key: str, label: str, weight: int) -> DimensionResult:
-    """Run one dimension's checks, isolating any crash into a failed check."""
     dim = DimensionResult(key=key, label=label, weight=weight)
     func = CHECK_FUNCS[key]
     try:
         dim.checks = func()
         if not dim.checks:
             dim.checks = [CheckResult("no-checks", False, "no checks defined")]
-    except Exception as exc:  # noqa: BLE001 - a buggy check must not crash the gate
+    except Exception as exc:
         dim.checks = [CheckResult("uncaught-error", False, f"{type(exc).__name__}: {exc}")]
     return dim
 
 
 def run(selected: str) -> list[DimensionResult]:
-    """Score the selected dimension(s).
-
-    `selected` is a dimension key, ``board`` (alias for the consistency
-    dimension), or ``all``.
-    """
     if selected == "board":
         selected = "consistency"
     if selected == "all":
@@ -1004,7 +839,6 @@ def run(selected: str) -> list[DimensionResult]:
 
 
 def render_text(results: list[DimensionResult], total: int, maximum: int) -> str:
-    """Human-readable per-dimension table plus the SCORE line."""
     lines: list[str] = []
     for dim in results:
         mark = "PASS" if dim.passed else "FAIL"
@@ -1038,7 +872,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point. Returns the process exit code (0 only when total == max)."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     valid = {k for k, _, _ in DIMENSIONS} | {"board", "all"}
@@ -1062,7 +895,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(render_text(results, total, maximum))
 
-    # Exit non-zero unless a full sweep scores the full 100.
+
     return 0 if total == maximum else 1
 
 

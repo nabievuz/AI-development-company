@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""check_no_dead_runtime.py — no dead legacy-runtime endpoint in the active engine.
 
-DasLab is file-based (the board is `board/tickets/*.md`; orchestration is
-`/daslab-cycle` + `/daslab-plan`). An earlier HTTP-API runtime exposed an endpoint
-on port **3100**; that endpoint no longer exists, and any reference to it in active
-engine code is dead and must not regress. This validator fails CI on the dead-endpoint
-literal in the active surface:
-
-    scripts/*.py, scripts/*.sh, skills/**/*.md, .claude/agents/*.md, .claude/skills/**/*.md
-
-Archival files that may legitimately mention the literal as data are out of scope by
-construction (they are not in the active surface): `docs/**` and the board ticket
-store. The scanner itself is allowlisted (it names the literal as data).
-
-Exit codes
-----------
-0  no dead-runtime endpoint in the active surface
-1  at least one dead-runtime endpoint
-2  usage / environment error
-"""
 from __future__ import annotations
 
 import argparse
@@ -29,7 +10,7 @@ from pathlib import Path
 
 from _paths import ROOT
 
-# Active engine surface (glob patterns, repo-root-relative).
+
 SURFACE = (
     "scripts/*.py",
     "scripts/*.sh",
@@ -38,7 +19,7 @@ SURFACE = (
     ".claude/agents/*.md",
     ".claude/skills/**/*.md",
 )
-# Dead legacy-runtime endpoint, assembled so this scanner is never its own offender.
+
 _NEEDLE = ":" + "3100"
 _SELF = {"scripts/check_no_dead_runtime.py"}
 
@@ -85,7 +66,7 @@ def offenders(root: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='check_no_dead_runtime.py — no dead legacy-runtime endpoint in the active engine.')
     parser.add_argument("--root", type=Path, default=None, help="repo root (default: self-located)")
     args = parser.parse_args(argv)
     root = (args.root or ROOT).resolve()

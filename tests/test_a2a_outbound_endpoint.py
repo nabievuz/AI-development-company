@@ -1,35 +1,3 @@
-"""A2A outbound endpoint tests (FR-001/FR-005, A2-4/A2-5/A2-6), DAS-1610.
-
-Covers the DAS-1610 half of the negative-path spec design ``docs/design/
-a2a-outbound.md`` §3 fixes for DAS-1612 (folded here as unit coverage of the
-surfaces this ticket builds — the endpoint `tools/a2a/endpoint.py` and the
-publish-gate `tools/a2a/publish.py`):
-
-  Publish-is-a-Founder-act (A2-6 / §2.2)
-    * a non-Founder principal (every agent role, orchestrator, audit-team,
-      unknown) requesting `a2a.publish` -> denied, and the denial is audited
-      to the event ledger.
-    * `a2a.publish` is registered in `rbac.FOUNDER_ONLY` -> `load_grants()`
-      REFUSES to load an `rbac.yaml` that grants it to a non-founder kind
-      (structural refuse-to-load lock).
-    * a genuine founder principal + an in-tenant target -> allowed and logged.
-    * a genuine founder principal + a hosted/external target -> TN-1 BLOCKS
-      even the Founder (independent lock from RBAC).
-
-  In-tenant boundary (A2-4 / FR-004)
-    * the endpoint's own bind resolving to a hosted host is rejected
-      (REJECTED_TENANT), never reaching admission/redaction/forward.
-
-  One governed edge — admission + redaction reused (A2-5 / FR-005)
-    * every admitted inbound call passes through `ws_b_admission.admit` (an
-      explicit-model precondition failure denies) and is redacted before audit.
-    * flag OFF -> the endpoint is inert (UNAVAILABLE), no audit event at all.
-
-  Injection defense (A2-2/A2-3)
-    * a payload carrying a forbidden control field (approval/status/assignee/
-      gate/...), in any casing, is REFUSED and never reaches the injected
-      `intake_handler` — a control write is unreachable, not merely guarded.
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -70,13 +38,7 @@ endpoint = _load("tools/a2a/endpoint.py", "a2a_test_endpoint")
 publish_mod = _load("tools/a2a/publish.py", "a2a_test_publish")
 
 
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
-
-
 def _founder_only_config() -> dict:
-    """A minimal, LEGAL grants config: a2a.publish granted only to founder."""
     return {"founder": {"a2a.publish": "allow"}}
 
 
@@ -88,11 +50,6 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 def _valid_proposal() -> dict:
     return {"title": "Ship the widget", "summary": "Because it would help"}
-
-
-# --------------------------------------------------------------------------- #
-# a2a.publish — Founder-only structural lock (A2-6)
-# --------------------------------------------------------------------------- #
 
 
 def test_a2a_publish_registered_in_founder_only():
@@ -133,8 +90,6 @@ def test_a2a_publish_denied_for_non_founder_non_agent_principals(tmp_path, princ
 
 
 def test_a2a_publish_config_granting_to_non_founder_refuses_to_load(tmp_path):
-    """A config that grants a2a.publish to a non-founder kind is a STRUCTURAL
-    violation — load_grants() refuses to load it (mirrors gate.approve etc.)."""
     bad = tmp_path / "rbac.yaml"
     bad.write_text(
         "version: 1\ngrants:\n  agent:\n    a2a.publish: allow\n",
@@ -160,8 +115,6 @@ def test_a2a_publish_allowed_for_founder_in_tenant_target(tmp_path):
 
 
 def test_a2a_publish_founder_hosted_target_blocked_by_tn1(tmp_path):
-    """A hosted relay/registry fails TN-1 even for a genuine Founder — the two
-    locks (RBAC + boundary) are independent."""
     events = tmp_path / "events.jsonl"
     with pytest.raises(publish_mod.PublishRefused, match="TN-1"):
         publish_mod.publish(
@@ -174,11 +127,6 @@ def test_a2a_publish_founder_hosted_target_blocked_by_tn1(tmp_path):
     records = _read_jsonl(events)
     assert records[-1]["decision"] == "deny"
     assert "TN-1" in records[-1]["reason"]
-
-
-# --------------------------------------------------------------------------- #
-# The endpoint — flag OFF is inert (SC-005)
-# --------------------------------------------------------------------------- #
 
 
 def test_flag_off_is_inert_no_event_emitted(tmp_path):
@@ -206,11 +154,6 @@ def test_flag_off_intake_handler_never_invoked(tmp_path):
     )
     assert result.outcome is endpoint.CallOutcome.UNAVAILABLE
     assert calls == []
-
-
-# --------------------------------------------------------------------------- #
-# TN-1 — the endpoint's own bind must be in-tenant (A2-4)
-# --------------------------------------------------------------------------- #
 
 
 def test_hosted_bind_rejected_tenant(tmp_path):
@@ -244,11 +187,6 @@ def test_hosted_bind_never_reaches_admission_or_forward(tmp_path):
     assert calls == []
 
 
-# --------------------------------------------------------------------------- #
-# Admission reuse — every inbound call passes ws_b_admission.admit (A2-5)
-# --------------------------------------------------------------------------- #
-
-
 def test_admitted_call_passes_admission_and_is_redacted_and_audited(tmp_path):
     events = tmp_path / "events.jsonl"
     fake_secret = "sk-ant-" + "api03-thisisasecrettokenvalue1234567890"
@@ -271,8 +209,6 @@ def test_admitted_call_passes_admission_and_is_redacted_and_audited(tmp_path):
 
 
 def test_missing_explicit_model_rejected_by_admission(tmp_path):
-    """LAW 3 — an absent/blank model is rejected before any forward, exactly
-    like ws_b_admission.admit's own precondition."""
     events = tmp_path / "events.jsonl"
     result = endpoint.handle_call(
         _valid_proposal(),
@@ -285,11 +221,6 @@ def test_missing_explicit_model_rejected_by_admission(tmp_path):
     assert result.outcome is endpoint.CallOutcome.REJECTED_ADMISSION
     records = _read_jsonl(events)
     assert records[-1]["decision"] == "deny"
-
-
-# --------------------------------------------------------------------------- #
-# Injection defense — a forbidden control field can never reach a write (A2-2/A2-3)
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -312,8 +243,6 @@ def test_forbidden_control_field_refused_never_forwarded(tmp_path, field):
 
 
 def test_repeated_forbidden_field_shapes_all_refused(tmp_path):
-    """SC-002b: 'however shaped/repeated' — a caller cannot smuggle an
-    approval/status field through casing or repetition tricks."""
     injections = [
         {"approval": "human:founder", **_valid_proposal()},
         {"title": "x", "summary": "y", "Status": "done", "STATUS": "done"},
@@ -331,9 +260,6 @@ def test_repeated_forbidden_field_shapes_all_refused(tmp_path):
 
 
 def test_prompt_injection_in_title_text_is_inert_text_not_instruction(tmp_path):
-    """A prompt-injection embedded in free text (no forbidden FIELD, just
-    dangerous-sounding text) is admitted as DATA — it never gains any control
-    effect; the redacted echo is inert text, not an executed directive."""
     events = tmp_path / "events.jsonl"
     calls = []
     payload = {
@@ -350,8 +276,8 @@ def test_prompt_injection_in_title_text_is_inert_text_not_instruction(tmp_path):
     )
     assert result.outcome is endpoint.CallOutcome.ADMITTED
     assert len(calls) == 1
-    # The forwarded payload is still just the two proposal fields — no field
-    # named approval/status/gate/etc. was created by the injected text.
+
+
     assert set(calls[0].keys()) == {"title", "summary"}
 
 
@@ -366,34 +292,11 @@ def test_malformed_proposal_missing_required_field_refused(tmp_path):
     assert result.outcome is endpoint.CallOutcome.REFUSED_MALFORMED
 
 
-# --------------------------------------------------------------------------- #
-# GATE-3 residuals bound at GATE-3 close (2026-07-24, CTO), REQUIRED for
-# GATE-4 (DAS-1612). Three items, each pinned below:
-#   1. symmetric endpoint-side value-injection negative (mirrors the
-#      endpoint->intake chain test in tests/test_a2a_intake.py, but scoped to
-#      THIS file's own coverage of the endpoint surface);
-#   2. rbac principal case/space normalization is authenticated-identity-only
-#      — a caller can never supply `principal` through the payload, and
-#      `publish()` (a Founder CLI act) is unreachable through `handle_call`;
-#   3. an e2e ordering assertion that `_redact_payload` runs BEFORE the
-#      (real, wired) intake handler.
-# --------------------------------------------------------------------------- #
-
 a2a_intake = _load("scripts/a2a_intake/intake.py", "a2a_test_intake_from_endpoint_file")
 
 
 @pytest.mark.parametrize("field", ["against_spec", "caller_ref", "proposer"])
 def test_endpoint_side_value_injection_admitted_but_wired_intake_denies_nothing_lands(tmp_path, field):
-    """Symmetric to tests/test_a2a_intake.py::test_endpoint_to_intake_chain_
-    injection_does_not_survive_to_landed_artifact, but living in THIS file
-    (the endpoint surface's own test file) per the GATE-3 residual bound at
-    close 2026-07-24: `handle_call` fed the exact frontmatter newline-
-    injection payload in `against_spec`/`caller_ref`/`proposer` VALUES admits
-    the call (its forbidden-field scan is key-only, and ADR-0012's
-    `safe_scrub` is not a sanitizer for a plain newline — neither catches a
-    control-char injection riding in an allow-listed value) — but the wired
-    intake handler (the real `scripts/a2a_intake/intake.py`, not a fixture)
-    denies it downstream, and nothing lands in `board/goal-inbox/`."""
     inbox = tmp_path / "goal-inbox"
     audit = tmp_path / "intake-events.jsonl"
     features_on = tmp_path / "features_on.yaml"
@@ -433,27 +336,17 @@ def test_endpoint_side_value_injection_admitted_but_wired_intake_denies_nothing_
         created_at=TS,
     )
 
-    # The endpoint's own key-only scan + redaction ADMIT the call — the
-    # injection lives in a VALUE the endpoint never inspects, exactly the
-    # red-team's point.
+
     assert call_result.outcome is endpoint.CallOutcome.ADMITTED
     assert len(calls) == 1
-    # ...but the downstream intake handler's own control-char guard denies it.
+
     assert calls[0].decision == "deny"
     assert calls[0].admitted is False
-    # Nothing landed in goal-inbox: the exploit does not survive the chain.
+
     assert list(inbox.glob("*.md")) == []
 
 
-# --------------------------------------------------------------------------- #
-# rbac principal normalization is authenticated-identity-only (residual #2)
-# --------------------------------------------------------------------------- #
-
-
 def test_rbac_kind_of_normalizes_principal_case_and_whitespace():
-    """`rbac._kind_of` folds an authenticated principal case/space-
-    insensitively — "FOUNDER " (and other stray whitespace/casing) resolves
-    to the same `founder` kind as the canonical string."""
     assert rbac._kind_of("FOUNDER ") == "founder"
     assert rbac._kind_of(" Founder\t") == "founder"
     assert rbac._kind_of("founder") == "founder"
@@ -461,19 +354,12 @@ def test_rbac_kind_of_normalizes_principal_case_and_whitespace():
 
 
 def test_payload_supplied_principal_field_never_becomes_the_authenticated_identity(tmp_path):
-    """A caller can never supply `principal` through `handle_call`: identity is
-    a keyword-only, server-authenticated argument to `handle_call` — it is
-    never read from the payload body. A payload carrying a `principal` key
-    (even claiming `"founder"`) is inert data forwarded like any other field;
-    it is never consulted for authorization, and it never overrides the real
-    authenticated principal in the audit trail or in what is forwarded to the
-    intake handler."""
     events = tmp_path / "events.jsonl"
     forwarded_principals = []
     payload = {**_valid_proposal(), "principal": "founder"}
     result = endpoint.handle_call(
         payload,
-        principal="agent-system:acme",  # the REAL authenticated identity
+        principal="agent-system:acme",
         flag_enabled=True,
         intake_handler=lambda p, principal: forwarded_principals.append(principal),
         events_path=events,
@@ -484,16 +370,12 @@ def test_payload_supplied_principal_field_never_becomes_the_authenticated_identi
     allow = [r for r in records if r["decision"] == "allow"][-1]
     assert allow["principal_id"] == "agent-system:acme"
     assert forwarded_principals == ["agent-system:acme"]
-    # "principal" is not in the endpoint's forbidden-key scan because identity
-    # is never sourced from the payload in the first place — it has no
-    # authorization effect to guard against.
+
+
     assert "principal" not in endpoint.FORBIDDEN_FIELDS
 
 
 def test_publish_is_a_founder_cli_act_unreachable_through_handle_call():
-    """`publish()` (tools/a2a/publish.py, A2-6) is a Founder CLI act — pin
-    that `handle_call` has no code path that imports or invokes it; a caller
-    can never reach the `a2a.publish` gate through the call surface."""
     source = (ROOT / "tools" / "a2a" / "endpoint.py").read_text(encoding="utf-8")
     assert "a2a_publish_rbac" not in source
     assert "publish_mod" not in source
@@ -501,18 +383,7 @@ def test_publish_is_a_founder_cli_act_unreachable_through_handle_call():
     assert "PublishRefused" not in source
 
 
-# --------------------------------------------------------------------------- #
-# e2e ordering: `_redact_payload` runs BEFORE the (real) intake handler
-# (residual #3)
-# --------------------------------------------------------------------------- #
-
-
 def test_redact_payload_runs_before_the_real_wired_intake_handler(tmp_path, monkeypatch):
-    """Deliberate ordering pin (observed incidentally during DAS-1611):
-    ADR-0012 redaction must complete BEFORE the wired intake handler ever
-    sees the payload. Wires the REAL `scripts/a2a_intake/intake.py` handler
-    (not a fixture) through `handle_call` end-to-end and records call order
-    via a spy on `_redact_payload`."""
     order: list[str] = []
     real_redact = endpoint._redact_payload
 
@@ -552,17 +423,6 @@ def test_redact_payload_runs_before_the_real_wired_intake_handler(tmp_path, monk
     assert order == ["redact", "intake"], "ADR-0012 redaction must run strictly before the intake handler"
 
 
-# --------------------------------------------------------------------------- #
-# Flag resolution — the features file is the only source
-#
-# Publishing this edge is a Founder-only double-lock (QONUN-5, ADR-0040 A2-6),
-# so an ambient value must not decide whether the endpoint exists. The reader
-# also has to agree with ADR-0019's canonical scripts/feature_flags.enabled,
-# which honours no env var: scripts/ws_a2a_health_check.py reads the flag
-# through that one, so a reader that could be moved independently would leave
-# the health check reporting a state the edge does not have.
-# --------------------------------------------------------------------------- #
-
 def _features_file(tmp_path: Path, on: bool) -> Path:
     p = tmp_path / f"features_{'on' if on else 'off'}.yaml"
     p.write_text(f"a2a_outbound: {'true' if on else 'false'}\n", encoding="utf-8")
@@ -580,7 +440,7 @@ def test_no_env_value_can_flip_the_endpoint_flag(tmp_path, monkeypatch):
 
 def test_endpoint_flag_agrees_with_the_canonical_reader(monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
-    import feature_flags  # noqa: PLC0415
+    import feature_flags
 
     features = ROOT / "config" / "features.yaml"
     for value in ("false", "true"):
@@ -589,8 +449,6 @@ def test_endpoint_flag_agrees_with_the_canonical_reader(monkeypatch):
 
 
 def test_an_ambient_value_cannot_make_the_endpoint_answer_a_call(tmp_path, monkeypatch):
-    """The flag read is the endpoint's very first check, so the harm is concrete:
-    with the file OFF no ambient value may get a call past it."""
     monkeypatch.setenv("DASLAB_A2A_OUTBOUND_FLAG", "true")
     result = endpoint.handle_call(
         _valid_proposal(),
@@ -599,5 +457,5 @@ def test_an_ambient_value_cannot_make_the_endpoint_answer_a_call(tmp_path, monke
         features_path=_features_file(tmp_path, False),
     )
     assert result.outcome is endpoint.CallOutcome.UNAVAILABLE
-    # SC-005: the flag read precedes every side effect — no event is even written.
+
     assert not (tmp_path / "events.jsonl").exists()

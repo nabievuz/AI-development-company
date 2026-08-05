@@ -1,16 +1,3 @@
-"""Tests for scripts/dgox/state.py — DGO-X Phase-1 graph_state module.
-
-Coverage matrix:
-    - Field group membership and GROUP_WRITER mapping
-    - Derived-reconstruction basics (GraphState defaults)
-    - Invariant 1: cannot-skip-AADL-stage (pass + violation cases)
-    - Invariant 2: role-cannot-self-route (pass + violation cases)
-    - Invariant 3: severity-up-only (pass + violation + review_authorized bypass)
-    - Invariant 4: flat-ArcRift-scope (pass + violation cases)
-    - Wrong-group-writer rejection (StateInvariantError with rule=wrong_group_writer)
-    - Enum coercion (plain strings accepted for enum fields)
-    - apply_group unknown group raises ValueError (not StateInvariantError)
-"""
 
 from __future__ import annotations
 
@@ -19,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-# Ensure scripts/ is on the path so dgox.state can import _paths
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from dgox.state import (  # noqa: E402
+from dgox.state import (
     AADL_ORDER,
     FIELD_GROUPS,
     GROUP_WRITER,
@@ -34,21 +21,11 @@ from dgox.state import (  # noqa: E402
     Severity,
     StateInvariantError,
     apply_group,
-)  # fmt: skip
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+)
 
 
 def fresh_state(ticket_id: str = "DAS-0001") -> GraphState:
-    """Return a blank GraphState for the given ticket."""
     return GraphState(ticket_id=ticket_id)
-
-
-# ---------------------------------------------------------------------------
-# 1. Structural / metadata
-# ---------------------------------------------------------------------------
 
 
 class TestFieldGroups:
@@ -101,11 +78,6 @@ class TestFieldGroups:
         assert AADL_ORDER[-1] == AadlStage.maintenance
 
 
-# ---------------------------------------------------------------------------
-# 2. Derived-reconstruction basics
-# ---------------------------------------------------------------------------
-
-
 class TestGraphStateDefaults:
     def test_blank_state_has_ticket_id(self) -> None:
         state = fresh_state("DAS-9999")
@@ -125,7 +97,7 @@ class TestGraphStateDefaults:
         apply_group(state, "identity", {"goal": "ship-v1", "dept": "engineering"})
         assert state.goal == "ship-v1"
         assert state.dept == "engineering"
-        # ticket_id unchanged
+
         assert state.ticket_id == "DAS-0010"
 
     def test_apply_execution_group(self) -> None:
@@ -155,11 +127,6 @@ class TestGraphStateDefaults:
         )
         assert state.files_changed == ["scripts/dgox/state.py"]
         assert state.trace_ids == ["evt-001", "evt-002"]
-
-
-# ---------------------------------------------------------------------------
-# 3. Invariant 1 — cannot skip AADL stage
-# ---------------------------------------------------------------------------
 
 
 class TestAadlStageInvariant:
@@ -207,7 +174,7 @@ class TestAadlStageInvariant:
             "lifecycle",
             {"aadl_stage": "development", "predecessor_gate": "closed"},
         )
-        # Rewriting the same stage is always OK (no gate check needed).
+
         apply_group(state, "lifecycle", {"aadl_stage": "development"})
         assert state.aadl_stage == AadlStage.development
 
@@ -253,7 +220,7 @@ class TestAadlStageInvariant:
             {"aadl_stage": "planning", "predecessor_gate": "open"},
         )
         with pytest.raises(StateInvariantError):
-            # No predecessor_gate in update dict; state has it as "open"
+
             apply_group(state, "lifecycle", {"aadl_stage": "design"})
 
     def test_unknown_stage_raises(self) -> None:
@@ -280,11 +247,6 @@ class TestAadlStageInvariant:
         )
         assert isinstance(state.aadl_stage, AadlStage)
         assert state.aadl_stage == AadlStage.planning
-
-
-# ---------------------------------------------------------------------------
-# 4. Invariant 2 — role cannot self-route
-# ---------------------------------------------------------------------------
 
 
 class TestSelfRouteInvariant:
@@ -356,11 +318,6 @@ class TestSelfRouteInvariant:
         assert state.routing_reason == "Stage 3 backend implementation"
 
 
-# ---------------------------------------------------------------------------
-# 5. Invariant 3 — severity up-only
-# ---------------------------------------------------------------------------
-
-
 class TestSeverityUpOnlyInvariant:
     def test_first_write_any_severity_accepted(self) -> None:
         state = fresh_state()
@@ -394,7 +351,7 @@ class TestSeverityUpOnlyInvariant:
     def test_lower_severity_with_review_authorized(self) -> None:
         state = fresh_state()
         apply_group(state, "risk", {"severity": "critical"})
-        # An explicit security/gate review allows downgrading.
+
         apply_group(state, "risk", {"severity": "low"}, review_authorized=True)
         assert state.severity == Severity.low
 
@@ -412,11 +369,6 @@ class TestSeverityUpOnlyInvariant:
         )
         assert state.security_class == "internal"
         assert state.approval_required is True
-
-
-# ---------------------------------------------------------------------------
-# 6. Invariant 4 — flat ArcRift memory scope
-# ---------------------------------------------------------------------------
 
 
 class TestFlatArcRiftScope:
@@ -472,11 +424,6 @@ class TestFlatArcRiftScope:
         assert state.store_id == "mem-xyz"
 
 
-# ---------------------------------------------------------------------------
-# 7. Wrong-group-writer rejection
-# ---------------------------------------------------------------------------
-
-
 class TestWrongGroupWriter:
     def test_writing_routing_field_via_identity_group_raises(self) -> None:
         state = fresh_state()
@@ -502,11 +449,6 @@ class TestWrongGroupWriter:
         with pytest.raises(StateInvariantError) as exc_info:
             apply_group(state, "identity", {"made_up_field": "value"})
         assert exc_info.value.violation["rule"] == "wrong_group_writer"
-
-
-# ---------------------------------------------------------------------------
-# 8. StateInvariantError carries machine-readable violation
-# ---------------------------------------------------------------------------
 
 
 class TestStateInvariantErrorStructure:

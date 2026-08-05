@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_cockpit.py — Operator Cockpit v1 (R-7 / ADR-007)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -12,7 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import cockpit  # noqa: E402  (import after path manipulation)
+import cockpit
 
 PANELS = ("Current Wave", "Frontier Health", "Quality Health",
           "GATE-6 Decisions", "Risk Escalations", "Memory Health")
@@ -38,7 +38,7 @@ def test_renders_six_panels_with_no_data(tmp_path, capsys):
     out = capsys.readouterr().out
     for title in PANELS:
         assert title in out
-    assert "shadow mode" in out  # honest: no fabricated numbers
+    assert "shadow mode" in out
 
 
 def test_panel_current_wave_empty_is_nodata():
@@ -66,7 +66,7 @@ def test_gate6_panel_shadow_when_empty(tmp_path):
 
 
 def test_real_run_exits_0():
-    # against the real (shadow) repo state -> always exit 0 (passive view, not a gate)
+
     assert cockpit.main([]) == 0
 
 
@@ -85,7 +85,7 @@ def _render_args(tmp_path, **over):
 
 
 def test_survives_unreadable_ticket(tmp_path):
-    # a directory named like a ticket makes read_text raise OSError -> must NOT crash
+
     tickets = tmp_path / "board" / "tickets"
     tickets.mkdir(parents=True)
     (tickets / "DAS-1-ok.md").write_text("---\nid: DAS-1\npriority: p0\nstatus: todo\n---\n", encoding="utf-8")
@@ -99,11 +99,7 @@ def test_survives_directory_memory_store(tmp_path):
     assert cockpit.main(_render_args(tmp_path, **{"memory-store": store_dir})) == 0
 
 
-# --------------------------------------------------------------------------- #
-# DAS-1481 — extended panels + Action Console
-# --------------------------------------------------------------------------- #
-
-from dgox.events import build_run_end, build_run_start, build_span  # noqa: E402
+from dgox.events import build_run_end, build_run_start, build_span
 
 NEW_PANELS = ("Live Run Feed", "Wave Timeline", "Per-Agent Usage", "Per-Tool Usage",
               "Budget Burn", "Metrics T1-T7 & Sparklines", "Action Console")
@@ -131,10 +127,10 @@ def test_new_panels_render_with_no_data(tmp_path, capsys):
     out = capsys.readouterr().out
     for title in (*PANELS, *NEW_PANELS):
         assert title in out
-    # every §5 metric label is visible even with no live data
+
     for tlabel in ("T1", "T2", "T3", "T4", "T5", "T6", "T7"):
         assert tlabel in out
-    assert cockpit.NODATA in out  # honest: no fabricated numbers
+    assert cockpit.NODATA in out
 
 
 def test_panel_run_feed_empty_is_nodata():
@@ -171,7 +167,7 @@ def test_panel_per_agent_with_spans():
     lines = cockpit.panel_per_agent(events)
     joined = "\n".join(lines)
     assert "backend-eng-1" in joined
-    assert "50% ok (1/2)" in joined  # one ok of two spans
+    assert "50% ok (1/2)" in joined
     assert "tier sonnet" in joined
     assert "qa-eng" in joined and "tier haiku" in joined
 
@@ -217,7 +213,7 @@ def test_panel_metrics_shows_all_t_numbers():
     joined = "\n".join(lines)
     for tlabel in ("T1", "T2", "T3", "T4", "T5", "T6", "T7"):
         assert tlabel in joined
-    assert "immutable" in joined  # T7 hard blocker present
+    assert "immutable" in joined
 
 
 def test_sparkline_renders_and_is_empty_safe():
@@ -230,7 +226,7 @@ def test_sparkline_renders_and_is_empty_safe():
 def test_action_console_empty(tmp_path):
     (tmp_path / "interrupts").mkdir()
     assert cockpit.panel_action_console(tmp_path / "interrupts") == [cockpit.ACTION_CONSOLE_EMPTY]
-    # a non-existent dir is also the honest empty state
+
     assert cockpit.panel_action_console(tmp_path / "nope") == [cockpit.ACTION_CONSOLE_EMPTY]
 
 
@@ -263,7 +259,7 @@ def test_action_console_survives_malformed_card(tmp_path):
     d = tmp_path / "interrupts"
     d.mkdir()
     (d / "DAS-1-1.json").write_text("{not valid json", encoding="utf-8")
-    (d / "DAS-2-1.json").write_text("[1, 2, 3]", encoding="utf-8")  # valid json, wrong shape
+    (d / "DAS-2-1.json").write_text("[1, 2, 3]", encoding="utf-8")
     lines = cockpit.panel_action_console(d)
     joined = "\n".join(lines)
     assert "unreadable card" in joined

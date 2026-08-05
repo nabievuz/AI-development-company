@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""check_model_mix.py — T4 cost/model-mix gate.
 
-T4 = low_cost_successful / total_successful, target >= 0.25 (cheap-model share).
-A task-complexity classifier (``metrics_lib.haiku_eligible``) bounds what *should*
-be cheap — simple formatting/routing eligible, complex codegen/security not — so
-T4 is never chased by routing hard work to the cheap tier. Reads the event store;
-inert when no successful completion carries a model. Guardrail: quality must not drop.
-
-Exit codes: 0 = T4 >= target OR unmeasured, 1 = below target, 2 = usage error.
-
-Usage:
-    python3 scripts/check_model_mix.py [--events board/.events.jsonl] [--target 0.25]
-"""
 from __future__ import annotations
 
 import argparse
@@ -26,7 +14,7 @@ DEFAULT_TARGET = 0.25
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_model_mix.py — T4 cost/model-mix gate.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET)
     args = ap.parse_args(argv)

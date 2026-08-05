@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""metrics_lib.py — T2-T6 + anti-gaming computations.
 
-Reads the live DGO-X event store (``board/.events.jsonl``) via ``wave_kpi`` and
-the wave log (``board/.wave-log``), and computes T2-T6 + the anti-gaming checks.
-Every function returns None (inert) when there is no live data yet — the levers
-are shipped, never a fabricated KPI. The loop stays off until real waves read
-clean for >= 1 week (RFC-001 §5).
-"""
 from __future__ import annotations
 
 import datetime as dt
@@ -16,34 +9,21 @@ from dgox.created_at import parse_created_at
 
 
 def _parse_iso(ts: str) -> dt.datetime | None:
-    """Parse a ``created_at`` timestamp against the shared write-seam contract.
-
-    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` (the single
-    source of truth shared with ``cost_ledger``/``metrics_history_feeder``/
-    ``wave_kpi``/``trends``) instead of a locally re-implemented ``strptime``.
-    """
     return parse_created_at(ts)
 
 
 def read_waves(path: str = wave_kpi.LIVE_LOG) -> list[dict]:
-    """Parse the wave log via wave_kpi; [] if absent (no waves run yet)."""
     try:
         return wave_kpi.parse(path)
     except FileNotFoundError:
         return []
 
 
-# --------------------------------------------------------------------------- #
-# T2 — idle-wave rate, split into T2a (idle) vs T2b (blocked) per RFC-001 §2
-# --------------------------------------------------------------------------- #
-
 def _is_nothing_actionable(wave: dict) -> bool:
     return any("nothing actionable" in line.lower() for line in wave.get("txt", []))
 
 
 def idle_wave_rates(waves: list[dict]) -> dict | None:
-    """T2 split: T2a (idle = nothing actionable, scheduling waste) vs T2b (blocked
-    = actionable but dependency-blocked, NOT waste). None when no waves logged."""
     total = len(waves)
     if total == 0:
         return None
@@ -58,12 +38,7 @@ def idle_wave_rates(waves: list[dict]) -> dict | None:
     }
 
 
-# --------------------------------------------------------------------------- #
-# T3 — effective concurrency (median & p95 of concurrently-active runs)
-# --------------------------------------------------------------------------- #
-
 def run_intervals(events: list[dict]) -> list[tuple[dt.datetime, dt.datetime]]:
-    """Paired [run_start, run_end] intervals from the event store (run_id keyed)."""
     starts: dict[str, dt.datetime] = {}
     ends: dict[str, dt.datetime] = {}
     for ev in events:
@@ -79,10 +54,6 @@ def run_intervals(events: list[dict]) -> list[tuple[dt.datetime, dt.datetime]]:
 
 
 def _dropped_undated(events: list[dict], event_types: frozenset[str] | None = None) -> int:
-    """Count events (optionally filtered to ``event_types``) with a missing or
-    non-conforming ``created_at`` (DAS-1633) — surfaced by ``concurrency_stats``
-    and ``review_efficiency`` instead of the silent skip these loops used to do.
-    """
     return sum(
         1 for ev in events
         if (event_types is None or ev.get("event_type") in event_types)
@@ -102,15 +73,11 @@ def _percentile(sorted_vals: list[float], p: float) -> float:
 
 
 def concurrency_stats(events: list[dict]) -> dict | None:
-    """T3: median & p95 of concurrently-active runs, sampled at each run start.
-    None when there are no paired run events."""
     intervals = run_intervals(events)
     if not intervals:
         return None
-    # Count a run active at instant s0 when s <= s0 < e, OR when it is a
-    # zero-length run at exactly that instant (s == s0 == e) — sub-second runs
-    # collapse to start==end at the event store's second resolution and must
-    # still count themselves / their concurrent siblings.
+
+
     levels = sorted(
         float(sum(1 for s, e in intervals if s <= s0 < e or s == s0 == e))
         for s0, _ in intervals
@@ -119,15 +86,11 @@ def concurrency_stats(events: list[dict]) -> dict | None:
         "median": _percentile(levels, 50),
         "p95": _percentile(levels, 95),
         "samples": len(levels),
-        # DAS-1633 — visible count of run_start/run_end events excluded above
-        # for a missing/non-conforming created_at (was a silent skip).
+
+
         "dropped_undated": _dropped_undated(events, frozenset({"run_start", "run_end"})),
     }
 
-
-# --------------------------------------------------------------------------- #
-# T4 — cost / model mix + haiku-eligibility classifier (RFC-001 §2)
-# --------------------------------------------------------------------------- #
 
 LOW_COST_MODELS = {"haiku"}
 HAIKU_ELIGIBLE_TYPES = {"format", "lint", "routing", "doc_update", "rename", "boilerplate", "status_update"}
@@ -135,9 +98,6 @@ HAIKU_INELIGIBLE_TYPES = {"code_generation", "architecture", "security", "design
 
 
 def haiku_eligible(task_type: str | None = None, labels: list | None = None) -> bool:
-    """RFC-001 §2: simple formatting/routing eligible for the cheap model; complex
-    code generation / security / architecture NOT. Conservative default: ineligible
-    (quality first — never route hard work to the cheap tier to chase T4)."""
     t = str(task_type or "").lower()
     labs = {str(x).lower() for x in (labels or [])}
     if t in HAIKU_INELIGIBLE_TYPES or (labs & HAIKU_INELIGIBLE_TYPES):
@@ -145,8 +105,6 @@ def haiku_eligible(task_type: str | None = None, labels: list | None = None) -> 
     return t in HAIKU_ELIGIBLE_TYPES or bool(labs & HAIKU_ELIGIBLE_TYPES)
 
 
-# Canonical success vocabulary (positive match, like T5). An explicit outcome
-# OUTSIDE this set (error / timeout / no_work / failed / …) is NOT a success.
 SUCCESS_OUTCOMES = {"success", "ok", "passed", "done"}
 
 
@@ -158,8 +116,8 @@ def _is_successful_completion(ev: dict) -> bool:
     if not _is_completion_event(ev):
         return False
     outcome = str(ev.get("outcome", "")).strip().lower()
-    # Absent outcome (e.g. a routing_decision -> done) counts; an explicit outcome
-    # must be a known SUCCESS value — error/timeout/no_work do NOT count.
+
+
     return outcome == "" or outcome in SUCCESS_OUTCOMES
 
 
@@ -168,9 +126,6 @@ def _unit_key(ev: dict) -> str:
 
 
 def model_mix(events: list[dict]) -> dict | None:
-    """T4: share of successful completed work on a low-cost (haiku) model. None when
-    no successful completion carries a model field. De-duplicates per unit so a unit
-    that emits both a run_end and a routing->done is not counted twice."""
     total = 0
     low = 0
     seen: set[str] = set()
@@ -192,13 +147,7 @@ def model_mix(events: list[dict]) -> dict | None:
     return {"ratio": low / total, "low_cost": low, "total": total}
 
 
-# --------------------------------------------------------------------------- #
-# T5 — recovery reliability (successful replays / drills; zero corrupted)
-# --------------------------------------------------------------------------- #
-
 def recovery_reliability(events: list[dict]) -> dict | None:
-    """T5: successful_replays / recovery_drills. None when no drills have run. A
-    corrupted resume is never counted as success (guardrail: zero corrupted)."""
     drills = [e for e in events if e.get("event_type") == "recovery_drill"]
     if not drills:
         return None
@@ -210,14 +159,7 @@ def recovery_reliability(events: list[dict]) -> dict | None:
     return {"ratio": ok / len(drills), "successful": ok, "drills": len(drills), "corrupted": corrupted}
 
 
-# --------------------------------------------------------------------------- #
-# T6 — review efficiency (cycle time + rework rate; downward-trend metric)
-# --------------------------------------------------------------------------- #
-
 def review_efficiency(events: list[dict]) -> dict | None:
-    """T6: median review cycle time + rework rate from routing transitions. None
-    when no reviews. 'Downward trend' is a time-series property — this reads the
-    current numbers; trend comparison needs a stored baseline window."""
     review_start: dict[str, dt.datetime] = {}
     cycles: list[float] = []
     rework = 0
@@ -241,8 +183,8 @@ def review_efficiency(events: list[dict]) -> dict | None:
             reviews += 1
             review_start.pop(tid, None)
         elif from_status == "in_review" and to_status == "blocked":
-            # dependency-blocked is NOT a quality bounce-back (T2 semantics) —
-            # drop the open review without counting it as rework.
+
+
             review_start.pop(tid, None)
     if reviews == 0:
         return None
@@ -252,22 +194,17 @@ def review_efficiency(events: list[dict]) -> dict | None:
         "completed": len(cycles),
         "median_cycle_s": _percentile(cycles_sorted, 50) if cycles_sorted else 0.0,
         "rework_rate": rework / reviews,
-        # DAS-1633 — visible count of routing_decision events excluded above
-        # for a missing/non-conforming created_at (was a silent skip).
+
+
         "dropped_undated": _dropped_undated(events, frozenset({"routing_decision"})),
     }
 
-
-# --------------------------------------------------------------------------- #
-# Anti-gaming (R-9) + orthogonal T1b (human-oversight, agent-invisible)
-# --------------------------------------------------------------------------- #
 
 GREEN_CI = {"green", "pass", "passed", "success"}
 TRUE_VALUES = {"true", "pass", "passed", "1", "yes", "ok"}
 
 
 def _is_true_flag(value) -> bool:
-    """Robust truthiness for an event flag — a STRING 'false'/'no'/'0' must NOT pass."""
     if isinstance(value, bool):
         return value
     if isinstance(value, int | float):
@@ -276,9 +213,6 @@ def _is_true_flag(value) -> bool:
 
 
 def gaming_violations(events: list[dict]) -> dict | None:
-    """R-9: a unit counts toward T1-T6 ONLY if it ended in a merged PR + green CI +
-    a T7 pass. Flags counted completions missing ANY of that evidence (Goodhart
-    busywork — all missing pieces reported at once). None when no completions."""
     completions = [e for e in events if _is_completion_event(e)]
     if not completions:
         return None
@@ -298,9 +232,6 @@ def gaming_violations(events: list[dict]) -> dict | None:
 
 
 def t1b_high_impact(events: list[dict]) -> dict | None:
-    """Orthogonal T1b: share of completions passing T7 >= 0.90. Computed for HUMAN
-    oversight only and never exposed to agents, so it cannot be Goodhart-gamed.
-    None when there are no completions."""
     completions = [e for e in events if _is_completion_event(e)]
     if not completions:
         return None

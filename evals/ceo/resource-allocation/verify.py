@@ -1,17 +1,3 @@
-"""Deterministic verifier — ceo / resource-allocation.
-
-Fractional credit penalises the normalized L1 distance between the reported
-allocation and the expected waterfall allocation:
-
-    credit = clamp01( 1 - sum(|reported[dept] - expected[dept]|) / sum(expected.values()) )
-
-The expected allocation is derived from the SAME budget-request fixture the
-agent was given, by re-applying the tier-waterfall rule stated in task.md —
-so nothing is leaked into fixtures/: the fixture is the input, and computing
-the allocation correctly is the graded skill. Deterministic (no
-clock/model). An empty submission (all-zero allocation) scores 0.0 whenever
-the expected allocation is non-trivial (total_cap_usd > 0).
-"""
 
 from __future__ import annotations
 
@@ -49,7 +35,6 @@ def _expected(fixtures: Path) -> dict[str, float]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     total_expected = sum(expected.values())
     if total_expected <= 0:

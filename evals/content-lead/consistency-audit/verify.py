@@ -1,4 +1,3 @@
-"""Deterministic verifier — content-lead / consistency-audit."""
 from __future__ import annotations
 
 import json
@@ -18,7 +17,7 @@ def verify(submission: dict, fixtures: Path) -> float:
             required.add(doc_path.name)
 
     if not required:
-        # Task defect guard: a task with no real inconsistency can't discriminate.
+
         return 0.0
 
     inconsistent = submission.get("inconsistent_docs")

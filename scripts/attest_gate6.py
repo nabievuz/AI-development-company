@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""attest_gate6.py — cryptographic attestation for GATE-6 records (R-2 / ADR-006).
 
-So GATE-6 evidence cannot be fabricated, every APPLIED tuning record must carry a
-tamper-evident attestation:
-  - content_hash: sha256 of the record (minus the attestation block) — any edit
-    after attestation breaks the hash;
-  - optional HMAC signature over that hash with GATE6_ATTEST_KEY (a CI secret);
-  - distinct proposed_by / approved_by / attested_by (author != reviewer != attester);
-  - multi-source evidence (>=1 ci_run AND >=1 review_id).
-
-Library + CLI:
-    python3 scripts/attest_gate6.py stamp  --record experiments/GATE6-....yaml --attested-by ci-bot --ci-run 123
-    python3 scripts/attest_gate6.py verify --record experiments/GATE6-....yaml
-"""
 from __future__ import annotations
 
 import argparse
@@ -26,7 +13,7 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -34,7 +21,6 @@ ENV_KEY = "GATE6_ATTEST_KEY"
 
 
 def canonical_json(record: dict) -> str:
-    """Stable JSON of the record EXCLUDING its attestation block."""
     payload = {k: v for k, v in record.items() if k != "attestation"}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -44,9 +30,6 @@ def content_hash(record: dict) -> str:
 
 
 def _signing_material(content_hash_hex: str, att: dict) -> str:
-    """The bytes the HMAC covers: the content hash AND the attester identity
-    (attested_by / attested_at / ci_run), so WHO attested and WHEN cannot be
-    forged without re-signing."""
     return "\n".join([
         content_hash_hex,
         str(att.get("attested_by", "")),
@@ -77,7 +60,6 @@ def build_attestation(
 
 
 def verify_attestation(record: dict, key: str | None = None) -> list[str]:
-    """Return a list of problems; empty == a valid, tamper-evident attestation."""
     problems: list[str] = []
     att = record.get("attestation")
     if not isinstance(att, dict):
@@ -104,8 +86,8 @@ def verify_attestation(record: dict, key: str | None = None) -> list[str]:
         if not sig or not hmac.compare_digest(sig, hmac_sign(_signing_material(expected, att), key)):
             problems.append("HMAC signature invalid")
     elif att.get("signature") or att.get("sig_algo"):
-        # A signed record verified without the key must fail CLOSED — the keyless
-        # hash is attacker-recomputable, so don't silently downgrade.
+
+
         problems.append("record advertises a signature but no GATE6_ATTEST_KEY available to verify")
     return problems
 
@@ -119,7 +101,7 @@ def _load(path: Path) -> tuple[dict, dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='attest_gate6.py — cryptographic attestation for GATE-6 records (R-2 / ADR-006).')
     sub = ap.add_subparsers(dest="cmd", required=True)
     stamp = sub.add_parser("stamp", help="add an attestation block to a record")
     stamp.add_argument("--record", type=Path, required=True)

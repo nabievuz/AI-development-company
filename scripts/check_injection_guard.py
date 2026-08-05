@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""check_injection_guard.py — prompt-injection guard (R-6 / ADR-006).
 
-Prompt injection is the #1 attack vector. Validates agent_invocation events:
-external content must be treated as DATA, not command (the context_contract must
-not expose raw/full org state, and any external_content_policy must resolve to
-'data'), and a tool-call allowlist must bound what external content can trigger.
-Inert when there are no agent_invocation events.
-
-Exit codes: 0 = guarded OR unmeasured, 1 = injection surface found, 2 = usage.
-
-Usage:
-    python3 scripts/check_injection_guard.py [--events board/.events.jsonl]
-"""
 from __future__ import annotations
 
 import argparse
@@ -50,7 +38,7 @@ def violations(invocations: list[dict]) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_injection_guard.py — prompt-injection guard (R-6 / ADR-006).')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     args = ap.parse_args(argv)
 

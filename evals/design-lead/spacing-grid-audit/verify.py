@@ -1,14 +1,3 @@
-"""Deterministic verifier — design-lead / spacing-grid-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ violations| - |reported \\ violations|) / |violations| )
-
-The violating set is derived from the SAME spacing spec the agent was given —
-applying the design system's grid-gate rule correctly reproduces it, so
-nothing is leaked: the fixture is the input, the graded answer key lives only
-here. Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 from __future__ import annotations
 
 import json

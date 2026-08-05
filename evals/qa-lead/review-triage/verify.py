@@ -1,18 +1,3 @@
-"""Deterministic verifier — qa-lead / review-triage.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ blocking| - |reported \\ blocking|) / |blocking| )
-
-Blocking-merge rule (derived from the SAME fixture the agent sees — never
-leaked into the prompt): a finding blocks the merge iff its severity is
-`blocker`, OR its severity is `major` AND its category is `security`. A
-`major`/non-security finding (e.g. a major style nit) does NOT block — this is
-the triage-judgment probe: severity alone is not sufficient.
-
-Deterministic: no clock, no randomness, no model call. An empty submission
-scores 0.0 (anti-gaming: no reward for degenerate output).
-"""
 
 from __future__ import annotations
 
@@ -31,7 +16,6 @@ def _blocking(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _blocking(fixtures)
     if not expected:
         return 0.0

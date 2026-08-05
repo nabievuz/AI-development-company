@@ -1,14 +1,3 @@
-"""Deterministic verifier — frontend-eng-2 / responsive-gap.
-
-Fractional credit is the intersection-over-union (IoU) of the submitted
-viewport-width range against the required gap range. The required range is
-derived by parsing the ACTUAL fixture CSS's `@media` breakpoints (not
-hardcoded independently of it) — doing the responsive audit correctly
-reproduces it, so nothing is leaked. Deterministic (no clock/model call). An
-empty submission scores 0.0 (anti-gaming: no reward for degenerate output);
-an oversized/guessed range is penalised by the union term (no reward for
-"cover everything").
-"""
 
 from __future__ import annotations
 
@@ -30,7 +19,6 @@ def _gap_range(fixtures: Path) -> tuple[int, int] | None:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     gap = _gap_range(fixtures)
     if gap is None:
         return 0.0

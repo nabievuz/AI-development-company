@@ -1,18 +1,3 @@
-"""tests/test_cockpit_roundtrip_e2e.py — R7 cockpit interrupt round-trip + serve smoke.
-
-Closes the two R7 coverage gaps the machinery had (all in scratch dirs, no live
-board writes):
-
-1. **Round-trip on a REAL card, <60s** — write a schema-conforming interrupt card,
-   surface it through ``cockpit.panel_action_console`` (which advertises the <60s
-   answer affordance + a copy-paste ``resume:<opt>`` stub), simulate the Founder
-   answering by writing ``resume:<value>`` into the ticket body, and prove
-   ``interrupt_roundtrip.detect_resumed_tickets`` resumes it with the right value +
-   injection. The create→answer delta is measured and asserted < 60s.
-2. **--serve smoke** — bind ``cockpit_html._make_handler`` on an EPHEMERAL loopback
-   port, issue one GET, assert HTTP 200 and that the Action Console (with the card)
-   is present. Previously the serve path had zero test coverage.
-"""
 
 from __future__ import annotations
 
@@ -27,13 +12,12 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-import cockpit  # noqa: E402
-import cockpit_html  # noqa: E402
-import interrupt_roundtrip as irt  # noqa: E402
+import cockpit
+import cockpit_html
+import interrupt_roundtrip as irt
 
 
 def _write_card(interrupts_dir: Path, ticket_id: str, options: list[str], cid: str) -> Path:
-    """Write a schema-conforming interrupt card (board/interrupts/schema.json)."""
     card = {
         "question": "Ship despite the failing canary?",
         "options": options,
@@ -75,7 +59,7 @@ def test_action_console_surfaces_card_with_resume_stub(tmp_path: Path) -> None:
     text = "\n".join(cockpit.panel_action_console(interrupts))
     assert "DAS-7002" in text
     assert "resume:ship" in text and "resume:hold" in text
-    assert "<60s" in text  # the panel advertises the <60s answer affordance
+    assert "<60s" in text
 
 
 def test_roundtrip_resume_under_60s(tmp_path: Path) -> None:
@@ -87,11 +71,10 @@ def test_roundtrip_resume_under_60s(tmp_path: Path) -> None:
 
     card_path = _write_card(interrupts, ticket_id, ["ship", "hold"], "DAS-7001-stall-1")
 
-    # Founder answers by writing resume:<value> into the ticket body.
+
     _write_interrupted_ticket(board, ticket_id, resume_value="hold")
 
-    # R7 latency evidence: time the ACTUAL answer->detect->resume machinery (not two
-    # adjacent file mtimes) and assert it runs far under the 60s answer affordance.
+
     start = time.perf_counter()
     resumed = irt.detect_resumed_tickets(board, interrupts)
     elapsed = time.perf_counter() - start
@@ -111,8 +94,8 @@ def test_invalid_resume_value_is_skipped(tmp_path: Path) -> None:
     interrupts = tmp_path / "interrupts"
     interrupts.mkdir()
     _write_card(interrupts, "DAS-7003", ["ship", "hold"], "DAS-7003-stall-1")
-    _write_interrupted_ticket(board, "DAS-7003", resume_value="explode")  # not an option
-    # Gates NEVER auto-correct an invalid answer — the ticket stays parked.
+    _write_interrupted_ticket(board, "DAS-7003", resume_value="explode")
+
     assert irt.detect_resumed_tickets(board, interrupts) == []
 
 
@@ -122,7 +105,7 @@ def test_unanswered_ticket_stays_parked(tmp_path: Path) -> None:
     interrupts = tmp_path / "interrupts"
     interrupts.mkdir()
     _write_card(interrupts, "DAS-7005", ["ship", "hold"], "DAS-7005-stall-1")
-    _write_interrupted_ticket(board, "DAS-7005", resume_value=None)  # no Founder answer
+    _write_interrupted_ticket(board, "DAS-7005", resume_value=None)
     assert irt.detect_resumed_tickets(board, interrupts) == []
 
 
@@ -142,7 +125,7 @@ def test_serve_smoke_get_200(tmp_path: Path) -> None:
         refresh_s=30,
     )
 
-    # Bind loopback on an EPHEMERAL port (never a hardcoded port; loopback only).
+
     with socketserver.TCPServer(("127.0.0.1", 0), handler) as srv:
         port = srv.server_address[1]
         worker = threading.Thread(target=srv.handle_request, daemon=True)
@@ -155,4 +138,4 @@ def test_serve_smoke_get_200(tmp_path: Path) -> None:
             worker.join(timeout=5)
 
     assert "Action Console" in body
-    assert "DAS-7004" in body  # the live-rendered page surfaces the pending card
+    assert "DAS-7004" in body

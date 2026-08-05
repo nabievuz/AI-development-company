@@ -1,8 +1,3 @@
-# Artifact schema — typed-contracts
-# Validated by scripts/artifact_schemas.py (pydantic-backed, stdlib fallback).
-# The file stem MUST equal `name`. This is the artifact DAS-1467 itself produces
-# (the produces:/consumes: field + the governance/schemas registry), consumed by
-# the downstream synthesis ticket DAS-1468.
 name: typed-contracts
 version: 1
 description: >-

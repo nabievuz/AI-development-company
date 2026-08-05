@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_security_baseline.py — R-6 security baseline validators (ADR-006)."""
+
 from __future__ import annotations
 
 import json
@@ -11,9 +11,9 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_injection_guard as cig  # noqa: E402  (import after path manipulation)
-import check_permissions as cp  # noqa: E402
-import check_secrets as cs  # noqa: E402
+import check_injection_guard as cig
+import check_permissions as cp
+import check_secrets as cs
 
 
 def _inv(**over) -> dict:
@@ -33,10 +33,6 @@ def _events(tmp_path: Path, events: list[dict]) -> Path:
     p.write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
     return p
 
-
-# --------------------------------------------------------------------------- #
-# check_permissions (least-privilege)
-# --------------------------------------------------------------------------- #
 
 def test_permissions_inert(tmp_path):
     assert cp.main(["--events", str(tmp_path / "nope.jsonl")]) == 0
@@ -61,19 +57,15 @@ def test_permissions_no_workspace_fails(tmp_path):
 
 
 def test_permissions_glob_family_tool_fails(tmp_path):
-    # canonical Claude Code family-grant syntax must be caught (review-found fail-open)
+
     for bad in ("mcp__*", "Bash(*)", "read-*"):
         assert cp.main(["--events", str(_events(tmp_path, [_inv(allowed_tools=[bad])]))]) == 1
 
 
 def test_permissions_concrete_paren_tool_passes(tmp_path):
-    # a SPECIFIC bash command (no glob) is bounded -> least-privilege ok
+
     assert cp.main(["--events", str(_events(tmp_path, [_inv(allowed_tools=["Bash(git status)", "read"])]))]) == 0
 
-
-# --------------------------------------------------------------------------- #
-# check_injection_guard
-# --------------------------------------------------------------------------- #
 
 def test_injection_inert(tmp_path):
     assert cig.main(["--events", str(tmp_path / "nope.jsonl")]) == 0
@@ -103,19 +95,15 @@ def test_injection_glob_family_tool_fails(tmp_path):
     assert cig.main(["--events", str(_events(tmp_path, [_inv(allowed_tools=["mcp__*"])]))]) == 1
 
 
-# --------------------------------------------------------------------------- #
-# check_secrets
-# --------------------------------------------------------------------------- #
-
 def test_secrets_inert(tmp_path):
-    # no event store + empty experiments dir -> clean/inert
+
     exp = tmp_path / "experiments"
     exp.mkdir()
     assert cs.main(["--events", str(tmp_path / "nope.jsonl"), "--experiments", str(exp)]) == 0
 
 
 def test_secrets_in_event_store_fails(tmp_path):
-    # build the pattern at runtime (split literals) so this test file itself is not flagged
+
     fake = "sk-ant-" + "api03-" + "x" * 45
     inv = _inv(context_contract={"prompt": fake})
     exp = tmp_path / "experiments"

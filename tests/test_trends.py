@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_trends.py — Historical Trend Views (R20 / RFC-003)."""
+
 from __future__ import annotations
 
 import sys
@@ -10,7 +10,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import trends as tr  # noqa: E402  (import after path manipulation)
+import trends as tr
 
 
 def _ends(minutes: list[int]) -> list[dict]:
@@ -43,12 +43,12 @@ def test_nan_does_not_fabricate_a_trend():
 
 
 def test_higher_is_better_flips_meaning():
-    # for a 'lower is better' metric, a rising series is degrading
+
     assert tr.classify_trend([1, 2, 3], higher_is_better=False)["direction"] == "degrading"
 
 
 def test_throughput_series_buckets():
-    # 5 runs across a 40-minute span into 5 windows
+
     series = tr.throughput_series(_ends([0, 10, 20, 30, 40]), n_windows=5)
     assert len(series) == 5
     assert sum(series) == 5.0

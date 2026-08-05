@@ -1,15 +1,3 @@
-"""Deterministic verifier — design-lead / contrast-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ failing| - |reported \\ failing|) / |failing| )
-
-The failing set is derived from the SAME token pairs the agent was given, via
-the standard WCAG 2.1 relative-luminance/contrast-ratio formula — doing the
-review correctly reproduces it, so nothing is leaked: the fixture is the
-input, the graded answer key lives only here. Deterministic (no clock/model).
-An empty submission scores 0.0.
-"""
 from __future__ import annotations
 
 import json

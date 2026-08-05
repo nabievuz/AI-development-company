@@ -1,18 +1,3 @@
-"""Deterministic verifier — product-designer / design-spec-completeness.
-
-A DasLab component handoff spec must define every required interaction state
-(default, hover, focus, disabled, error) and every required accessibility
-field (aria_label, focus_visible). The required checklist is fixed (stated in
-task.md); the MISSING set for a given fixture is derived here by diffing the
-checklist against what the fixture actually declares — so nothing is leaked,
-the fixture is the input and grading it is the graded skill.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ missing| - |reported \\ missing|) / |missing| )
-
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -33,7 +18,6 @@ def _missing(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _missing(fixtures)
     if not expected:
         return 0.0

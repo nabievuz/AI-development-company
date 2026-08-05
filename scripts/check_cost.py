@@ -1,35 +1,5 @@
 #!/usr/bin/env python3
-"""check_cost.py — C1 cost-ledger informational reader (ORGANISM WS3 P12 / DAS-1459).
 
-Reads ``span`` events from the DGO-X event store, aggregates token counts and
-estimated USD cost per ticket, per agent, per tier, and per run via
-``scripts/cost/cost_ledger.py``, then prints a human-readable summary.
-
-Inert-by-design
----------------
-When the event store is absent or contains no ``span`` events this script
-prints a short message and exits 0 — identical to the pattern in
-``scripts/check_busy_fraction.py`` and every other T-gate reader.  The cost
-lever is *informational* (like T6 review-efficiency); it does NOT block CI
-unless the caller passes ``--max`` and a live cap in ``config/budgets.yaml``
-is exceeded.
-
-Exit codes
-----------
-0  No span events (inert), OR spans present and no cap exceeded, OR ``--max``
-   not passed.
-1  ``--max`` was passed AND estimated total cost exceeds the per-run cap from
-   ``config/budgets.yaml`` AND at least one span event exists.
-2  Usage / IO error (missing budgets.yaml, unreadable store, etc.).
-
-Usage
------
-    python3 scripts/check_cost.py
-    python3 scripts/check_cost.py --events board/.events.jsonl
-    python3 scripts/check_cost.py --max          # enforce per-run cost cap
-    python3 scripts/check_cost.py --ticket DAS-1234
-    python3 scripts/check_cost.py --run <run_id>
-"""
 from __future__ import annotations
 
 import argparse
@@ -39,30 +9,23 @@ from pathlib import Path
 
 import yaml
 
-# Make sure scripts/ is on the path so cost.cost_ledger + dgox.events import.
+
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from cost.cost_ledger import (  # noqa: E402
+from cost.cost_ledger import (
     TokenGroup,
     aggregate_spans,
     check_reconciliation,
 )
-from dgox.created_at import parse_created_at  # noqa: E402
-from dgox.events import iter_events  # noqa: E402
+from dgox.created_at import parse_created_at
+from dgox.events import iter_events
 
-# ---------------------------------------------------------------------------
-# Config path (self-locating root LAW A)
-# ---------------------------------------------------------------------------
 
 _ROOT = _SCRIPTS.parent
 _BUDGETS_PATH = _ROOT / "config" / "budgets.yaml"
 
-
-# ---------------------------------------------------------------------------
-# Formatting helpers
-# ---------------------------------------------------------------------------
 
 def _fmt_cost(usd: float) -> str:
     return f"${usd:.6f}"
@@ -89,42 +52,22 @@ def _print_axis(title: str, groups: dict[str, TokenGroup]) -> None:
 
 
 def _load_run_cap(budgets_path: Path) -> float | None:
-    """Read ``caps.per_run.max_cost_usd`` from budgets.yaml; None on failure."""
     try:
         import re
         text = budgets_path.read_text(encoding="utf-8")
-        # Find per_run block, then max_cost_usd inside it.
+
         m = re.search(r"per_run:\s*\n(?:[ \t]+\S[^\n]*\n)*?[ \t]+max_cost_usd:\s*([\d.]+)", text)
         if m:
             return float(m.group(1))
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return None
 
 
-# ---------------------------------------------------------------------------
-# --check-imagegen — mechanical ceiling for the mcp__imagegen third-party
-# per-call spend line (DAS-1647, routed from DAS-1645's security sign-off;
-# governance/policies/third-party-model-tools.md §5).
-#
-# This is a SEPARATE subsystem from the token ledger above on purpose: an
-# image call is priced per-image, not per-1M-tokens, so it does not belong in
-# TokenGroup/CostLedger (see config/budgets.yaml `third_party_tools:` for why
-# that is a new section rather than a bent `tiers:` entry). It reads its own
-# config sub-tree and, optionally, its own slice of the same event store.
-# ---------------------------------------------------------------------------
-
 def _load_imagegen_config(budgets_path: Path) -> dict | None:
-    """Load ``third_party_tools.imagegen`` from *budgets_path* via PyYAML.
-
-    Returns ``None`` (not an exception) when the section is absent — same
-    inert-by-design posture as the rest of this script: an org/branch that
-    has not adopted the section yet should not crash ``--check-imagegen``,
-    the caller decides whether that is an error (it is, at the CLI layer).
-    """
     try:
         raw = yaml.safe_load(budgets_path.read_text(encoding="utf-8")) or {}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         sys.stderr.write(f"check_cost --check-imagegen: could not parse {budgets_path}: {exc}\n")
         return None
     cfg = (raw.get("third_party_tools") or {}).get("imagegen")
@@ -132,13 +75,6 @@ def _load_imagegen_config(budgets_path: Path) -> dict | None:
 
 
 def _imagegen_day_start(now: datetime | None = None) -> datetime:
-    """Midnight UTC of *now*'s calendar day, as a NAIVE datetime.
-
-    Matches the convention ``dgox.created_at.parse_created_at`` returns (naive,
-    UTC, second resolution) so it compares directly against parsed span
-    timestamps — same convention documented in ``loop_controller._window_start``
-    for the sibling per-day ceilings (mustaqil / SI-5).
-    """
     from datetime import UTC
 
     n = now if now is not None else datetime.now(UTC)
@@ -152,16 +88,6 @@ def _imagegen_calls_from_events(
     models: set[str],
     since: datetime | None,
 ) -> dict[str, int]:
-    """Count today's imagegen calls per model from ``span`` events.
-
-    A ``span`` event whose ``gen_ai.request.model`` is one of the reviewed
-    imagegen model ids is one billed call (governance/policies/
-    third-party-model-tools.md §5 — the sidecar pins the model set, an agent
-    cannot pass an arbitrary one). Forward-compatible with instrumentation
-    landing in ``tools/mcp_bridges/`` (tracked separately, out of this
-    ticket's zone): every count is legitimately 0 until a span actually
-    carries one of these model ids, which is inert, not broken.
-    """
     counts: dict[str, int] = dict.fromkeys(models, 0)
     for ev in iter_events(events_path, event_type="span"):
         model = str(ev.get("gen_ai.request.model") or "")
@@ -176,19 +102,6 @@ def _imagegen_calls_from_events(
 
 
 def evaluate_imagegen_ceiling(calls_by_model: dict[str, int], cfg: dict) -> tuple[bool, str]:
-    """Mechanically evaluate the imagegen per-day ceiling. Pure — no I/O.
-
-    Returns ``(ok, message)``. ``ok is False`` means DENY: the ceiling
-    (calls and/or estimated cost) is breached. The caller turns that into a
-    non-zero exit code — never a warning; that distinction is the entire
-    point of DAS-1647 (today the grant's only bound is social, not
-    mechanical).
-
-    A model with no priced entry in ``models:`` still counts toward
-    ``total_calls`` (so an un-priced model cannot silently dodge the calls
-    cap) but cannot contribute to ``total_cost`` — it is surfaced explicitly
-    as "unpriced" rather than assumed to cost $0 by omission.
-    """
     models_cfg = cfg.get("models") or {}
     caps = (cfg.get("caps") or {}).get("per_day") or {}
     max_calls = caps.get("max_calls")
@@ -233,12 +146,8 @@ def evaluate_imagegen_ceiling(calls_by_model: dict[str, int], cfg: dict) -> tupl
     return True, "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_cost.py — C1 cost-ledger informational reader (ORGANISM WS3 P12 / DAS-1459).')
     ap.add_argument(
         "--events", type=Path,
         default=None,
@@ -281,11 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    # ------------------------------------------------------------------
-    # --check-imagegen — separate subsystem, handled and returned before the
-    # token-ledger path below (a 0-call day is a legitimate pass, not an
-    # "inert, nothing to check" no-op like the token ledger's empty-store case).
-    # ------------------------------------------------------------------
+
     if args.check_imagegen:
         cfg = _load_imagegen_config(args.budgets)
         if cfg is None:
@@ -310,9 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         print(message)
         return 0 if ok else 1
 
-    # ------------------------------------------------------------------
-    # Aggregate
-    # ------------------------------------------------------------------
+
     try:
         ledger = aggregate_spans(
             store_path=args.events,
@@ -321,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as exc:
         sys.stderr.write(f"check_cost: cannot open required file: {exc}\n")
         return 2
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         sys.stderr.write(f"check_cost: error during aggregation: {exc}\n")
         return 2
 
@@ -333,9 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    # ------------------------------------------------------------------
-    # Reconciliation check (always — a violation is a bug, not a gate)
-    # ------------------------------------------------------------------
+
     recon_errors = check_reconciliation(ledger)
     if recon_errors:
         sys.stderr.write("check_cost: RECONCILIATION FAILURE (bug in cost_ledger.py):\n")
@@ -343,9 +244,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"  {err}\n")
         return 2
 
-    # ------------------------------------------------------------------
-    # Print summary
-    # ------------------------------------------------------------------
+
     print("C1 cost ledger — DasLab token and cost summary")
     print("=" * 72)
     print(f"  Total spans processed : {ledger.raw_span_count:,}")
@@ -373,9 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_axis("Per tier", ledger.by_tier)
     _print_axis("Per run", ledger.by_run)
 
-    # ------------------------------------------------------------------
-    # Optional cap enforcement (--max only)
-    # ------------------------------------------------------------------
+
     if args.max:
         cap = _load_run_cap(args.budgets)
         if cap is None:

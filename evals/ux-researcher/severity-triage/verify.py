@@ -1,19 +1,3 @@
-"""Deterministic verifier — ux-researcher / severity-triage.
-
-Fractional credit rewards correctly-triaged findings:
-
-    credit = (# findings whose reported severity matches the matrix) / (# findings)
-
-The severity matrix (frequency = participants_affected / session_count):
-    critical: task_blocking and frequency >= 0.5
-    major:    task_blocking and frequency <  0.5
-              or (not task_blocking) and frequency >= 0.5
-    minor:    (not task_blocking) and frequency < 0.5
-
-The answer key is computed from the SAME fixture the agent was given — nothing
-is leaked into fixtures/. Deterministic (no clock/model). An empty submission
-scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -43,7 +27,6 @@ def _expected_severities(fixtures: Path) -> dict[str, str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected_severities(fixtures)
     if not expected:
         return 0.0

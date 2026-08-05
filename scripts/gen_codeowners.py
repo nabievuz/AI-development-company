@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""gen_codeowners.py — generate .github/CODEOWNERS from the tracked tree.
 
-Emits a `*` default owner plus a per-area line for every top-level tracked
-directory (`/governance/`, `/engineering/`, …, `/board/`, `/docs/`, `/scripts/`,
-`/.claude/`, `/.github/`). DasLab has a single human owner today (`@nabievuz`);
-when the org gains more maintainers, map areas to GitHub handles here.
-
-Generated — do not hand-edit (like board/ROUTING.md). Re-run after adding a
-top-level area; ``check_codeowners.py`` fails CI on drift.
-
-    python3 scripts/gen_codeowners.py            # write .github/CODEOWNERS
-    python3 scripts/gen_codeowners.py --check     # print without writing
-"""
 from __future__ import annotations
 
 import argparse
@@ -28,12 +16,6 @@ _HEADER = (
 
 
 def top_level_areas(root: Path) -> list[str]:
-    """Top-level tracked directories (the areas a CODEOWNERS line must cover).
-
-    Delegates to the shared git-tracked enumeration in _paths so the generator and
-    the checker can never disagree, and a runtime-created gitignored dir such as
-    ``projects/`` (made by bootstrap.py) never becomes a spurious area.
-    """
     return tracked_top_level_dirs(root)
 
 
@@ -45,7 +27,7 @@ def render(root: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description='gen_codeowners.py — generate .github/CODEOWNERS from the tracked tree.')
     parser.add_argument("--check", action="store_true", help="print, do not write")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)

@@ -1,15 +1,3 @@
-"""Deterministic verifier — design-lead / variant-coverage-gap.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ undefined| - |reported \\ undefined|) / |undefined| )
-
-The undefined set is derived by diffing the SAME design-system registry and
-screen-usage list the agent was given — doing the governance check correctly
-reproduces it, so nothing is leaked: the fixtures are the input, the graded
-answer key lives only here. Deterministic (no clock/model). An empty
-submission scores 0.0.
-"""
 from __future__ import annotations
 
 import json

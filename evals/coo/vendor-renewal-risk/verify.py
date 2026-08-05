@@ -1,14 +1,3 @@
-"""Deterministic verifier — coo / vendor-renewal-risk.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ at_risk| - |reported \\ at_risk|) / |at_risk| )
-
-The at-risk set is derived from the SAME vendor register the agent was given —
-applying the stated criteria correctly reproduces it — so nothing is leaked:
-the fixture is the input, and grading it is the graded skill. Deterministic
-(no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -30,7 +19,6 @@ def _at_risk(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _at_risk(fixtures)
     if not expected:
         return 0.0

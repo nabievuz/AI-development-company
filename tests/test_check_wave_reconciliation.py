@@ -1,13 +1,3 @@
-"""tests/test_check_wave_reconciliation.py — GATE-4 reconciliation gate (DAS-1506).
-
-Proves the committed sample RECONCILES (bijection + chain + terminality + coverage)
-and that each tamper class FAILS with teeth: a dropped ledger entry (hash-chain
-break), a mid-sequence wave gap, an orphan attestation, an orphan ledger entry, a
-tampered ``attestation_hash``, a non-terminal recorded ticket, and an uncovered
-post-baseline ``done`` ticket. Fixtures are driven through the production
-``wave_runner.run_wave`` (never a hand-rolled payload) so the ledger + attestation
-are byte-faithful to what a live wave commits.
-"""
 
 from __future__ import annotations
 
@@ -23,8 +13,8 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import check_wave_reconciliation as cwr  # noqa: E402
-import wave_runner as wr  # noqa: E402
+import check_wave_reconciliation as cwr
+import wave_runner as wr
 
 _ROUTING = _REPO_ROOT / "board" / "ROUTING.md"
 _GUARDRAILS = _REPO_ROOT / "governance" / "guardrails"
@@ -33,11 +23,6 @@ _WAVE_TS = "2026-07-04T12:00:00Z"
 _WAVE_TS2 = "2026-07-04T13:00:00Z"
 _END_TS = "2026-07-04T12:10:00Z"
 _BASELINE_SHA = "02b1f596918234270a2c3967315f04fa4f3e45a3"
-
-
-# --------------------------------------------------------------------------- #
-# Helpers — drive a real receipt + ledger line through run_wave into a tmp tree
-# --------------------------------------------------------------------------- #
 
 
 def _write_ticket(board: Path, ticket_id: str, status: str = "in_progress",
@@ -102,7 +87,6 @@ def _write_baseline(tmp: Path) -> Path:
 
 
 def _recon(tmp: Path, board: Path | None = None) -> int:
-    """Run cwr.main against the tmp tree; ``board`` defaults to an empty dir."""
     p = _paths(tmp)
     if board is None:
         board = tmp / "recon-empty-board"
@@ -123,13 +107,8 @@ def _write_ledger(tmp: Path, entries: list[dict]) -> None:
     _paths(tmp)["ledger"].write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-# --------------------------------------------------------------------------- #
-# The committed sample reconciles; empty regime is inert
-# --------------------------------------------------------------------------- #
-
-
 def test_committed_sample_reconciles(capsys) -> None:
-    rc = cwr.main([])  # real defaults: committed ledger + attestations + baseline + board
+    rc = cwr.main([])
     out = capsys.readouterr().out
     assert rc == 0
     assert "reconcile" in out
@@ -150,48 +129,38 @@ def test_fresh_wave_reconciles(tmp_path: Path) -> None:
     assert _recon(tmp_path) == 0
 
 
-# --------------------------------------------------------------------------- #
-# (1) BIJECTION — orphan attestation / orphan ledger / tampered hash
-# --------------------------------------------------------------------------- #
-
-
 def test_orphan_attestation_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
-    _paths(tmp_path)["ledger"].write_text("", encoding="utf-8")  # drop the only line
-    assert _recon(tmp_path) == 1                                 # attestation now orphaned
+    _paths(tmp_path)["ledger"].write_text("", encoding="utf-8")
+    assert _recon(tmp_path) == 1
 
 
 def test_orphan_ledger_entry_fails(tmp_path: Path) -> None:
     att = _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
-    att.path.unlink()                                           # drop the attestation file
-    assert _recon(tmp_path) == 1                                # ledger entry now orphaned
+    att.path.unlink()
+    assert _recon(tmp_path) == 1
 
 
 def test_tampered_attestation_hash_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
     entries = _read_ledger(tmp_path)
-    entries[0]["attestation_hash"] = "sha256:" + "b" * 64       # a lie about the receipt
-    entries[0]["self_hash"] = wr._ledger_self_hash(entries[0])  # keep the line self-consistent
+    entries[0]["attestation_hash"] = "sha256:" + "b" * 64
+    entries[0]["self_hash"] = wr._ledger_self_hash(entries[0])
     _write_ledger(tmp_path, entries)
-    assert _recon(tmp_path) == 1                                # file bytes hash != recorded
+    assert _recon(tmp_path) == 1
 
 
 def test_tampered_ticket_set_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
     entries = _read_ledger(tmp_path)
-    entries[0]["ticket_ids"] = ["DAS-9001"]                     # drop DAS-9002 from the entry
+    entries[0]["ticket_ids"] = ["DAS-9001"]
     entries[0]["self_hash"] = wr._ledger_self_hash(entries[0])
     _write_ledger(tmp_path, entries)
     assert _recon(tmp_path) == 1
-
-
-# --------------------------------------------------------------------------- #
-# (2) CHAIN — dropped line breaks the hash chain; wave gap breaks contiguity
-# --------------------------------------------------------------------------- #
 
 
 def test_dropped_ledger_entry_fails(tmp_path: Path) -> None:
@@ -200,8 +169,8 @@ def test_dropped_ledger_entry_fails(tmp_path: Path) -> None:
     _write_baseline(tmp_path)
     entries = _read_ledger(tmp_path)
     assert len(entries) == 2
-    _write_ledger(tmp_path, entries[1:])                        # drop the first (genesis) line
-    assert _recon(tmp_path) == 1                                # second line's prev != genesis
+    _write_ledger(tmp_path, entries[1:])
+    assert _recon(tmp_path) == 1
 
 
 def test_wave_sequence_gap_fails() -> None:
@@ -216,7 +185,7 @@ def test_wave_sequence_gap_fails() -> None:
         return e
 
     e1 = _entry("R", 1, wr._GENESIS_PREV_HASH)
-    e3 = _entry("R", 3, e1["self_hash"])                        # wave 2 is missing
+    e3 = _entry("R", 3, e1["self_hash"])
     errs = cwr.chain_errors([e1, e3])
     assert any("gap-free" in x or "skipped" in x for x in errs)
 
@@ -227,16 +196,11 @@ def test_intact_chain_has_no_errors(tmp_path: Path) -> None:
     assert cwr.chain_errors(_read_ledger(tmp_path)) == []
 
 
-# --------------------------------------------------------------------------- #
-# (3) TERMINAL — a recorded ticket that is non-terminal on the board FAILS
-# --------------------------------------------------------------------------- #
-
-
 def test_nonterminal_recorded_ticket_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
     recon_board = tmp_path / "recon-board" / "tickets"
-    _write_ticket(recon_board, "DAS-9001", status="in_progress")  # recorded but not terminal
+    _write_ticket(recon_board, "DAS-9001", status="in_progress")
     _write_ticket(recon_board, "DAS-9002", status="done")
     assert _recon(tmp_path, board=recon_board) == 1
 
@@ -250,16 +214,11 @@ def test_terminal_recorded_ticket_passes(tmp_path: Path) -> None:
     assert _recon(tmp_path, board=recon_board) == 0
 
 
-# --------------------------------------------------------------------------- #
-# (4) BASELINE + COVERAGE — post-baseline run_id-bearing done must be covered
-# --------------------------------------------------------------------------- #
-
-
 def test_uncovered_post_baseline_done_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
     recon_board = tmp_path / "recon-board" / "tickets"
-    # A done ticket that references the run but is NOT in the ledger's ticket set.
+
     _write_ticket(recon_board, "DAS-7000", status="done", run_id="01JWAVE0000000000000000001")
     assert _recon(tmp_path, board=recon_board) == 1
 
@@ -276,20 +235,15 @@ def test_pre_regime_done_is_grandfathered(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
     _write_baseline(tmp_path)
     recon_board = tmp_path / "recon-board" / "tickets"
-    # A done ticket with NO run_id field — pre-regime, grandfathered, never checked.
+
     _write_ticket(recon_board, "DAS-0001", status="done")
     assert _recon(tmp_path, board=recon_board) == 0
 
 
 def test_missing_baseline_fails(tmp_path: Path) -> None:
     _drive(tmp_path, "01JWAVE0000000000000000001", _WAVE_TS)
-    # No baseline written — anything to check ⇒ fail-closed.
+
     assert _recon(tmp_path) == 1
-
-
-# --------------------------------------------------------------------------- #
-# Malformed ledger line is reported, not crashed
-# --------------------------------------------------------------------------- #
 
 
 def test_corrupt_ledger_line_fails(tmp_path: Path) -> None:
@@ -301,20 +255,12 @@ def test_corrupt_ledger_line_fails(tmp_path: Path) -> None:
     assert _recon(tmp_path) == 1
 
 
-# --------------------------------------------------------------------------- #
-# GAP-2 hardening — read_baseline VERIFIES the baseline is a real git ancestor of
-# HEAD (a forged/advanced anchor fails; a genuine committed ancestor passes; a
-# non-git environment skips the ancestry check gracefully).
-# --------------------------------------------------------------------------- #
-
-
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=str(cwd),
                           capture_output=True, text=True, check=True)
 
 
 def _init_repo(tmp: Path) -> tuple[Path, str]:
-    """Init a real git repo with one commit; return (repo_dir, head_sha)."""
     repo = tmp / "repo"
     (repo / "board").mkdir(parents=True)
     _git(repo, "init", "-q")
@@ -328,7 +274,6 @@ def _init_repo(tmp: Path) -> tuple[Path, str]:
 
 
 def test_read_baseline_accepts_committed_ancestor(tmp_path: Path) -> None:
-    """A baseline equal to HEAD (a genuine ancestor) verifies."""
     repo, head = _init_repo(tmp_path)
     baseline = repo / "board" / ".attestation-baseline"
     baseline.write_text(head + "\n", encoding="utf-8")
@@ -338,26 +283,23 @@ def test_read_baseline_accepts_committed_ancestor(tmp_path: Path) -> None:
 
 
 def test_read_baseline_rejects_nonexistent_sha(tmp_path: Path) -> None:
-    """A well-formed but non-existent SHA (no such commit) fails the object check."""
     repo, _head = _init_repo(tmp_path)
     baseline = repo / "board" / ".attestation-baseline"
-    baseline.write_text("deadbeef" * 5 + "\n", encoding="utf-8")   # 40 hex, not a commit
+    baseline.write_text("deadbeef" * 5 + "\n", encoding="utf-8")
     sha, err = cwr.read_baseline(baseline)
     assert sha is None
     assert err is not None and "not a commit" in err
 
 
 def test_read_baseline_rejects_nonancestor_sha(tmp_path: Path) -> None:
-    """A real commit that is NOT an ancestor of HEAD (an advanced/divergent
-    baseline) fails the merge-base check."""
     repo, _head = _init_repo(tmp_path)
-    # A divergent commit reachable only from a side branch, not from HEAD.
+
     _git(repo, "checkout", "-q", "-b", "side")
     (repo / "side.txt").write_text("side\n", encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "c2")
     side = _git(repo, "rev-parse", "HEAD").stdout.strip()
-    _git(repo, "checkout", "-q", "-")                              # back to c1 (HEAD)
+    _git(repo, "checkout", "-q", "-")
     baseline = repo / "board" / ".attestation-baseline"
     baseline.write_text(side + "\n", encoding="utf-8")
     sha, err = cwr.read_baseline(baseline)
@@ -366,8 +308,6 @@ def test_read_baseline_rejects_nonancestor_sha(tmp_path: Path) -> None:
 
 
 def test_read_baseline_skips_ancestry_in_non_git_env(tmp_path: Path) -> None:
-    """Outside a git work tree the ancestry check is skipped (not crashed): a
-    well-formed SHA still returns cleanly."""
     baseline = tmp_path / "board" / ".attestation-baseline"
     baseline.parent.mkdir(parents=True, exist_ok=True)
     baseline.write_text(_BASELINE_SHA + "\n", encoding="utf-8")
@@ -377,7 +317,6 @@ def test_read_baseline_skips_ancestry_in_non_git_env(tmp_path: Path) -> None:
 
 
 def test_read_baseline_committed_sample_is_ancestor() -> None:
-    """The real committed baseline verifies as an ancestor of HEAD in this repo."""
     if not cwr.BASELINE_PATH.is_file():
         pytest.skip("no committed baseline in this checkout")
     sha, err = cwr.read_baseline(cwr.BASELINE_PATH)

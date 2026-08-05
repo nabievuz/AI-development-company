@@ -1,18 +1,11 @@
-"""Deterministic verifier — finance-analyst / unit-economics.
-
-Grades LTV and LTV:CAC ratio against values derived from the same fixture the
-agent was given, each with a tolerance band (full credit within 2% relative
-error, decaying to 0 by 22% relative error). Deterministic (no clock/model).
-An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-FULL_CREDIT_TOL = 0.02   # relative error below this earns 1.0
-DECAY_BAND = 0.20        # credit decays linearly across this extra band to 0.0
+FULL_CREDIT_TOL = 0.02
+DECAY_BAND = 0.20
 
 
 def clamp01(value: float) -> float:
@@ -43,7 +36,6 @@ def _field_credit(value: object, expected: float) -> float:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected_ltv, expected_ratio = _expected(fixtures)
 
     ltv_credit = _field_credit(submission.get("ltv"), expected_ltv)

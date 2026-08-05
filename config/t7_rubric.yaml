@@ -1,7 +1,3 @@
-# DasLab — T7 Quality Rubric (SSOT)
-# Weighted quality score. IMMUTABLE — T7 is a hard blocker.
-# Consumed by: scripts/check_t7_quality.py + the Verify & Review lane.
-# Weights MUST sum to 1.00. A change here is governance/policy → never-auto-approve.
 version: 1
 updated: 2026-06-21
 
@@ -25,9 +21,8 @@ dimensions:
     weight: 0.10
     verification: "complexity not increased"
 
-# T7 is the HARD CONSTRAINT all tuning is subordinate to.
 constraint:
   immutable: true
-  max_quality_drop: 0          # STRUCTURED zero-drop policy (enforced numerically)
+  max_quality_drop: 0
   rule: "T7 must not degrade vs baseline; max_quality_drop in any GATE-6 record must be 0"
   open_question: "A bounded T7 exploration budget (±2% with mandatory rollback) is under review — NOT adopted; strict 0 enforced."

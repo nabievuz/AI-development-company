@@ -1,15 +1,3 @@
-"""Deterministic verifier — seo-specialist / broken-canonical-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ broken| - |reported \\ broken|) / |broken| )
-
-The broken-page set is derived from the SAME crawl the agent was given — a
-canonical is broken when missing/empty, or when it points to a URL that never
-appears elsewhere in the crawl (a dangling canonical) — so nothing is leaked
-into the prompt: applying the check correctly *is* the graded skill.
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -35,7 +23,6 @@ def _broken(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _broken(fixtures)
     if not expected:
         return 0.0

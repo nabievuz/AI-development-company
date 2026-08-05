@@ -1,20 +1,3 @@
-"""tests/test_check_ledger.py — pytest suite for scripts/check_ledger.py.
-
-Coverage (DAS-1470 acceptance criteria):
-- validate_ledger accepts a well-formed progress-ledger and rejects a missing
-  or wrong-typed field (schema
-  {request_satisfied, in_loop, progress_being_made, next_tickets[], instruction}).
-- update_stall implements the stall rule:
-  in_loop || !progress_being_made -> stall+1, else max(0, stall-1).
-- step_inner_loop: request_satisfied terminates; stall>3 with budget regenerates
-  the task-ledger (facts-update + plan-update) and appends a REPLANNED event;
-  budget exhausted raises a pause-on-stall interrupt card.
-- A synthetic stalled run triggers REPLANNED within <= 2 waves, and triggers
-  pause-on-stall (interrupt-card) once the max_replans budget is exhausted.
-- All emitted events go through scripts/dgox/events.py typed builders.
-- created_at is a caller-supplied argument (injectable).
-- The CLI validates a ledger file and exits 0/1/2 appropriately.
-"""
 
 from __future__ import annotations
 
@@ -24,18 +7,15 @@ from pathlib import Path
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Path setup — make scripts/ importable regardless of pytest invocation root.
-# ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import check_ledger as cl  # noqa: E402
-import task_ledger as tl  # noqa: E402
-from dgox.events import iter_events, validate_replanned  # noqa: E402
+import check_ledger as cl
+import task_ledger as tl
+from dgox.events import iter_events, validate_replanned
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 RUN_ID = "01J9Z8QK3M7Q0W9E4R5T6Y7U8I"
@@ -55,7 +35,7 @@ def _good_ledger(**overrides: object) -> dict:
 
 
 def _stalled_ledger() -> dict:
-    # in_loop True -> always increments the stall counter.
+
     return _good_ledger(in_loop=True, progress_being_made=False)
 
 
@@ -67,11 +47,6 @@ def _build_seed_task_ledger(runs_dir: Path) -> None:
         created_at=FIXED_TS,
         runs_dir=runs_dir,
     )
-
-
-# ---------------------------------------------------------------------------
-# Schema validation
-# ---------------------------------------------------------------------------
 
 
 class TestValidateLedger:
@@ -90,7 +65,7 @@ class TestValidateLedger:
         assert any(field in e for e in errors), errors
 
     def test_flag_must_be_bool_not_int(self):
-        # A truthy int must NOT pass — the loop branches on genuine bools.
+
         errors = cl.validate_ledger(_good_ledger(in_loop=1))
         assert any("in_loop" in e for e in errors)
 
@@ -106,11 +81,6 @@ class TestValidateLedger:
         assert cl.validate_ledger(["not", "a", "dict"]) != []
 
 
-# ---------------------------------------------------------------------------
-# Stall rule
-# ---------------------------------------------------------------------------
-
-
 class TestStallRule:
     def test_in_loop_increments(self):
         assert cl.update_stall(0, in_loop=True, progress_being_made=True) == 1
@@ -123,11 +93,6 @@ class TestStallRule:
 
     def test_decrement_floors_at_zero(self):
         assert cl.update_stall(0, in_loop=False, progress_being_made=True) == 0
-
-
-# ---------------------------------------------------------------------------
-# Progress-ledger write/read round-trip
-# ---------------------------------------------------------------------------
 
 
 class TestWriteReadLedger:
@@ -147,14 +112,9 @@ class TestWriteReadLedger:
                 request_satisfied=False,
                 in_loop=False,
                 progress_being_made=True,
-                next_tickets=[""],  # invalid
+                next_tickets=[""],
                 instruction="x",
             )
-
-
-# ---------------------------------------------------------------------------
-# Inner-loop stepping
-# ---------------------------------------------------------------------------
 
 
 class TestStepInnerLoop:
@@ -172,12 +132,12 @@ class TestStepInnerLoop:
             interrupts_dir=tmp_path / "interrupts",
         )
         assert decision.action == "satisfied"
-        assert state.stall == 2  # unchanged
+        assert state.stall == 2
 
     def test_progress_keeps_continuing(self, tmp_path: Path):
         state = cl.LoopState(stall=1, max_replans=2)
         decision = cl.step_inner_loop(
-            ledger=_good_ledger(),  # progress, not looping
+            ledger=_good_ledger(),
             state=state,
             run_id=RUN_ID,
             anchor_ticket=ANCHOR,
@@ -193,7 +153,7 @@ class TestStepInnerLoop:
     def test_invalid_ledger_raises(self, tmp_path: Path):
         with pytest.raises(ValueError):
             cl.step_inner_loop(
-                ledger={"in_loop": True},  # missing fields
+                ledger={"in_loop": True},
                 state=cl.LoopState(),
                 run_id=RUN_ID,
                 anchor_ticket=ANCHOR,
@@ -203,11 +163,6 @@ class TestStepInnerLoop:
             )
 
 
-# ---------------------------------------------------------------------------
-# Acceptance: stalled run triggers REPLANNED <= 2 waves, then pause-on-stall
-# ---------------------------------------------------------------------------
-
-
 class TestStalledRunReplanThenPause:
     def test_replanned_within_two_waves(self, tmp_path: Path):
         runs = tmp_path / "runs"
@@ -215,8 +170,7 @@ class TestStalledRunReplanThenPause:
         interrupts = tmp_path / "interrupts"
         _build_seed_task_ledger(runs)
 
-        # Seed stall just below threshold so a replan fires within <= 2 stalled
-        # waves (wave 1 crosses to 3=continue, wave 2 crosses to 4=replan).
+
         state = cl.LoopState(stall=cl.STALL_THRESHOLD - 1, max_replans=2)
         decisions = cl.run_inner_loop(
             [_stalled_ledger(), _stalled_ledger()],
@@ -228,24 +182,24 @@ class TestStalledRunReplanThenPause:
             store_path=store,
             interrupts_dir=interrupts,
         )
-        # A REPLANNED decision occurred within the first 2 waves.
+
         replans = [d for d in decisions if d.action == "replanned"]
         assert replans, decisions
         assert len(decisions) <= 2
 
-        # The task-ledger was regenerated (revision bumped, plan = next_tickets).
+
         after = tl.read_task_ledger(RUN_ID, runs)
         assert after["revision"] == 2
         assert after["plan"] == ["DAS-1471", "DAS-1472"]
 
-        # A typed `replanned` event was appended and is schema-valid.
+
         events = list(iter_events(store, event_type="replanned"))
         assert len(events) == 1
         assert validate_replanned(events[0]) == []
         assert events[0]["ticket_id"] == ANCHOR
         assert events[0]["max_replans_remaining"] == 1
 
-        # Stall was reset after the replan.
+
         assert state.stall == 0
         assert state.max_replans == 1
 
@@ -255,8 +209,7 @@ class TestStalledRunReplanThenPause:
         interrupts = tmp_path / "interrupts"
         _build_seed_task_ledger(runs)
 
-        # Only one replan allowed. Feed a long stalled stream; after the single
-        # replan the budget is exhausted and the next crossing pauses.
+
         state = cl.LoopState(stall=cl.STALL_THRESHOLD, max_replans=1)
         stalled = [_stalled_ledger() for _ in range(12)]
         decisions = cl.run_inner_loop(
@@ -272,19 +225,19 @@ class TestStalledRunReplanThenPause:
 
         actions = [d.action for d in decisions]
         assert "replanned" in actions
-        assert actions[-1] == "paused"  # loop halts on pause-on-stall
+        assert actions[-1] == "paused"
         assert state.max_replans == 0
 
         paused = decisions[-1]
         assert paused.interrupt_card_path is not None
         card = json.loads(paused.interrupt_card_path.read_text())
-        # Conforms to the DAS-1446 interrupt-card schema.
+
         assert set(card) == {"question", "options", "ticket", "payload", "created_by"}
         assert card["ticket"] == ANCHOR
-        assert card["options"]  # non-empty
+        assert card["options"]
         assert card["payload"]["run_id"] == RUN_ID
 
-        # Exactly one replan event was emitted before the pause.
+
         assert len(list(iter_events(store, event_type="replanned"))) == 1
 
     def test_unique_card_ids_on_repeated_pauses(self, tmp_path: Path):
@@ -300,11 +253,6 @@ class TestStalledRunReplanThenPause:
         assert p1 != p2
         assert p1.name == f"{ANCHOR}-stall-1.json"
         assert p2.name == f"{ANCHOR}-stall-2.json"
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 class TestCli:

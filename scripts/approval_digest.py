@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""approval_digest.py — Approval-Queue Digest.
 
-Batches the low-risk pending approvals into a single digest so the Founder is not
-worn down by approval fatigue (which causes the rubber-stamping the platform is
-built to prevent), while routing any never-auto-approve (QONUN-5) item to an
-INDIVIDUAL human review. Reads board tickets in status 'in_review'. Inert when none pending.
-
-Usage:
-    python3 scripts/approval_digest.py [--board board]
-"""
 from __future__ import annotations
 
 import argparse
@@ -20,7 +11,7 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
@@ -50,7 +41,7 @@ def render_digest(digest: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='approval_digest.py — Approval-Queue Digest.')
     ap.add_argument("--board", type=Path, default=ROOT / "board")
     ap.add_argument("--config", type=Path, default=ROOT / "config" / "risk_taxonomy.yaml")
     args = ap.parse_args(argv)
@@ -59,8 +50,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"ERROR: risk taxonomy not found: {args.config}\n")
         return 2
     try:
-        # Fail CLOSED: a malformed taxonomy must error, NEVER default to {} (which
-        # would empty never_auto_approve and batch every QONUN-5 ticket).
+
+
         taxonomy = yaml.safe_load(args.config.read_text())
     except yaml.YAMLError as exc:
         sys.stderr.write(f"ERROR: invalid risk taxonomy: {exc}\n")
@@ -77,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             except OSError:
                 continue
             if fm is None:
-                malformed.append(f.name)  # unparseable/smuggled -> surface for review
+                malformed.append(f.name)
             elif fm:
                 tickets.append(fm)
 

@@ -1,20 +1,3 @@
-"""tests/test_gen_agent_templates.py — ADR-0029 guild agent-templates.
-
-Locks the per-ROLE guild template contract (ADR-0029 G-1..G-5) and the
-compile-from-template wiring in ``scripts/gen_subagents.py``:
-
-* one ``governance/agent-templates/<role>.md`` per role key (all 32);
-* ``model`` + ``effort`` copied VERBATIM from ``model-allocation.md``
-  (opus ×10 / sonnet ×19 / haiku ×3; NO Tier F / Fable; haiku omits ``effort``);
-* the closed craft field set (identity/goal/priors, toolkit, produces-consumes,
-  routes, eval baseline, empty ``## Learned``);
-* allowed routes match ``communication-flows.yaml``;
-* the ``.claude/agents/*`` shim is compiled FROM the template and references it.
-
-The suite reads the committed, regenerated real tree (like
-``test_check_comm_flows``'s structural tests) plus pure-function unit checks — it
-never mutates the repo.
-"""
 from __future__ import annotations
 
 import re
@@ -27,8 +10,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import gen_agent_templates as gat  # noqa: E402
-import gen_subagents as gs  # noqa: E402
+import gen_agent_templates as gat
+import gen_subagents as gs
 
 TEMPLATES = REPO_ROOT / "governance" / "agent-templates"
 SHIMS = REPO_ROOT / ".claude" / "agents"
@@ -63,11 +46,6 @@ def _section(text: str, heading: str) -> str:
     return m.group(1) if m else ""
 
 
-# --------------------------------------------------------------------------- #
-# Coverage / completeness
-# --------------------------------------------------------------------------- #
-
-
 def test_one_template_per_role_all_32() -> None:
     models, _ = gs.load_alloc()
     assert len(models) == 32
@@ -81,11 +59,6 @@ def test_every_template_has_the_closed_craft_field_set() -> None:
         text = path.read_text()
         for heading in REQUIRED_HEADINGS:
             assert heading in text, f"{path.name} missing '{heading}'"
-
-
-# --------------------------------------------------------------------------- #
-# G-3 — model + effort VERBATIM; no Tier F / Fable; haiku omits effort
-# --------------------------------------------------------------------------- #
 
 
 def test_template_model_and_effort_are_verbatim_from_policy() -> None:
@@ -123,11 +96,6 @@ def test_non_haiku_templates_carry_effort_line() -> None:
             assert effort is not None, f"{key} ({model}) must carry an effort value"
 
 
-# --------------------------------------------------------------------------- #
-# Routes match communication-flows.yaml
-# --------------------------------------------------------------------------- #
-
-
 def test_template_routes_match_communication_flows() -> None:
     routes = gs.load_outbound_routes()
     assert routes is not None
@@ -139,26 +107,16 @@ def test_template_routes_match_communication_flows() -> None:
         assert in_template == declared, f"{key}: {in_template} != {declared}"
 
 
-# --------------------------------------------------------------------------- #
-# G-2 — the ## Learned sink is empty on seed
-# --------------------------------------------------------------------------- #
-
-
 def test_learned_section_is_empty_on_seed() -> None:
     for path in TEMPLATES.glob("*.md"):
         learned = _section(path.read_text(), "Learned")
-        # Only an HTML comment placeholder — no dated/bulleted lesson lines.
+
         for raw in learned.splitlines():
             line = raw.strip()
             if not line or line.startswith("<!--") or line.startswith("-->"):
                 continue
-            # inside the comment body is fine; a real markdown bullet is not
+
             assert not line.startswith("- "), f"{path.name} ## Learned not empty: {line}"
-
-
-# --------------------------------------------------------------------------- #
-# G-4 — the shim is compiled FROM the template and references it
-# --------------------------------------------------------------------------- #
 
 
 def test_every_shim_references_its_guild_template() -> None:
@@ -172,11 +130,6 @@ def test_shim_model_matches_template_model() -> None:
     for key, (model, _) in tmpl.items():
         fm = (SHIMS / f"{key}.md").read_text().split("\n---", 1)[0]
         assert re.search(rf"^model:\s*{model}\s*$", fm, re.M), key
-
-
-# --------------------------------------------------------------------------- #
-# Pure-function / idempotency unit tests
-# --------------------------------------------------------------------------- #
 
 
 def test_build_template_is_idempotent() -> None:

@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_scheduler.py — ORGANISM WS4 HEARTBEAT scheduler tests (DAS-1475).
 
-Covers ADR-0027 SI-1..SI-7 safety invariants for the --tick path:
-  - board/schedule.yaml parses and validates correctly
-  - heartbeat_enabled=False -> shadow-observe mode (never dispatches)
-  - SI-3: break_glass_active -> idle
-  - SI-4: quiet hours -> idle for dispatch triggers
-  - SI-5: per-day budget exceeded -> idle
-  - SI-6: max_concurrent_waves=1 honored (tested via flow_router integration)
-  - SI-7: never auto-approves; decision set is {dispatch, validate, idle} only
-  - evaluate_promotion is called and result is in tick output (never auto-applied)
-  - _in_quiet_hours handles normal and midnight-wrapping windows
-  - --tick always exits 0 (evaluator/reporter, never a mutator)
-  - check_loop_mode.py stays exit 0 (loop.yaml untouched)
-"""
 from __future__ import annotations
 
 import json
@@ -21,24 +7,19 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Make scripts/ importable (same pattern as every other test suite).
-# ---------------------------------------------------------------------------
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import loop_controller as lc  # noqa: E402
-from flow_router import DISPATCH, IDLE, VALIDATE  # noqa: E402
+import loop_controller as lc
+from flow_router import DISPATCH, IDLE, VALIDATE
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
-_UTC_NOON = datetime(2026, 7, 3, 12, 0, 0, tzinfo=UTC)      # 12:00 UTC — outside quiet window
-_UTC_MIDNIGHT = datetime(2026, 7, 3, 23, 30, 0, tzinfo=UTC)  # 23:30 UTC — inside quiet window
-_UTC_EARLY = datetime(2026, 7, 3, 5, 0, 0, tzinfo=UTC)       # 05:00 UTC — inside quiet window
+_UTC_NOON = datetime(2026, 7, 3, 12, 0, 0, tzinfo=UTC)
+_UTC_MIDNIGHT = datetime(2026, 7, 3, 23, 30, 0, tzinfo=UTC)
+_UTC_EARLY = datetime(2026, 7, 3, 5, 0, 0, tzinfo=UTC)
 
 
 def _schedule(
@@ -54,12 +35,7 @@ def _schedule(
     }
 
 
-# ---------------------------------------------------------------------------
-# board/schedule.yaml — structure tests
-# ---------------------------------------------------------------------------
-
 class TestScheduleYaml:
-    """The schedule.yaml file exists, parses, and has required fields."""
 
     def test_schedule_yaml_exists(self):
         path = REPO_ROOT / "board" / "schedule.yaml"
@@ -104,48 +80,39 @@ class TestScheduleYaml:
         assert expected <= names, f"missing triggers: {expected - names}"
 
 
-# ---------------------------------------------------------------------------
-# _in_quiet_hours — time-window logic
-# ---------------------------------------------------------------------------
-
 class TestInQuietHours:
-    """_in_quiet_hours handles normal and midnight-wrapping windows."""
 
     def test_inside_midnight_wrapping_window_late(self):
-        # 23:30 UTC is inside 22:00–06:00
+
         assert lc._in_quiet_hours(_schedule("22:00", "06:00"), _UTC_MIDNIGHT) is True
 
     def test_inside_midnight_wrapping_window_early(self):
-        # 05:00 UTC is inside 22:00–06:00
+
         assert lc._in_quiet_hours(_schedule("22:00", "06:00"), _UTC_EARLY) is True
 
     def test_outside_midnight_wrapping_window(self):
-        # 12:00 UTC is outside 22:00–06:00
+
         assert lc._in_quiet_hours(_schedule("22:00", "06:00"), _UTC_NOON) is False
 
     def test_inside_normal_window(self):
-        # 12:00 UTC is inside 09:00–17:00
+
         assert lc._in_quiet_hours(_schedule("09:00", "17:00"), _UTC_NOON) is True
 
     def test_outside_normal_window(self):
-        # 05:00 UTC is outside 09:00–17:00
+
         assert lc._in_quiet_hours(_schedule("09:00", "17:00"), _UTC_EARLY) is False
 
     def test_empty_quiet_hours_returns_false(self):
         assert lc._in_quiet_hours({}, _UTC_MIDNIGHT) is False
 
     def test_start_equals_end_returns_false(self):
-        # start == end means "no quiet window"
+
         assert lc._in_quiet_hours(_schedule("22:00", "22:00"), _UTC_MIDNIGHT) is False
 
     def test_malformed_time_string_returns_false(self):
         bad = {"quiet_hours": {"start": "not-a-time", "end": "06:00"}}
         assert lc._in_quiet_hours(bad, _UTC_MIDNIGHT) is False
 
-
-# ---------------------------------------------------------------------------
-# _load_schedule — failure isolation
-# ---------------------------------------------------------------------------
 
 class TestLoadSchedule:
     def test_missing_file_returns_empty(self, tmp_path):
@@ -169,15 +136,9 @@ class TestLoadSchedule:
         assert result.get("max_concurrent_waves") == 1
 
 
-# ---------------------------------------------------------------------------
-# tick() — feature flag off → shadow-observe mode
-# ---------------------------------------------------------------------------
-
 class TestTickShadowMode:
-    """heartbeat_enabled=False → shadow-observe mode; nothing dispatched."""
 
     def _tick_shadow(self, tmp_path: Path, trigger: str = "cron_tick", pending: bool = True) -> dict:
-        """Run tick() with heartbeat disabled and empty events/budget."""
         flags_file = tmp_path / "features.yaml"
         flags_file.write_text("heartbeat_enabled: false\n", encoding="utf-8")
         budgets_file = tmp_path / "budgets.yaml"
@@ -231,15 +192,9 @@ class TestTickShadowMode:
         assert "per_day_budget_exceeded" in rails
 
 
-# ---------------------------------------------------------------------------
-# tick() — safety rails (SI-3/4/5)
-# ---------------------------------------------------------------------------
-
 class TestTickSafetyRails:
-    """SI-3/4/5: break-glass, quiet hours, and budget cap force idle."""
 
     def _make_paths(self, tmp_path: Path) -> tuple[Path, Path, Path]:
-        """Return (schedule_file, budgets_file, events_file) for test helpers."""
         schedule = tmp_path / "schedule.yaml"
         schedule.write_text(
             "max_concurrent_waves: 1\nquiet_hours:\n  start: '22:00'\n  end: '06:00'\n",
@@ -257,11 +212,10 @@ class TestTickSafetyRails:
         return f
 
     def test_break_glass_forces_idle(self, tmp_path):
-        """SI-3: break-glass active -> dispatch degrades to idle."""
         from break_glass import append_event, build_activation, fmt_ts
         sched, budgets, events = self._make_paths(tmp_path)
         flags = self._flags(tmp_path, enabled=True)
-        # Activate break-glass in the events store
+
         activation = build_activation(
             activation_id="BG-TEST-001",
             reason="test",
@@ -286,7 +240,6 @@ class TestTickSafetyRails:
         assert result["decision"]["action"] == IDLE
 
     def test_quiet_hours_forces_idle_for_dispatch_trigger(self, tmp_path):
-        """SI-4: inside quiet window -> dispatch trigger degrades to idle."""
         sched, budgets, events = self._make_paths(tmp_path)
         flags = self._flags(tmp_path, enabled=True)
 
@@ -300,13 +253,12 @@ class TestTickSafetyRails:
             feature_flags_path=flags,
             trigger="ticket_created",
             pending_work=True,
-            now=_UTC_MIDNIGHT,  # 23:30 UTC — inside quiet window
+            now=_UTC_MIDNIGHT,
         )
         assert result["safety_rails"]["in_quiet_hours"] is True
         assert result["decision"]["action"] == IDLE
 
     def test_quiet_hours_does_not_block_validate(self, tmp_path):
-        """SI-4: quiet hours only block dispatch; validate is always safe."""
         sched, budgets, events = self._make_paths(tmp_path)
         flags = self._flags(tmp_path, enabled=True)
 
@@ -318,18 +270,17 @@ class TestTickSafetyRails:
             events_path=events,
             budgets_path=budgets,
             feature_flags_path=flags,
-            trigger="wave_completed",  # always returns validate
+            trigger="wave_completed",
             pending_work=False,
-            now=_UTC_MIDNIGHT,  # inside quiet window
+            now=_UTC_MIDNIGHT,
         )
-        # wave_completed always returns validate; quiet hours don't block validate
+
         assert result["decision"]["action"] == VALIDATE
 
     def test_budget_exceeded_forces_idle(self, tmp_path):
-        """SI-5: per-day budget cap breached -> dispatch degrades to idle."""
         sched, _, events = self._make_paths(tmp_path)
         flags = self._flags(tmp_path, enabled=True)
-        # Set a zero-dollar budget so any cost exceeds it
+
         zero_budget = tmp_path / "zero_budget.yaml"
         zero_budget.write_text("caps:\n  per_day:\n    max_cost_usd: 0.0\n", encoding="utf-8")
 
@@ -345,21 +296,12 @@ class TestTickSafetyRails:
             pending_work=True,
             now=_UTC_NOON,
         )
-        # With max_cost_usd=0, any (non-negative) cost is "exceeded"
-        # The cost ledger with no spans returns None → not exceeded
-        # So: no events → ledger is None → budget_exceeded = False → dispatch allowed
-        # This tests the zero-budget path; the actual behaviour depends on
-        # whether the ledger has events. With no span events, cost is 0 which
-        # equals the cap (0.0) — test that the safety_rail key is present.
+
+
         assert "per_day_budget_exceeded" in result["safety_rails"]
 
 
-# ---------------------------------------------------------------------------
-# tick() — SI-7: never-auto-approve invariants
-# ---------------------------------------------------------------------------
-
 class TestTickNeverAutoApprove:
-    """SI-7: the decision set is {dispatch, validate, idle} — no approve/answer."""
 
     def test_decision_action_in_closed_set(self, tmp_path):
         flags = tmp_path / "features.yaml"
@@ -389,7 +331,6 @@ class TestTickNeverAutoApprove:
             )
 
     def test_promotion_never_auto_applied(self, tmp_path):
-        """evaluate_promotion result is reported, never applied."""
         flags = tmp_path / "features.yaml"
         flags.write_text("heartbeat_enabled: false\n", encoding="utf-8")
         sched = tmp_path / "schedule.yaml"
@@ -408,7 +349,7 @@ class TestTickNeverAutoApprove:
             trigger="cron_tick",
             now=_UTC_NOON,
         )
-        # Promotion result is present but the loop.yaml mode must be unchanged
+
         assert "promotion" in result
         import yaml as _yaml
         loop_cfg = _yaml.safe_load(
@@ -418,21 +359,16 @@ class TestTickNeverAutoApprove:
         assert loop_cfg.get("auto_apply") is False, "auto_apply must remain false"
 
 
-# ---------------------------------------------------------------------------
-# tick() — _per_day_budget_exceeded helper
-# ---------------------------------------------------------------------------
-
 class TestPerDayBudget:
     def test_missing_budgets_file_returns_false(self, tmp_path):
         result = lc._per_day_budget_exceeded(tmp_path / "nonexistent.yaml", tmp_path / ".events.jsonl")
         assert result is False
 
     def test_zero_cap_always_returns_false(self, tmp_path):
-        """cap=0 means disabled (treated as 0 → not exceeded when ledger is None)."""
         budgets = tmp_path / "budgets.yaml"
         budgets.write_text("caps:\n  per_day:\n    max_cost_usd: 0\n", encoding="utf-8")
         result = lc._per_day_budget_exceeded(budgets, tmp_path / ".events.jsonl")
-        assert result is False  # no events → ledger=None → not exceeded
+        assert result is False
 
     def test_no_events_returns_false(self, tmp_path):
         budgets = tmp_path / "budgets.yaml"
@@ -441,15 +377,10 @@ class TestPerDayBudget:
         assert result is False
 
 
-# ---------------------------------------------------------------------------
-# check_loop_mode.py — SI-2: loop.yaml untouched, exit 0
-# ---------------------------------------------------------------------------
-
 class TestCheckLoopModeStaysGreen:
-    """SI-2: --tick never edits loop.yaml; check_loop_mode.py must exit 0."""
 
     def test_check_loop_mode_exit_0(self):
-        import check_loop_mode as clm  # noqa: PLC0415
+        import check_loop_mode as clm
         rc = clm.main(["--config", str(REPO_ROOT / "config" / "loop.yaml")])
         assert rc == 0, "check_loop_mode must exit 0 (loop safely off)"
 
@@ -464,12 +395,7 @@ class TestCheckLoopModeStaysGreen:
         assert data.get("auto_apply") is False
 
 
-# ---------------------------------------------------------------------------
-# main() --tick exit code
-# ---------------------------------------------------------------------------
-
 class TestMainTickExitCode:
-    """--tick always exits 0 (evaluator/reporter — never a mutator)."""
 
     def test_main_tick_exits_0(self, tmp_path):
         flags = tmp_path / "features.yaml"
@@ -479,7 +405,7 @@ class TestMainTickExitCode:
         budgets = tmp_path / "budgets.yaml"
         budgets.write_text("caps:\n  per_day:\n    max_cost_usd: 500\n", encoding="utf-8")
 
-        # Patch the feature_flags path inside tick by calling it directly
+
         result = lc.tick(
             schedule_path=sched,
             loop_config=REPO_ROOT / "config" / "loop.yaml",
@@ -491,14 +417,13 @@ class TestMainTickExitCode:
             trigger="cron_tick",
             now=_UTC_NOON,
         )
-        # Verify return dict is well-formed (main() wraps this and returns 0)
+
         assert "mode" in result
         assert "decision" in result
         assert "promotion" in result
         assert "safety_rails" in result
 
     def test_main_tick_flag_json(self, tmp_path, capsys):
-        """--tick --json emits valid JSON."""
         flags = tmp_path / "features.yaml"
         flags.write_text("heartbeat_enabled: false\n", encoding="utf-8")
         sched = REPO_ROOT / "board" / "schedule.yaml"
@@ -518,36 +443,29 @@ class TestMainTickExitCode:
         assert obj.get("decision", {}).get("action") in (DISPATCH, VALIDATE, IDLE)
 
 
-# ---------------------------------------------------------------------------
-# heartbeat_enabled flag in feature_flags.py DEFAULTS
-# ---------------------------------------------------------------------------
-
 class TestHeartbeatFlag:
-    """heartbeat_enabled must be in DEFAULTS and default to False (ADR-0027 SI-7)."""
 
     def test_heartbeat_enabled_in_defaults(self):
-        import feature_flags as ff  # noqa: PLC0415
+        import feature_flags as ff
         assert "heartbeat_enabled" in ff.DEFAULTS, (
             "heartbeat_enabled must be declared in feature_flags.DEFAULTS (ADR-0027 SI-7)"
         )
 
     def test_heartbeat_enabled_default_is_false(self):
-        import feature_flags as ff  # noqa: PLC0415
+        import feature_flags as ff
         assert ff.DEFAULTS["heartbeat_enabled"] is False, (
             "heartbeat_enabled must default to False (ADR-0027 SI-7: Founder flip-only)"
         )
 
     def test_heartbeat_enabled_off_by_default_via_load(self, tmp_path):
-        """An empty features.yaml still resolves heartbeat_enabled to False."""
-        import feature_flags as ff  # noqa: PLC0415
+        import feature_flags as ff
         f = tmp_path / "features.yaml"
         f.write_text("", encoding="utf-8")
         result = ff.load(path=f)
         assert result.get("heartbeat_enabled") is False
 
     def test_heartbeat_enabled_can_be_flipped_on(self, tmp_path):
-        """Verifies the flag is readable when explicitly set (Founder act)."""
-        import feature_flags as ff  # noqa: PLC0415
+        import feature_flags as ff
         f = tmp_path / "features.yaml"
         f.write_text("heartbeat_enabled: true\n", encoding="utf-8")
         result = ff.load(path=f)

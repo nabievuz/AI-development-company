@@ -1,19 +1,3 @@
-"""tests/test_guardrail_roster.py — R4 roster completeness + per-role tripwire regression.
-
-R4 (guardrails 2->32): every role in ``board/ROUTING.md`` must have a bespoke
-``governance/guardrails/<role>.py`` with a real, discipline-specific tripwire —
-not just the generic default fallback. This suite asserts:
-
-1. **Roster completeness** — a module with ``ROLE == filename`` and callable
-   ``input_guardrail`` / ``output_guardrail`` for all 32 roles.
-2. **Base preserved** — every role's ``output_guardrail`` still trips on empty
-   output (the shared ``default_output_guardrail`` base is layered, not lost).
-3. **Discipline correctness** — each ``output_guardrail`` ACCEPTS a real passing
-   deliverable and TRIPS a discipline-specific bad one, driven by the
-   hand-traced vectors the R4 authoring pass produced (30 authored + the 2
-   template roles). ``test_every_role_has_a_vector`` forces a new role to add a
-   vector here, so the roster and this pin never silently drift apart.
-"""
 
 from __future__ import annotations
 
@@ -25,7 +9,7 @@ import pytest
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "governance"))
 
-from guardrails import GuardrailContext, runner  # noqa: E402
+from guardrails import GuardrailContext, runner
 
 _ROUTING = _REPO_ROOT / "board" / "ROUTING.md"
 
@@ -35,18 +19,13 @@ def _roles() -> list[str]:
 
 
 def _ctx(role: str, output: str) -> GuardrailContext:
-    """A minimal OUTPUT-screen context (dept fields neutral; only output matters)."""
     return GuardrailContext(
         role=role, role_dept="", ticket_id="DAS-1", ticket_dept="", output=output
     )
 
 
-# (role, passing_output, tripping_output): the passing output must be ACCEPTED by
-# the role's output_guardrail; the tripping output must be REJECTED by the role's
-# discipline-specific tripwire (it clears the empty/TODO base, so the trip is the
-# discipline check firing). 30 from the R4 authoring pass + 2 template roles.
 VECTORS: list[tuple[str, str, str]] = [
-    # --- engineering (11 authored + 2 templates) ---
+
     ("backend-em",
      "Reviewed PR #42 against the acceptance criteria; CI is green. Approved and merged via GATE-3.",
      "Read through the diff for the payment module; the implementation looks reasonable overall and follows our conventions."),
@@ -86,7 +65,7 @@ VECTORS: list[tuple[str, str, str]] = [
     ("security-lead",
      "Security review complete: signed-off. No plaintext secrets in the diff.",
      "Reviewed the changes; nothing obvious looks off to me."),
-    # --- governance ---
+
     ("board-member",
      "Board minutes DAS-1490: the Q3 hiring request is APPROVED by Board Member. Rationale: within the Q3 budget envelope. Law-check: complies with the Model Allocation Law.",
      "The board convened to review the Q3 hiring request. Members shared perspectives on the budget impact, and the discussion covered several concerns raised earlier."),
@@ -96,7 +75,7 @@ VECTORS: list[tuple[str, str, str]] = [
     ("chairman",
      "Board minutes: the Chairman rules that the ORGANISM directive is ratified with binding effect. Rationale: aligns all departments under one program. Law-check: consistent with the Founder-Approved Goal Queue Law.",
      "The Chairman opened the session and heard arguments from both departments about the proposed reorganization, then adjourned to consider the matter at the next sitting."),
-    # --- product ---
+
     ("cpo",
      "Decision: approved the Q3 roadmap theme 'Reliability'. Rationale: aligns with GATE-1 KPI targets; law-check passed. Recorded in board minutes.",
      "I reviewed the options and gathered some notes on possible themes for next quarter, but nothing is final yet."),
@@ -109,7 +88,7 @@ VECTORS: list[tuple[str, str, str]] = [
     ("tech-writer",
      "Updated CHANGELOG.md with the new rollout entry and refreshed the API reference in docs/api.md to match the shipped behavior.",
      "Chatted with the backend team to understand the new endpoint behavior; still need to figure out where this belongs before writing anything."),
-    # --- design ---
+
     ("cdo",
      "Design strategy decision recorded in ADR-0031: approved the token-first direction for the design system; rationale and law-check captured in board minutes.",
      "Reviewed the current design system and gathered notes from the team about the roadmap."),
@@ -122,7 +101,7 @@ VECTORS: list[tuple[str, str, str]] = [
     ("ux-researcher",
      "Synthesis of six usability sessions: the key finding is users miss the save action; recommendation is to move it into the primary toolbar.",
      "Scheduled interviews with five participants and set up the research repository."),
-    # --- marketing ---
+
     ("cmo",
      "Decision: approved the Q3 brand relaunch campaign. Rationale: cheaper CAC on organic. Law-check: complies with the claims policy. Recorded in board-minutes.",
      "Some early thoughts on brand direction and a few channel ideas we might explore next quarter."),
@@ -135,7 +114,7 @@ VECTORS: list[tuple[str, str, str]] = [
     ("seo-specialist",
      "Optimized the meta title and meta description for the pricing page; added JSON-LD structured data and 8 target keywords with search volume noted; canonical set.",
      "The landing page looks clean and the copy reads nicely on mobile."),
-    # --- operations ---
+
     ("coo",
      "Decision: approved the vendor renewal after a cost and law-check. Rationale: it comes in 18% cheaper; recorded in board-minutes.",
      "Gathered the vendor options and jotted some notes for the team to look over later."),
@@ -163,8 +142,8 @@ def test_roster_complete() -> None:
 
 
 def test_every_role_has_a_vector() -> None:
-    # A new role must add a discipline vector here — the roster and the tripwire
-    # regression can never silently drift apart.
+
+
     assert {v[0] for v in VECTORS} == set(_roles())
 
 
@@ -185,9 +164,6 @@ def test_output_guardrail_discipline(role: str, passing: str, tripping: str) -> 
     assert fb_trip.strip(), f"{role}: a tripped guardrail must carry feedback"
 
 
-# Regression pins for the specific false-negatives/false-positives the adversarial
-# review caught (each cleared the empty/TODO base, so it exercises the discipline
-# tripwire that was previously wrong). These must now behave correctly.
 _REGRESSION_TRIPS = [
     ("ceo", "The CEO spent 20 minutes reviewing the options and will revisit them later."),
     ("board-member", "The board met for 45 minutes and heard the arguments before wrapping up."),

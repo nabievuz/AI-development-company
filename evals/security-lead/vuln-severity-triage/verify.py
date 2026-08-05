@@ -1,12 +1,3 @@
-"""Deterministic verifier — security-lead / vuln-severity-triage.
-
-Recomputes the severity tier and gate decision per vulnerability in
-``fixtures/vulns.json`` from the triage rule stated in ``task.md`` (CVSS +
-exploit/exposure combo for severity; severity + PII exposure for the gate
-decision). The expected answer is derived from the SAME fixture the agent was
-given — applying the rule correctly reproduces it, so nothing is leaked.
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -44,7 +35,6 @@ def _expected(fixtures: Path) -> dict[str, tuple[str, str]]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _expected(fixtures)
     if not expected:
         return 0.0

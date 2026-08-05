@@ -1,14 +1,8 @@
-"""Deterministic verifier — chairman / precedence-adjudication."""
 from __future__ import annotations
 
 from pathlib import Path
 
-#: Ground truth per AGENTS.md §2 precedence order, applied to the four
-#: scenarios in fixtures/scenarios.json (S1..S4, in order). Lower number wins.
-#: S1: dept CLAUDE.md (3) vs role-overlay AGENTS.md (4)      -> 3 wins
-#: S2: charter.md (1) vs board-issued governance/ policy (2) -> 1 wins
-#: S3: dept AGENTS.md (5) vs root AGENTS.md (6)               -> 5 wins
-#: S4: role-overlay AGENTS.md (4) vs dept AGENTS.md (5)       -> 4 wins
+
 EXPECTED = [3, 1, 5, 4]
 
 

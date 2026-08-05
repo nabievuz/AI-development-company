@@ -1,9 +1,3 @@
-"""WS-A Maintenance health/eval tests (ADR-0033 GATE-6 / DAS-1551).
-
-Covers ``scripts/ws_a_health_check.py``: the allow-list drift check, the
-redaction probe, and the Maintenance-schedule registration
-(``scripts/stage_gate.py:maintenance_schedule()``).
-"""
 from __future__ import annotations
 
 import importlib.util
@@ -19,7 +13,7 @@ SCRIPTS = ROOT / "scripts"
 def _load(rel: str, name: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses (stage_gate.py) needs self in sys.modules
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -63,7 +57,7 @@ def test_redaction_probe_flags_a_scrubber_that_stops_redacting(monkeypatch):
     class _PassthroughRedaction:
         @staticmethod
         def safe_scrub(value):
-            return value  # simulates a broken/regressed scrubber
+            return value
 
     monkeypatch.setattr(mod, "_load_redaction_module", lambda: _PassthroughRedaction())
     result = mod.check_redaction_probe()

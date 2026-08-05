@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""check_secrets.py — secrets never in prompts / runtime (R-6 / ADR-006).
 
-Scans the DGO-X event store (gitignored RUNTIME state, NOT covered by the
-tracked-file gitleaks scan) for secret patterns in any event value — especially
-the agent_invocation context_contract (the agent's prompt). Also scans
-experiments/ records. Inert (exit 0) when there is no event store. Complements
-gitleaks (which guards tracked files) by guarding the runtime prompt surface.
-
-Exit codes: 0 = no secrets OR unmeasured, 1 = secret pattern found, 2 = usage.
-
-Usage:
-    python3 scripts/check_secrets.py [--events board/.events.jsonl] [--experiments experiments]
-"""
 from __future__ import annotations
 
 import argparse
@@ -65,7 +53,7 @@ def scan_dir(path: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_secrets.py — secrets never in prompts / runtime (R-6 / ADR-006).')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--experiments", type=Path, default=ROOT / "experiments")
     args = ap.parse_args(argv)

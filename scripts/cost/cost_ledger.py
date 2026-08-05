@@ -1,40 +1,3 @@
-"""cost/cost_ledger.py — Per-ticket/agent/tier/run token and cost aggregation.
-
-Reads ``span`` events from the DGO-X event store via
-``scripts/dgox/events.py::iter_events`` (no re-implemented parsing) and rolls
-up token counts and estimated USD cost four ways:
-
-    * per ticket   (ticket_id / trace_id)
-    * per agent    (gen_ai.agent.name)
-    * per tier     (gen_ai.request.model, normalised to opus/sonnet/haiku)
-    * per run      (run_id)
-
-Pricing is loaded from ``config/budgets.yaml`` (SSOT — verified via the
-claude-api skill, Current Models table cached 2026-06-04).  An unknown/unpriced
-tier contributes its raw token counts but ``0.0`` estimated cost; it is surfaced
-in the ``unknown_tiers`` set in the returned :class:`CostLedger`, never silently
-dropped.
-
-Inert-by-design
----------------
-When the event store is absent or contains zero ``span`` events,
-:func:`aggregate_spans` returns ``None`` — identical to the pattern in
-``scripts/metrics_lib.py``.  This keeps the loop-off baseline clean and prevents
-a fabricated cost from blocking the T7 gate.
-
-Reconciliation invariant
-------------------------
-The per-ticket, per-agent, per-tier, and per-run groups each MUST re-bucket
-all tokens — no span is added or dropped.  For each axis independently::
-
-    sum(group.input_tokens for group in axis) == raw_input_tokens
-    sum(group.output_tokens for group in axis) == raw_output_tokens
-    sum(group.cached_input_tokens for group in axis) == raw_cached_input_tokens
-
-``scripts/check_cost.py`` and ``tests/test_cost_ledger.py`` both assert this.
-
-ORGANISM WS3 P12 / DAS-1459  |  AADL GATE-3 Development  |  owner: cost
-"""
 
 from __future__ import annotations
 
@@ -46,23 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Self-locating root (LAW A — never a hardcoded path).
-# cost_ledger.py lives at  scripts/cost/cost_ledger.py  → scripts/ is two
-# levels up from __file__.  We insert scripts/ once so dgox.events imports
-# as ``from dgox.events import iter_events`` regardless of cwd.
-# ---------------------------------------------------------------------------
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent  # scripts/
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from dgox.created_at import parse_created_at  # noqa: E402
-from dgox.events import iter_events  # noqa: E402
+from dgox.created_at import parse_created_at
+from dgox.events import iter_events
 
-# ---------------------------------------------------------------------------
-# Locate the repo root (same LAW A pattern as _paths.py).
-# ---------------------------------------------------------------------------
 
 def _repo_root() -> Path:
     override = os.environ.get("DASLAB_ROOT")
@@ -76,7 +30,7 @@ def _repo_root() -> Path:
         ).stdout.strip()
         if top:
             return Path(top).resolve()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return _SCRIPTS_DIR.parent
 
@@ -84,12 +38,7 @@ def _repo_root() -> Path:
 _ROOT = _repo_root()
 _BUDGETS_PATH = _ROOT / "config" / "budgets.yaml"
 
-# ---------------------------------------------------------------------------
-# Tier normalisation  (model id → tier slug)
-# ---------------------------------------------------------------------------
 
-#: Short tier slugs → canonical tier key.  Both short slugs and full model ids
-#: that CONTAIN the slug (lower-cased) map to the tier key.
 _TIER_SLUGS: dict[str, str] = {
     "opus": "opus",
     "sonnet": "sonnet",
@@ -98,27 +47,15 @@ _TIER_SLUGS: dict[str, str] = {
 
 
 def _normalise_tier(model: str) -> str:
-    """Map a raw ``gen_ai.request.model`` value to one of opus/sonnet/haiku.
-
-    Accepts both short tier slugs (``"opus"``) and full model ids
-    (``"claude-opus-4-8"``).  Returns the raw lower-cased string unchanged
-    when no tier matches — callers detect unknowns via the ``unknown_tiers``
-    field of :class:`CostLedger`.
-    """
     lower = model.lower()
     for slug, tier in _TIER_SLUGS.items():
         if slug in lower:
             return tier
-    return lower  # unknown; surfaced, not dropped
+    return lower
 
-
-# ---------------------------------------------------------------------------
-# Pricing loader  (config/budgets.yaml is the SSOT)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class TierPricing:
-    """Unit prices (USD per 1 million tokens) for one model tier."""
 
     tier: str
     input_per_1m: float
@@ -127,23 +64,12 @@ class TierPricing:
 
 
 def _load_pricing(budgets_path: Path = _BUDGETS_PATH) -> dict[str, TierPricing]:
-    """Parse ``config/budgets.yaml`` and return ``{tier: TierPricing}``.
-
-    Uses only the stdlib ``re`` module — no third-party YAML dependency.
-    Raises ``FileNotFoundError`` if the file is missing, ``ValueError`` on a
-    parse error.
-    """
     import re
 
     text = budgets_path.read_text(encoding="utf-8")
     pricing: dict[str, TierPricing] = {}
 
-    # Line-by-line mini-parser: find a tier-slug heading (any indentation),
-    # then collect its immediate child key-value pairs until the indentation
-    # returns to the heading level or we hit a blank/comment line.
-    #
-    # This handles both flat  ``opus:\n  input_per_1m: ...``  and nested
-    # ``tiers:\n  opus:\n    input_per_1m: ...`` without regex backtracking.
+
     kv_re = re.compile(r"^([ \t]*)(\w[\w_]*):\s*(.*)")
     lines = text.splitlines()
     i = 0
@@ -154,7 +80,7 @@ def _load_pricing(budgets_path: Path = _BUDGETS_PATH) -> dict[str, TierPricing]:
             indent_level = len(m.group(1))
             slug = m.group(2)
             if slug in _TIER_SLUGS and m.group(3).strip() == "":
-                # This line is a tier heading: collect child key-value pairs.
+
                 children: dict[str, float] = {}
                 j = i + 1
                 while j < len(lines):
@@ -166,10 +92,10 @@ def _load_pricing(budgets_path: Path = _BUDGETS_PATH) -> dict[str, TierPricing]:
                             children[key] = float(val)
                         j += 1
                     elif child_line.strip() == "" or child_line.lstrip().startswith("#"):
-                        j += 1  # skip blanks and comments inside the block
+                        j += 1
                     else:
-                        break  # back to parent indent — tier block ends
-                # Extract the three required fields.
+                        break
+
                 if {
                     "input_per_1m",
                     "cached_input_per_1m",
@@ -190,15 +116,10 @@ def _load_pricing(budgets_path: Path = _BUDGETS_PATH) -> dict[str, TierPricing]:
     return pricing
 
 
-# ---------------------------------------------------------------------------
-# Per-group accumulator
-# ---------------------------------------------------------------------------
-
 @dataclass
 class TokenGroup:
-    """Accumulated token counts and estimated USD cost for one group key."""
 
-    key: str                         # e.g. ticket_id, agent name, tier, run_id
+    key: str
     input_tokens: int = 0
     cached_input_tokens: int = 0
     output_tokens: int = 0
@@ -206,66 +127,32 @@ class TokenGroup:
     estimated_cost_usd: float = 0.0
 
 
-# ---------------------------------------------------------------------------
-# Main result type
-# ---------------------------------------------------------------------------
-
 @dataclass
 class CostLedger:
-    """Aggregated token-and-cost view over all span events.
-
-    Each axis (``by_ticket``, ``by_agent``, ``by_tier``, ``by_run``) re-buckets
-    the same raw token totals — never adds or drops them.  The four invariants::
-
-        sum(g.input_tokens for g in by_ticket.values()) == raw_input_tokens
-        sum(g.input_tokens for g in by_agent.values())  == raw_input_tokens
-        sum(g.input_tokens for g in by_tier.values())   == raw_input_tokens
-        sum(g.input_tokens for g in by_run.values())    == raw_input_tokens
-
-    (and likewise for output_tokens and cached_input_tokens).
-
-    Spans whose ``run_id`` field is absent are bucketed under the special key
-    ``"(no run_id)"``.
-    """
 
     by_ticket: dict[str, TokenGroup] = field(default_factory=dict)
     by_agent: dict[str, TokenGroup] = field(default_factory=dict)
     by_tier: dict[str, TokenGroup] = field(default_factory=dict)
     by_run: dict[str, TokenGroup] = field(default_factory=dict)
 
-    #: Raw (un-bucketed) totals — used by reconciliation checks.
+
     raw_input_tokens: int = 0
     raw_cached_input_tokens: int = 0
     raw_output_tokens: int = 0
     raw_estimated_cost_usd: float = 0.0
     raw_span_count: int = 0
 
-    #: Tier slugs that appeared in spans but had no pricing entry.
+
     unknown_tiers: set[str] = field(default_factory=set)
 
-    #: DAS-1633 — count of spans whose ``created_at`` is missing/non-conforming.
-    #: When ``since`` is given these spans are EXCLUDED from the window (the
-    #: literal drop this counts); when ``since`` is None they are still
-    #: counted here for visibility even though lifetime aggregation does not
-    #: exclude them. Was previously an invisible, uncounted skip (DAS-1633).
+
     dropped_undated: int = 0
 
-
-# ---------------------------------------------------------------------------
-# Core aggregation function
-# ---------------------------------------------------------------------------
 
 NO_RUN_ID_KEY = "(no run_id)"
 
 
 def _parse_created_at(ts: str) -> datetime | None:
-    """Parse a ``created_at`` string against the shared write-seam contract.
-
-    DAS-1633: delegates to ``dgox.created_at.parse_created_at`` — the single
-    source of truth every consumer (this module, ``metrics_history_feeder``,
-    ``wave_kpi``, ``metrics_lib``, ``trends``) now shares, instead of each
-    re-implementing its own ``strptime`` and drifting independently.
-    """
     return parse_created_at(ts)
 
 
@@ -293,27 +180,6 @@ def aggregate_spans(
     *,
     since: datetime | None = None,
 ) -> CostLedger | None:
-    """Aggregate ``span`` events from the DGO-X event store.
-
-    Args:
-        store_path:   Path to the JSONL event store (defaults to
-                      ``board/.events.jsonl`` via ``iter_events``).
-        budgets_path: Path to ``config/budgets.yaml`` (defaults to the
-                      canonical config path).
-        since:        Optional window start (inclusive), compared against each
-                      span's ``created_at``. ``None`` (the default) aggregates
-                      **all** spans lifetime — today's behaviour, unchanged for
-                      every existing caller. Pass a window start (e.g. the first
-                      moment of the current billing month) to get a month-to-date
-                      or day-to-date total instead of a lifetime one. A span
-                      with a missing/unparseable ``created_at`` is excluded once
-                      ``since`` is given (never silently counted as "in window").
-
-    Returns:
-        A :class:`CostLedger` when one or more (windowed) span events exist, or
-        ``None`` when the store is absent / has no matching span events (inert
-        — gate stays off until real waves produce real data).
-    """
     pricing = _load_pricing(budgets_path)
 
     ledger = CostLedger()
@@ -322,13 +188,13 @@ def aggregate_spans(
     for ev in iter_events(store_path, event_type="span"):
         ts = _parse_created_at(str(ev.get("created_at", "")))
         if ts is None:
-            # DAS-1633 — surfaced, never a silent skip. Counted regardless of
-            # whether a window is in effect; only actually excluded below.
+
+
             ledger.dropped_undated += 1
         if since is not None and (ts is None or ts < since):
             continue
 
-        # --- extract fields (verbatim names from events.py SPAN_OTEL_ATTRS) ---
+
         ticket_id: str = str(ev.get("ticket_id") or ev.get("trace_id") or "")
         run_id: str = str(ev.get("run_id") or "") or NO_RUN_ID_KEY
         agent: str = str(ev.get("gen_ai.agent.name") or "(unknown agent)")
@@ -339,7 +205,7 @@ def aggregate_spans(
         output_tok: int = _safe_int(ev.get("gen_ai.usage.output_tokens"))
         cached_tok: int = _safe_int(ev.get("gen_ai.usage.cached_input_tokens"))
 
-        # --- cost estimation ---
+
         tp = pricing.get(tier)
         if tp is None:
             ledger.unknown_tiers.add(tier)
@@ -351,7 +217,7 @@ def aggregate_spans(
                 + output_tok * tp.output_per_1m
             ) / 1_000_000.0
 
-        # --- raw totals ---
+
         ledger.raw_input_tokens += input_tok
         ledger.raw_cached_input_tokens += cached_tok
         ledger.raw_output_tokens += output_tok
@@ -359,7 +225,7 @@ def aggregate_spans(
         ledger.raw_span_count += 1
         has_spans = True
 
-        # --- bucket into the four axes ---
+
         key_ticket = ticket_id or "(no ticket_id)"
         _add_to_group(ledger.by_ticket, key_ticket, input_tok, cached_tok, output_tok, cost)
         _add_to_group(ledger.by_agent, agent, input_tok, cached_tok, output_tok, cost)
@@ -373,7 +239,6 @@ def aggregate_spans(
 
 
 def _safe_int(value: Any) -> int:
-    """Coerce a span token field to int; silently return 0 on None/bad value."""
     if value is None:
         return 0
     try:
@@ -382,17 +247,7 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-# ---------------------------------------------------------------------------
-# Reconciliation helper (used by check_cost.py and tests)
-# ---------------------------------------------------------------------------
-
 def check_reconciliation(ledger: CostLedger) -> list[str]:
-    """Return a list of reconciliation error strings (empty = invariants hold).
-
-    Checks that the per-ticket, per-agent, per-tier, and per-run token totals
-    each sum back to the raw span totals for input, cached_input, and output
-    tokens independently.  An error means spans were added or dropped — a bug.
-    """
     errors: list[str] = []
     for axis_name, groups in (
         ("by_ticket", ledger.by_ticket),

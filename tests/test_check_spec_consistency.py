@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_spec_consistency.py — Phase 2 SPEC.md consistency (ADR-0015 / ADR-0002)."""
+
 from __future__ import annotations
 
 import sys
@@ -10,7 +10,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_spec_consistency as sc  # noqa: E402  (import after path manipulation)
+import check_spec_consistency as sc
 
 GOOD_SPEC = (
     "# SPEC 001 — demo\n\n## User Scenarios\n- P1 — given/when/then\n\n"
@@ -30,7 +30,6 @@ def _specs(tmp_path: Path, **slug_to_body: str) -> Path:
 
 
 def _board(tmp_path: Path, *tickets: tuple[str, str, str]) -> Path:
-    """tickets: (id, spec, implements). '' omits a field; implements is an inline list body."""
     bdir = tmp_path / "board"
     bdir.mkdir(exist_ok=True)
     for tid, spec, impl in tickets:
@@ -47,8 +46,6 @@ def _board(tmp_path: Path, *tickets: tuple[str, str, str]) -> Path:
 def _run(tmp_path: Path, specs: Path, board: Path) -> int:
     return sc.main(["--specs", str(specs), "--projects", str(tmp_path / "noproj"), "--board", str(board)])
 
-
-# --- structure ---
 
 def test_no_specs_passes(tmp_path):
     assert _run(tmp_path, _specs(tmp_path), _board(tmp_path)) == 0
@@ -80,8 +77,6 @@ def test_templates_dir_is_skipped(tmp_path):
     assert sc.main(["--specs", str(root), "--projects", str(tmp_path / "n"), "--board", str(_board(tmp_path))]) == 0
 
 
-# --- ticket linkage ---
-
 def test_valid_ticket_link_passes(tmp_path):
     specs = _specs(tmp_path, **{"001-demo": GOOD_SPEC})
     board = _board(tmp_path, ("DAS-2001", "001-demo", "[FR-001, FR-002]"))
@@ -105,8 +100,6 @@ def test_ticket_without_spec_field_unaffected(tmp_path):
     board = _board(tmp_path, ("DAS-2001", "", ""))
     assert _run(tmp_path, specs, board) == 0
 
-
-# --- real repo ---
 
 def test_real_repo_passes():
     assert sc.main([]) == 0

@@ -1,7 +1,3 @@
-# PROJECT-OS manifest for the helpdesk-triage sample pack (evals/e2e/sample-pack-2).
-# A deliberately different domain and stack from pack 1 (acme-tasks) to prove the
-# gateway generalizes with no code changes. Compiled by scripts/gateway_compile.py
-# in a tmp/scratch project dir named after `name` — never in place.
 name: helpdesk-triage
 mission: >
   helpdesk-triage is an AI assistant that reads inbound support tickets,

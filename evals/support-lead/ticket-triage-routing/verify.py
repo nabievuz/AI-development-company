@@ -1,10 +1,9 @@
-"""Deterministic verifier — support-lead / ticket-triage-routing."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-# Answer key — never exposed in fixtures/, only here.
+
 _ANSWERS = {
     "T-101": {"category": "billing", "route": "billing-team", "priority": "P2"},
     "T-102": {"category": "bug", "route": "eng-oncall", "priority": "P1"},

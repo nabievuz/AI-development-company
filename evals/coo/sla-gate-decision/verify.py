@@ -1,18 +1,3 @@
-"""Deterministic verifier — coo / sla-gate-decision.
-
-Two-part credit:
-
-  0.5 for the correct boolean release-gate decision.
-  0.5 for the correct blocking-issue id set, scored the same way as
-      coverage-gap/vendor-renewal-risk (true-positive minus false-positive,
-      normalised), except when the true blocking set is empty — then this
-      half is all-or-nothing (an empty ``blocking_issues`` is required).
-
-Both the decision and the blocking set are derived from the SAME compliance
-report the agent was given — applying the stated gate rule correctly
-reproduces them — so nothing is leaked. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -33,7 +18,6 @@ def _blocking_ids(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected_ids = _blocking_ids(fixtures)
     expected_block = bool(expected_ids)
 

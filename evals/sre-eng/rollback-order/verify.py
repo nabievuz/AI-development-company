@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-eng / rollback-order."""
 from __future__ import annotations
 
 import json

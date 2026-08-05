@@ -1,29 +1,16 @@
-# Latent-machine feature flags (ADR-0019, remediation P10).
-#
-# Default OFF: consumerless machinery does not emit or run until a real consumer
-# exists, so the idle DGO-X shadow + T4/T7 governors do not burn tokens every wave
-# (atom-audit P10). Flip a flag to true once its consumer is live.
-#
-# Read via scripts/feature_flags.py (enabled("<flag>")).
 
-dgox_emit: false        # /daslab-cycle step 5d routing_decision shadow emission (ADR-0011 Phase-1, no Phase-2 consumer yet)
-t4_t7_governors: false  # T4 cost/model-mix + T7 quality governor invocations during a wave
-organism_emit: true     # ACTIVATED 2026-07-03 (Founder-authorized): consumers now live (dispatch_emitter, cost_ledger, check_spans, snapshot_evidence). /daslab-cycle ORGANISM WS1 "pulse" run-model: run-open + wave checkpoints (pulse_checkpoint) + run_start/run_end/span emission (dispatch_emitter) at steps 0/5/6; SEPARATE channel from dgox_emit; post-decision, failure-isolated (flag-on == flag-off dispatch)
-heartbeat_enabled: false  # WS4 HEARTBEAT (ADR-0027 SI-7): default OFF. Flip to true ONLY after a >=3-day clean shadow window; Founder-only act (QONUN-5). Consumed by scripts/loop_controller.py --tick.
+dgox_emit: false
+t4_t7_governors: false
+organism_emit: true
+heartbeat_enabled: false
 
-# ---------------------------------------------------------------------------
-# MUSTAQIL workstream flags (DAS-1543 / ADR-0019, all DEFAULT OFF).
-# Each stays false until its workstream's consumer is live AND its AADL gate is
-# closed; flipping is a Founder-only act once the flip condition is met. WS-F
-# (HEARTBEAT) reuses the existing `heartbeat_enabled` above — NOT duplicated here.
-# ---------------------------------------------------------------------------
-ws_a_tool_bridge: true       # ACTIVATED 2026-07-26 (Founder-authorized): WS-A ecosystem tool/MCP bridge (ADR-0033) live. Bridge + deny-all/allow-list egress (Q5) landed; PreToolUse hook (audit_external_tool.py) enforces the compiled board/.tool-allowlist.json (wired via DASLAB_TOOL_ALLOWLIST in .claude/settings.json). Core infra MCPs (ArcRift/obsidian) carved out so the Persistent Memory Law is never denied; ecosystem bridges governed per role; ungranted + unidentified fail-closed deny.
-ws_b_agent_sdk_runner: true  # ACTIVATED 2026-07-26 (Founder-authorized): WS-B headless Agent SDK runner (ADR-0034, daslab_sdk) live. claude-agent-sdk installed; the runner authenticates via the Claude account OAuth profile (build_subscription_env drops ANTHROPIC_API_KEY/AUTH_TOKEN → OAuth; a live query returned a real reply); ADR-0009 admission (scripts/ws_b_admission.py) wraps every dispatch (explicit-model + budget + monthly-credit gate). Additive to /daslab-cycle, admission-gated; flag-on == flag-off DECISIONS (SR-1..SR-5).
-ws_c_langgraph_loop: true    # ACTIVATED 2026-07-26 (Founder-authorized): WS-C LangGraph/DGO-X execution substrate (ADR-0035) live in SHADOW POSTURE. langgraph 1.2.9 installed; build_graph() compiles a real CompiledStateGraph; project/reconcile keep the board canonical (board wins any divergence). CRITICAL: flag ON does NOT auto-drive — run_loop() returns InertResult(drove=False, 'shadow posture; drive is a board act (Q4)'); actual mirror->enforce->drive is a SEPARATE explicit board act (DAS-1568), never the flag alone, so flag-on == flag-off dispatch (SC-004a). The per-task sandbox edge (DockerSandbox) is wired; /daslab-cycle stays the fallback driver.
-ws_d_langfuse_lens: true     # ACTIVATED 2026-07-26 (Founder-authorized): self-host Langfuse v3 (ADR-0036) deployed in-tenant on the tenant box (docker compose, loopback 127.0.0.1:3000; OTLP /api/public/otel/v1/traces verified HTTP 200). WS-D read-side exporter (tools/observability/otlp_exporter.py) is now live: replays committed DGO-X spans → redact (ADR-0012) → OTLP → the loopback Langfuse lens; TN-1 boundary holds (check_in_tenant OK). Read-only, never wired into dispatch (FR-003); a lens outage is non-fatal.
-ws_e_tenant_hardening: true  # ACTIVATED 2026-07-26 (Founder-authorized): WS-E internal self-host hardening (ADR-0038) live. Internal-only boundary (Q10) enforced end-to-end — RBAC founder-only double-lock (config/rbac.yaml: gate.approve/run.trigger/config.edit.security founder-only; agents/orchestrator/audit-team denied), LiteLLM gateway enforce_boundary pins role=model to the declared claude_model host, TN-1 check_in_tenant OK (7 endpoints in-tenant, api.anthropic.com the sole external), read-only SIEM export (rbac_siem_export) resolves the in-tenant audit sink + reuses the ADR-0012 scrubber. Enforcement entry points (enforce_gate_closed, SIEM export) were inert-behind-flag; no live /daslab-cycle consumer, so dispatch is byte-identical. NOTE: the audit ledger's production R1 file-trust path (/var/lib/daslab/audit, 0700/0600) is a root-required Founder follow-up; the dev-default board/.rbac-audit.jsonl is functional meanwhile.
-ws_e_openweight_ejectpath: false # WS-E vLLM/SGLang DEFERRED eject-path sub-flag (DAS-1583, design §4.2), nested under ws_e_tenant_hardening. Consumer: tools/model_gateway/ejectpath.py in-tenant route. NOT the near-term build (Q9 keeps Claude-subscription default) — flip ONLY on an explicit Founder decision to open the open-weight eject-path, and only after ws_e_tenant_hardening is already ON.
-ws_g_proof: true             # ACTIVATED 2026-07-26 (Founder-authorized): WS-G end-to-end proof / attestation gate (ADR-0037) live. Flip condition met — the first WS-H proof slice is shipped (control plane deployed to the tenant box + merged + pushed to main, this session). The evidence gate (scripts/check_evidence_gate.py) now BITES: any committed *.delivery.json scorecard is verified against the hash-chained attestation+evidence chain (ED-1); with no delivery claimed it stays honest-empty/inert (ADR-0020). Library-only — not auto-wired into CI/diagnostics/dispatch, so flag-on == flag-off dispatch.
-ws_h_control_plane: true     # ACTIVATED 2026-07-26 (Founder-authorized): WS-H self-hosted web control plane (ADR-0039) deployed on the tenant box as a loopback-only systemd user unit (daslab-control-plane, 127.0.0.1:8899) with Founder-only RBAC (DASLAB_CP_RBAC vault). Serves requests; dispatches nothing on its own (CP-5). Access remotely via SSH tunnel / Tailscale, never a public bind.
-ws_f_heartbeat: false        # WS-F HEARTBEAT alias — PLACEHOLDER ONLY. The live flag is `heartbeat_enabled` above (ADR-0027 SI-7); this key is never the flip point. Do NOT flip; flip `heartbeat_enabled` instead.
-a2a_outbound: true           # ACTIVATED 2026-07-26 (Founder-authorized): A2A outbound governed edge (ADR-0040) live. Q12 go-live gate met — the WS-G proof shipped this session. Endpoint is LOOPBACK-ONLY (config/tenant_boundary.yaml a2a_outbound = http://127.0.0.1:8765; TN-1); reachable remotely only via SSH tunnel / Tailscale, NEVER a public bind. Governance verified: intake writes a goal PROPOSAL (status 'proposed') to board/goal-inbox, NEVER a ticket/approval/routing (QONUN-5); caller input untrusted + injection-inert; publish is a Founder-only double-lock (rbac a2a.publish FOUNDER_ONLY + TN-1 in-tenant target — a hosted relay is refused even for the Founder); allow AND deny both logged to board/.events.jsonl. NOTE: the HTTP transport/listener that serves handle_call on :8765 is a separate loopback deploy piece (not shipped); flipping activates the governed handler, not a public port.
+ws_a_tool_bridge: true
+ws_b_agent_sdk_runner: true
+ws_c_langgraph_loop: true
+ws_d_langfuse_lens: true
+ws_e_tenant_hardening: true
+ws_e_openweight_ejectpath: false
+ws_g_proof: true
+ws_h_control_plane: true
+ws_f_heartbeat: false
+a2a_outbound: true

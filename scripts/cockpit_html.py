@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""cockpit_html.py — Zero-infra HTML render of the DasLab cockpit (ADR-0028).
 
-Static-regeneration-first (D-1): writes a self-contained, offline-capable HTML
-snapshot to ``board/.cockpit.html`` (gitignored runtime state).  Auto-refresh via
-``<meta http-equiv="refresh">`` (D-2); no JavaScript, no external assets, no build
-step (D-6).  Optional loopback ``http.server`` live mode via ``--serve`` (D-3);
-operator-invoked, not a daemon.
-
-This module IMPORTS and WRAPS ``scripts/cockpit.py`` data-binding functions — it does
-NOT edit them (ADR-0028 D-4; DAS-1481 owns cockpit.py edits this wave).
-
-Usage:
-    # static snapshot (canonical — open board/.cockpit.html in a browser):
-    python3 scripts/cockpit_html.py
-
-    # custom output path:
-    python3 scripts/cockpit_html.py --out /tmp/cockpit.html
-
-    # optional loopback live mode (foreground, Ctrl-C to stop):
-    python3 scripts/cockpit_html.py --serve
-"""
 from __future__ import annotations
 
 import argparse
@@ -30,23 +10,23 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-# ── data-binding imports (shared with cockpit.py; cockpit owns the panel logic) ─
-import cockpit  # panel_* functions + NODATA sentinel (D-4)
+
+import cockpit
 import metrics_lib
 import wave_kpi
 from _paths import ROOT
 
 try:
-    import yaml  # optional; absent in minimal envs
-except ImportError:  # pragma: no cover - environment guard
-    yaml = None  # type: ignore[assignment]
+    import yaml
+except ImportError:
+    yaml = None
 
-# ── module-level defaults ────────────────────────────────────────────────────────
+
 DEFAULT_OUT: Path = ROOT / "board" / ".cockpit.html"
 DEFAULT_PORT: int = 8765
-DEFAULT_REFRESH: int = 30  # seconds
+DEFAULT_REFRESH: int = 30
 
-# ── inline CSS (no external stylesheet, CDN, or web font — D-6) ─────────────────
+
 _CSS = """\
 /* DasLab Cockpit — self-contained inline CSS (ADR-0028 D-6, no external assets) */
 *{box-sizing:border-box;margin:0;padding:0}
@@ -66,12 +46,6 @@ border-top:1px solid #21262d;padding-top:.75rem}
 
 
 def _render_panel_html(num: int, title: str, lines: list[str]) -> str:
-    """Convert a cockpit panel ``(num, title, lines)`` into an HTML block.
-
-    Pure presentation shim over the same data cockpit.py's ``_render_panel``
-    receives (ADR-0028 D-4).  Panel identity, ordering, titles, and the NODATA
-    text remain owned by ``cockpit.py``.
-    """
     rows: list[str] = []
     for ln in lines:
         css = "panel-line nodata" if ln == cockpit.NODATA else "panel-line"
@@ -98,13 +72,7 @@ def render_html(
     *,
     refresh_s: int = DEFAULT_REFRESH,
 ) -> str:
-    """Return a self-contained HTML document wrapping the cockpit panels.
 
-    Pure function of state — no socket is bound, no server is started (ADR-0028
-    D-1 / D-5).  Safe to call in tests or offline.  An empty event store yields a
-    valid, honest HTML page with NODATA sentinels — nothing is fabricated (D-5).
-    """
-    # Data-loading mirrors cockpit.render() exactly so both surfaces stay in sync.
     events = wave_kpi.read_events(str(events_path))
     waves = metrics_lib.read_waves(str(wave_log))
     config: dict = {}
@@ -115,8 +83,7 @@ def render_html(
             loaded = None
         config = loaded if isinstance(loaded, dict) else {}
 
-    # All panels from cockpit.py in canonical order (D-4 — no forked logic; panel
-    # count is derived from cockpit.py's render(), not hardcoded here).
+
     panels: list[tuple[str, list[str]]] = [
         ("Current Wave", cockpit.panel_current_wave(waves)),
         ("Frontier Health", cockpit.panel_frontier(waves)),
@@ -138,7 +105,7 @@ def render_html(
         for i, (title, lines) in enumerate(panels, 1)
     )
 
-    # D-5: generated-at timestamp makes staleness visible, never misleading.
+
     generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
 
     return (
@@ -183,11 +150,6 @@ def write_snapshot(
     *,
     refresh_s: int = DEFAULT_REFRESH,
 ) -> Path:
-    """Render and write a static HTML snapshot to *out*; return the path.
-
-    Canonical form-factor (ADR-0028 D-1): the snapshot is a plain file,
-    no port is bound, no process is held.
-    """
     page = render_html(
         events_path, wave_log, experiments, board, mem_store, mem_config, now,
         interrupts, refresh_s=refresh_s,
@@ -207,13 +169,9 @@ def _make_handler(
     interrupts: Path,
     refresh_s: int,
 ) -> type:
-    """Return an HTTP request-handler class that regenerates the cockpit per request.
-
-    Each GET triggers a fresh ``render_html()`` call (D-3: regenerate-on-request).
-    """
 
     class _CockpitHandler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802  (stdlib naming convention)
+        def do_GET(self) -> None:
             now = datetime.now(tz=UTC).replace(tzinfo=None)
             try:
                 body = render_html(
@@ -227,7 +185,7 @@ def _make_handler(
                     interrupts,
                     refresh_s=refresh_s,
                 ).encode("utf-8")
-            except Exception as exc:  # pragma: no cover - serve-mode guard
+            except Exception as exc:
                 msg = f"render error: {exc}".encode()
                 self.send_response(500)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -241,7 +199,7 @@ def _make_handler(
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+        def log_message(self, fmt: str, *args: object) -> None:
             sys.stderr.write(f"[cockpit] {fmt % args}\n")
 
     return _CockpitHandler
@@ -258,12 +216,6 @@ def _serve(
     port: int,
     refresh_s: int,
 ) -> None:
-    """Run the optional loopback http.server live mode (ADR-0028 D-3).
-
-    Operator-invoked foreground process — Ctrl-C to stop.  NOT a daemon.
-    Loopback-only bind (``127.0.0.1``): cockpit surfaces internal state and
-    MUST NOT be exposed on a routable interface (D-3).
-    """
     handler_cls = _make_handler(
         events_path, wave_log, experiments, board_path, mem_store, mem_config, interrupts, refresh_s
     )
@@ -278,7 +230,7 @@ def _serve(
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
+        description='cockpit_html.py — Zero-infra HTML render of the DasLab cockpit (ADR-0028).',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--events", type=Path,

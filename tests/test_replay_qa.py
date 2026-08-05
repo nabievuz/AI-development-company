@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_replay_qa.py — Replay-QA / recovery-drill harness (T5 / RFC-003)."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import replay_qa as rq  # noqa: E402  (import after path manipulation)
+import replay_qa as rq
 
 
 def _t(frm, to, minute, run="r1") -> dict:
@@ -43,7 +43,7 @@ def test_invalid_status_is_corrupted():
 def test_drill_counts():
     evs = [
         _t("todo", "in_progress", 0, run="a"), _t("in_progress", "done", 1, run="a"),
-        _t("todo", "in_progress", 0, run="b"), _t("done", "in_review", 1, run="b"),  # b corrupted
+        _t("todo", "in_progress", 0, run="b"), _t("done", "in_review", 1, run="b"),
     ]
     d = rq.drill(evs)
     assert d["runs"] == 2 and d["replayable"] == 1 and d["corrupted"] == ["b"]
@@ -64,7 +64,7 @@ def test_cli_corrupted_exit_1(tmp_path):
 
 
 def test_none_to_status_before_break_is_corrupted():
-    # a None to_status must not reset the chain check and let a later break pass
+
     middle = {"event_type": "routing_decision", "from_status": "in_progress",
               "to_status": None, "created_at": "2026-06-21T10:01:00Z"}
     r = rq.replay_run([_t("todo", "in_progress", 0), middle, _t("done", "blocked", 2)])

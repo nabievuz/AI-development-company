@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""check_overlay_sections.py — role-overlay contract (ADR-0018, ADR-0002, remediation P3).
 
-Every role overlay (`<dept>/agents/<role>/AGENTS.md`) must carry the four contract
-sections so a shipped role is actually defined, not a hollow stub (atom-audit P3):
-
-  - ## Mission              — what this role exists to do
-  - ## Scope                — what it owns / does NOT own
-  - ## Definition of Done   — when its work is complete
-  - ## Escalation           — when/how to escalate ("## When to escalate" is accepted)
-
-Each section must be present AND non-trivial (>= MIN_CHARS of body).
-
-Rollout (ADR-0018): ships WARN-ONLY (exit 0, prints gaps). Pass --strict to fail closed
-once the overlays are filled.
-
-Usage:
-    python scripts/check_overlay_sections.py [--strict]
-
-Exit 0 = clean (or warn-only). Exit 1 = gaps under --strict. Exit 2 = IO error.
-"""
 from __future__ import annotations
 
 import argparse
@@ -28,10 +9,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPTS = ["governance", "engineering", "product", "design", "marketing", "operations"]
-SKIP: set[str] = set()  # (no external-runtime pilots)
+SKIP: set[str] = set()
 MIN_CHARS = 40
 
-# section key -> accepted heading regexes (case-insensitive)
+
 REQUIRED = {
     "Mission": [r"^##\s+mission\b"],
     "Scope": [r"^##\s+scope\b"],
@@ -55,7 +36,6 @@ def _overlays() -> list[Path]:
 
 
 def _section_body(text: str, heading_res: list[str]) -> str | None:
-    """Return the body under the first matching heading (until the next ## ), or None."""
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if any(re.match(rx, line, re.IGNORECASE) for rx in heading_res):
@@ -75,7 +55,7 @@ def scan(overlays: list[Path]) -> list[tuple[str, str]]:
         try:
             rel = f.relative_to(REPO_ROOT).as_posix()
         except ValueError:
-            rel = f.as_posix()  # path outside the repo (e.g. a test fixture)
+            rel = f.as_posix()
         for name, heading_res in REQUIRED.items():
             body = _section_body(text, heading_res)
             if body is None:

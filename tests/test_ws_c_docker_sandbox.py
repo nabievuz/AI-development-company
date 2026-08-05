@@ -1,22 +1,3 @@
-"""WS-C live DockerSandbox tests (DAS-1566) — the real per-task isolation smoke.
-
-Two layers, both SKIPPED when no container engine is reachable (absent-by-
-default): a fresh checkout / CI stays green with nothing installed.
-
-  CONTRACT PARITY  the same four fail-closed walls the DAS-1565 stub tests
-                   assert (host/repo, other-task, unscoped-credential, egress)
-                   produce the SAME decisions + messages against DockerSandbox,
-                   since it subclasses LocalStubSandbox (ADR-0010 C1).
-
-  LIVE ISOLATION   DAS-1566 acceptance — a real command runs INSIDE the per-task
-    (smoke)        container via exec_in_container and the boundary holds: the
-                   host and repo are unreachable, the network is off, another
-                   task's workdir is invisible, and no unscoped credential is
-                   present (a scoped one is).
-
-Run on a host with Docker:  pytest tests/test_ws_c_docker_sandbox.py -v
-Drive podman instead:       DASLAB_DOCKER_BIN=podman pytest ...
-"""
 from __future__ import annotations
 
 import getpass
@@ -31,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import sandbox as sbx  # noqa: E402
+from tools import sandbox as sbx
 
 Mount = sbx.Mount
 ScopedSecret = sbx.ScopedSecret
@@ -49,25 +30,13 @@ def _scope(task_id: str, mount_root: Path, **kw) -> SandboxScope:
     return SandboxScope(task_id=task_id, workdir_mounts=[Mount(host_path=str(mount_root))], **kw)
 
 
-#: Marker a probe emits when the tool it needs is missing from the image.
 _NO_PROBE = "NOPROBE"
 
 
 def _guarded_probe(tool: str, script: str) -> str:
-    """Wrap an in-container probe so a MISSING tool cannot read as a clean result.
-
-    Every probe here is shaped ``<tool> ... && echo BAD || echo GOOD``, so absence
-    of the tool takes the GOOD branch and the assertion passes without testing
-    anything. Demonstrated: with ``--network none`` swapped for ``bridge`` in
-    ``docker_sandbox.py``, alpine:3.20 fails the egress test while an image with no
-    ``wget`` passes it. The guard turns that into a loud failure instead.
-    """
     return f"command -v {tool} >/dev/null 2>&1 || {{ echo {_NO_PROBE}; exit 0; }}; {script}"
 
 
-# --------------------------------------------------------------------------- #
-# Contract parity — identical wall decisions to the stub
-# --------------------------------------------------------------------------- #
 @requires_docker
 def test_docker_host_wall_rejects_traversal(tmp_path):
     b = DockerSandbox()
@@ -93,12 +62,11 @@ def test_docker_confined_write_read(tmp_path):
 
 
 def test_docker_open_rejects_scope_task_id_mismatch(tmp_path):
-    # No @requires_docker: the inherited open-time wall raises BEFORE any
-    # container is launched, so this proves the wall is inherited even with no
-    # engine installed (a rejected scope never shells out to docker).
+
+
     b = DockerSandbox()
     with pytest.raises(SandboxEscapeError):
-        b.open(task_id="d-B", scope=_scope("d-A", tmp_path))  # no container started
+        b.open(task_id="d-B", scope=_scope("d-A", tmp_path))
 
 
 @requires_docker
@@ -135,33 +103,24 @@ def test_docker_credentials_empty_by_default(tmp_path):
         b.close(h)
 
 
-# --------------------------------------------------------------------------- #
-# Live isolation smoke — real code runs inside the container and cannot escape
-# --------------------------------------------------------------------------- #
 @requires_docker
 def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
     b = DockerSandbox()
     h = b.open(task_id="live-1", scope=_scope("live-1", tmp_path))
     try:
-        # The task's own file (written via the confined write verb) is visible
-        # to real in-container code at /work.
+
+
         assert b.exec(h, ["write", "mine.txt", "owned"]).ok is True
         ls = b.exec_in_container(h, ["sh", "-c", "ls /work"])
         assert ls.ok is True and "mine.txt" in ls.stdout
-        # Both probes below cover ONE failure mode: an *identity* bind-mount, where
-        # a host path is reachable inside the container under that same path. The
-        # workdir binds at /work, so that is exactly what a regression in open()'s
-        # mount handling would look like. Neither probe can see a host tree exposed
-        # under a DIFFERENT in-container path — the /etc content probe in
-        # test_live_host_etc_is_not_exposed covers that leg, and a full-host mount
-        # at some third path is covered by neither (a known blind spot).
-        # The repo root is resolved at runtime (LAW A: never written down).
+
+
         repo = b.exec_in_container(
             h, ["sh", "-c", f"test -e {shlex.quote(str(ROOT))} && echo REACH || echo NONE"]
         )
         assert "NONE" in repo.stdout, repo.stdout
-        # Same, for a host file outside the mounted workdir: the sentinel is created
-        # at runtime under tmp_path's parent, which is never granted as a mount.
+
+
         sentinel = tmp_path.parent / f"daslab-host-sentinel-{tmp_path.name}"
         sentinel.write_text("host-only", encoding="utf-8")
         probe = f"test -e {shlex.quote(str(sentinel))} && echo HOSTREACH || echo isolated"
@@ -178,14 +137,8 @@ def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
     "could not tell host /etc from the image's own",
 )
 def test_live_host_etc_is_not_exposed(tmp_path):
-    # The CONTENT leg of the host wall, and the only probe here that sees a host
-    # tree mounted under a different in-container path: a stock image's /etc/passwd
-    # never carries a real host account, so finding this host's user inside means
-    # host /etc leaked in. Verified against a deliberately broken sandbox: with
-    # `-v /etc:/etc:ro` added to open()'s flags this probe reports the leak while
-    # the identity-path probes above still read clean.
-    # The account name is read at runtime — a hardcoded one passes vacuously on
-    # every machine that happens not to have that user.
+
+
     b = DockerSandbox()
     h = b.open(task_id="live-1b", scope=_scope("live-1b", tmp_path))
     try:
@@ -205,7 +158,7 @@ def test_live_network_is_off(tmp_path):
     b = DockerSandbox()
     h = b.open(task_id="live-2", scope=_scope("live-2", tmp_path))
     try:
-        # --network none: no route out even to a raw IP (avoids DNS).
+
         net = b.exec_in_container(
             h,
             [
@@ -225,7 +178,7 @@ def test_live_network_is_off(tmp_path):
 
 @requires_docker
 def test_live_unscoped_credential_absent_scoped_present(tmp_path):
-    # Default: no credential in the container's env.
+
     b = DockerSandbox()
     h = b.open(task_id="live-3", scope=_scope("live-3", tmp_path))
     try:
@@ -234,7 +187,7 @@ def test_live_unscoped_credential_absent_scoped_present(tmp_path):
     finally:
         b.close(h)
 
-    # Granted + task-scoped: present inside the container (and only there).
+
     cred = ScopedSecret(name="DASLAB_TEST_SECRET", value="sk-live-777", scope="live-3b", ttl_seconds=60)
     h2 = b.open(task_id="live-3b", scope=_scope("live-3b", tmp_path, credentials=[cred]))
     try:
@@ -252,8 +205,8 @@ def test_live_other_task_workdir_invisible(tmp_path):
     bb = b.open(task_id="live-B", scope=_scope("live-B", tmp_path / "b"))
     (tmp_path / "b").mkdir(exist_ok=True)
     try:
-        b.exec(a, ["write", "secret.txt", "a-only"])  # in A's workdir only
-        # B's container has its own /work — A's file is not there.
+        b.exec(a, ["write", "secret.txt", "a-only"])
+
         seen = b.exec_in_container(bb, ["sh", "-c", "test -e /work/secret.txt && echo LEAK || echo isolated"])
         assert "isolated" in seen.stdout, seen.stdout
     finally:

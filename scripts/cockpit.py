@@ -1,23 +1,5 @@
 #!/usr/bin/env python3
-"""cockpit.py — Operator Cockpit v1.
 
-A PASSIVE, live, multi-panel, view-only cockpit, each panel bound to a REAL data
-source. Where live telemetry does not exist yet (the loop is in shadow mode and no
-waves have run), the panel says so plainly — nothing is mocked, no number is
-fabricated. Beyond the six base health panels it renders the live run feed, wave
-timeline, per-agent + per-tool usage, budget burn (cost-ledger), the T1-T7 metric
-sparklines (trends), and an ACTION CONSOLE that surfaces pending interrupt-cards
-(board/interrupts/) with copy-paste ``resume:<value>`` answer stubs so the Founder
-can answer in under 60 seconds. Every §5 contract number (T1-T7, spans, cost) is
-visible; an empty source renders the NODATA sentinel — never a crash, never a
-fabricated number.
-UAT: an operator can explain the current system state in plain
-English from this cockpit alone — the plain-English glossary (--glossary) backs that.
-
-Usage:
-    python3 scripts/cockpit.py
-    python3 scripts/cockpit.py --glossary
-"""
 from __future__ import annotations
 
 import argparse
@@ -34,7 +16,7 @@ from cost.cost_ledger import aggregate_spans
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     yaml = None
 
 GLOSSARY = {
@@ -88,7 +70,7 @@ def _load_jsonl(path: Path) -> list[dict]:
     out: list[dict] = []
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:  # missing, a directory, or unreadable — treat as no data
+    except OSError:
         return []
     for raw in text.splitlines():
         line = raw.strip()
@@ -171,7 +153,7 @@ def panel_risk(board: Path) -> list[str]:
     for t in tickets:
         try:
             text = t.read_text(encoding="utf-8", errors="ignore")
-        except OSError:  # unreadable / directory — skip, never crash the cockpit
+        except OSError:
             continue
         fm = _frontmatter(text)
         p0 += fm.get("priority") == "p0"
@@ -192,28 +174,19 @@ def panel_memory(store: Path, config: dict, now: datetime) -> list[str]:
     return [f"memories: {len(mems)}, recallable: {len(recall)}", f"health score: {health:.0%}"]
 
 
-# --------------------------------------------------------------------------- #
-# ORGANISM WS5 O5-T02/T03 (DAS-1481) — additional live panels + Action Console.
-# All read the SAME event store / cost-ledger / interrupts dir cockpit already
-# knows; every one degrades to NODATA (or an honest empty-state line) — nothing
-# is fabricated, nothing crashes.
-# --------------------------------------------------------------------------- #
-
 _SPARK = "▁▂▃▄▅▆▇█"
 
 ACTION_CONSOLE_EMPTY = "no pending interrupt-cards — nothing awaits a Founder answer"
 
 
 def _safe_int(value: object) -> int:
-    """Coerce a token field to a non-negative int; 0 on None / bad value."""
     try:
-        return max(0, int(value))  # type: ignore[arg-type]
+        return max(0, int(value))
     except (TypeError, ValueError):
         return 0
 
 
 def _tier(model: str) -> str:
-    """Map a raw model id to opus/sonnet/haiku (else the lower-cased raw string)."""
     m = model.lower()
     for tier in ("opus", "sonnet", "haiku"):
         if tier in m:
@@ -222,7 +195,6 @@ def _tier(model: str) -> str:
 
 
 def _sparkline(values: list[float]) -> str:
-    """Render a unicode block sparkline of a numeric series; '' when empty."""
     nums = [float(v) for v in values if isinstance(v, int | float)]
     if not nums:
         return ""
@@ -234,7 +206,6 @@ def _sparkline(values: list[float]) -> str:
 
 
 def panel_run_feed(events: list[dict], limit: int = 5) -> list[str]:
-    """Live run feed: T1 busy fraction + run_start/run_end counts + the last N runs."""
     runs = [e for e in events if e.get("event_type") in ("run_start", "run_end")]
     if not runs:
         return [NODATA]
@@ -250,7 +221,6 @@ def panel_run_feed(events: list[dict], limit: int = 5) -> list[str]:
 
 
 def panel_wave_timeline(waves: list[dict], events: list[dict], limit: int = 6) -> list[str]:
-    """Wave timeline: T3 concurrency + a per-wave dispatched sparkline + recent waves."""
     if not waves:
         return [NODATA]
     conc = metrics_lib.concurrency_stats(events)
@@ -269,7 +239,6 @@ def panel_wave_timeline(waves: list[dict], events: list[dict], limit: int = 6) -
 
 
 def panel_per_agent(events: list[dict]) -> list[str]:
-    """Per-agent success / tokens / tier, rolled up from the span event stream."""
     rollup: dict[str, dict] = {}
     for e in events:
         if e.get("event_type") != "span":
@@ -296,7 +265,6 @@ def panel_per_agent(events: list[dict]) -> list[str]:
 
 
 def panel_per_tool(events: list[dict]) -> list[str]:
-    """Per-tool usage: tool_call events by name + span-kind mix + tool_unavailable count."""
     tools: dict[str, int] = {}
     kinds: dict[str, int] = {}
     unavailable = 0
@@ -324,10 +292,9 @@ def panel_per_tool(events: list[dict]) -> list[str]:
 
 
 def panel_budget_burn(events_path: Path) -> list[str]:
-    """Budget burn from the cost-ledger: total spans, est USD cost, tokens, per-tier."""
     try:
         ledger = aggregate_spans(store_path=events_path)
-    except (OSError, ValueError):  # missing budgets / unreadable store — never crash
+    except (OSError, ValueError):
         ledger = None
     if ledger is None:
         return [NODATA]
@@ -344,7 +311,6 @@ def panel_budget_burn(events_path: Path) -> list[str]:
 
 
 def panel_metrics(events: list[dict], waves: list[dict]) -> list[str]:
-    """Every §5 contract number T1-T7 in one glance + a throughput sparkline (trends)."""
     t1, _ = wave_kpi.busy_fraction_from_events(events)
     r = metrics_lib.idle_wave_rates(waves)
     conc = metrics_lib.concurrency_stats(events)
@@ -371,13 +337,6 @@ def panel_metrics(events: list[dict], waves: list[dict]) -> list[str]:
 
 
 def panel_action_console(interrupts_dir: Path) -> list[str]:
-    """Action Console: pending interrupt-cards + copy-paste ``resume:<value>`` stubs.
-
-    Lists every ``board/interrupts/<id>.json`` card (schema: interrupts/README.md)
-    with its question, options, and a ready-to-copy ``resume:<option>`` line per
-    option so the Founder answers in <60s. The design-of-record ``schema.json`` is
-    NOT a card and is skipped. Malformed/unreadable cards are annotated, never fatal.
-    """
     if not interrupts_dir.is_dir():
         return [ACTION_CONSOLE_EMPTY]
     cards = [c for c in sorted(interrupts_dir.glob("*.json")) if c.name != "schema.json"]
@@ -455,7 +414,7 @@ def render(events_path: Path, wave_log: Path, experiments: Path, board: Path,
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='cockpit.py — Operator Cockpit v1.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--wave-log", type=Path, default=ROOT / "board" / ".wave-log")
     ap.add_argument("--experiments", type=Path, default=ROOT / "experiments")

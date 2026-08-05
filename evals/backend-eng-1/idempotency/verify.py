@@ -1,4 +1,3 @@
-"""Deterministic verifier — backend-eng-1 / idempotency."""
 from __future__ import annotations
 
 from pathlib import Path

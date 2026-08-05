@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_check_metric_gaming.py — anti-gaming rule + T1b (R-9 / RFC-001 §2)."""
+
 from __future__ import annotations
 
 import json
@@ -11,8 +11,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_metric_gaming as cmg  # noqa: E402  (import after path manipulation)
-import metrics_lib as ml  # noqa: E402
+import check_metric_gaming as cmg
+import metrics_lib as ml
 
 
 def _done(merged_pr="PR-1", ci_status="green", t7_pass=True, t7_score=0.95, tid="DAS-1") -> dict:
@@ -68,7 +68,7 @@ def test_cli_gamed_exit_1(tmp_path):
 
 
 def test_string_false_t7_pass_is_flagged():
-    # a STRING 'false' is Python-truthy but must NOT pass the gate
+
     assert ml.gaming_violations([_done(t7_pass="false")])["violations"]
     assert ml.t1b_high_impact([_done(t7_pass="false")])["high_impact"] == 0
 

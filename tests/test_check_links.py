@@ -1,10 +1,3 @@
-"""tests/test_check_links.py — pytest suite for scripts/check_links.py.
-
-Hermetic: every test builds a synthetic Markdown tree under ``tmp_path`` and
-scans it with ``--root``; no real repo files are read. Proves the scanner
-(a) flags a broken relative link, (b) passes a tree whose links all resolve,
-and (c) ignores external links and pure anchors.
-"""
 from __future__ import annotations
 
 import sys
@@ -13,7 +6,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from check_links import check, main  # noqa: E402
+from check_links import check, main
 
 
 def test_detects_broken_relative_link(tmp_path: Path) -> None:
@@ -53,6 +46,6 @@ def test_resolves_relative_to_file_dir(tmp_path: Path) -> None:
     (sub / "guide.md").write_text("[up](../README.md)\n")
     (tmp_path / "README.md").write_text("# Root\n")
     assert main(["--root", str(tmp_path)]) == 0
-    # break it: link to a sibling that does not exist
+
     (sub / "guide.md").write_text("[sib](sibling.md)\n")
     assert main(["--root", str(tmp_path)]) == 1

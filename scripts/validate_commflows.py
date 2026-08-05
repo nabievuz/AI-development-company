@@ -1,63 +1,5 @@
 #!/usr/bin/env python3
-"""validate_commflows.py — shape + derivation validator for communication-flows.yaml.
 
-`governance/communication-flows.yaml` is a **derived, validatable** projection of
-the org communication graph (ADR-0026). Every edge MUST trace to one of the
-authoritative SSOTs; no topology is authored by hand. This script is the small
-shape/derivation validator that ADR-0026 §Enforcement calls the contract for the
-authored file (WS2 O2-T02, ticket DAS-1465). It is deliberately scoped to the
-*shape* of the file and its round-trip derivation from `board/ROUTING.md`; the
-fuller drift diff-check (`check_comm_flows.py`) is a later ticket (WS2 O2-T03).
-
-File shape (ADR-0026 §1)
-------------------------
-    version: <int >= 1>
-    flows:
-      - sender:   <fleet role key from board/ROUTING.md>
-        receiver: <fleet role key from board/ROUTING.md>
-        kind:     delegation | escalation
-        source:   routing.reports_to | schema.escalation
-
-Closed enums
-------------
-* ``kind``   ∈ {``delegation``, ``escalation``} exactly. ``delegation`` runs DOWN
-  the reporting chain (manager → direct report); ``escalation`` runs UP it
-  (report → manager). RACI *consult* edges are **out of scope for v1** per
-  ADR-0026 §Consequences — a possible future ``kind``, not emitted now.
-* ``source`` ∈ {``routing.reports_to``, ``schema.escalation``}.
-* ``sender`` / ``receiver`` MUST be fleet role keys present in ``board/ROUTING.md``.
-  The string ``founder`` is **forbidden** as a sender or receiver: the founder is
-  an external human gate above the chairman, not a routing node (ADR-0026 §3).
-
-Derivation rules enforced (ADR-0026 §1 rules 1–4)
--------------------------------------------------
-1. Role-node closure — every sender/receiver is a fleet role in ROUTING.md;
-   ``founder`` never appears.
-2. Reporting-line completeness + soundness — for each ROUTING.md row
-   ``report → manager`` whose reviewer is a fleet role (not ``—``), the file
-   contains EXACTLY the two edges
-   ``delegation(manager → report)`` and ``escalation(report → manager)``,
-   both ``source: routing.reports_to`` — no more, no fewer, no duplicates.
-   Roles whose reviewer is ``—`` (``chairman``, ``board-member``) have no upward
-   fleet edge; the chain terminates at the top of the fleet.
-3. Escalation-ladder consistency — the ``schema.routing.escalation`` ladder is
-   present and terminates in the external ``founder`` rung; no fleet edge is
-   emitted for that rung.
-4. No invented topology — the authored edge set equals the set derived purely
-   from the SSOTs. Any extra or missing edge is an error.
-
-Usage
------
-    python3 scripts/validate_commflows.py            # validate the authored file
-    python3 scripts/validate_commflows.py --emit     # print the canonical YAML
-    python3 scripts/validate_commflows.py --file P    # validate an explicit path
-
-Exit codes
-----------
-0  the file is a sound derived projection of the SSOTs
-1  a validation error (bad shape, bad enum, dangling role, invented/missing edge)
-2  usage / environment error (a source SSOT is unreadable)
-"""
 from __future__ import annotations
 
 import argparse
@@ -77,7 +19,7 @@ SOURCES: frozenset[str] = frozenset({"routing.reports_to", "schema.escalation"})
 EDGE_KEYS: frozenset[str] = frozenset({"sender", "receiver", "kind", "source"})
 FOUNDER: str = "founder"
 
-# One table row: | `role-key` | Display Name | dept | Reviewer Display Name |
+
 _ROW = re.compile(
     r"^\|\s*`(?P<key>[a-z0-9-]+)`\s*\|\s*(?P<name>[^|]+?)\s*\|\s*"
     r"(?P<dept>[^|]+?)\s*\|\s*(?P<reviewer>[^|]+?)\s*\|\s*$"
@@ -86,19 +28,13 @@ _NO_REVIEWER = {"—", "-", ""}
 
 
 class SourceError(RuntimeError):
-    """A source SSOT could not be read/parsed (environment error → exit 2)."""
+    pass
 
 
 def _parse_routing() -> tuple[list[str], dict[str, str]]:
-    """Parse ROUTING.md → (ordered fleet role keys, role_key → manager_key or '').
-
-    The reviewer column holds display names; they are resolved back to role keys
-    via the table's own (key, display-name) columns, so the mapping is derived,
-    never hand-written.
-    """
     try:
         text = ROUTING_MD.read_text(encoding="utf-8")
-    except OSError as exc:  # pragma: no cover - environment error
+    except OSError as exc:
         raise SourceError(f"cannot read {ROUTING_MD}: {exc}") from exc
 
     order: list[str] = []
@@ -110,12 +46,12 @@ def _parse_routing() -> tuple[list[str], dict[str, str]]:
             continue
         key = m.group("key")
         name = m.group("name").strip()
-        # Skip the header separator / header row (no backticked key matches those).
+
         order.append(key)
         name_to_key[name] = key
         reviewer_name[key] = m.group("reviewer").strip()
 
-    if not order:  # pragma: no cover - environment error
+    if not order:
         raise SourceError(f"no role rows parsed from {ROUTING_MD}")
 
     manager: dict[str, str] = {}
@@ -137,7 +73,7 @@ def _parse_routing() -> tuple[list[str], dict[str, str]]:
 def _parse_escalation_ladder() -> list[str]:
     try:
         data = yaml.safe_load(SCHEMA_YAML.read_text(encoding="utf-8"))
-    except OSError as exc:  # pragma: no cover - environment error
+    except OSError as exc:
         raise SourceError(f"cannot read {SCHEMA_YAML}: {exc}") from exc
     ladder = (data or {}).get("routing", {}).get("escalation")
     if not isinstance(ladder, list) or not ladder:
@@ -145,21 +81,15 @@ def _parse_escalation_ladder() -> list[str]:
     return [str(x) for x in ladder]
 
 
-# An edge is a canonical (sender, receiver, kind, source) tuple for set compares.
 Edge = tuple[str, str, str, str]
 
 
 def derive_expected_edges() -> list[Edge]:
-    """The canonical edge set, a pure function of ROUTING.md (ADR-0026 rule 2).
-
-    Row order is preserved; per row, delegation precedes escalation. This is the
-    single source the authored YAML is generated from and diffed against.
-    """
     order, manager = _parse_routing()
     edges: list[Edge] = []
     for report in order:
         mgr = manager[report]
-        if not mgr:  # reviewer is '—' → top of fleet, no upward edge
+        if not mgr:
             continue
         edges.append((mgr, report, "delegation", "routing.reports_to"))
         edges.append((report, mgr, "escalation", "routing.reports_to"))
@@ -167,7 +97,6 @@ def derive_expected_edges() -> list[Edge]:
 
 
 def emit_yaml() -> str:
-    """Render the canonical communication-flows.yaml text from the SSOTs."""
     ladder = _parse_escalation_ladder()
     edges = derive_expected_edges()
     lines: list[str] = [
@@ -205,7 +134,6 @@ def _load_flows(path: Path) -> tuple[object, list[object]]:
 
 
 def validate(path: Path) -> list[str]:
-    """Return a list of human-readable errors ([] means the file is valid)."""
     errors: list[str] = []
     version, flows = _load_flows(path)
 
@@ -213,7 +141,7 @@ def validate(path: Path) -> list[str]:
         errors.append(f"version must be an integer >= 1 (got {version!r})")
     if not isinstance(flows, list) or not flows:
         errors.append("flows must be a non-empty list")
-        return errors  # nothing else is checkable
+        return errors
 
     seen: set[Edge] = set()
     file_edges: set[Edge] = set()
@@ -252,7 +180,7 @@ def validate(path: Path) -> list[str]:
         seen.add(etuple)
         file_edges.add(etuple)
 
-    # Role-node closure + no-invented-topology + completeness, in one set diff.
+
     try:
         order, _ = _parse_routing()
         fleet = set(order)
@@ -274,7 +202,7 @@ def validate(path: Path) -> list[str]:
     for edge in sorted(missing):
         errors.append(f"missing derived edge: {edge}")
 
-    # Escalation-ladder consistency: ladder present, founder is terminal + external.
+
     try:
         ladder = _parse_escalation_ladder()
     except SourceError as exc:
@@ -289,7 +217,7 @@ def validate(path: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="validate_commflows.py", description=__doc__)
+    parser = argparse.ArgumentParser(prog="validate_commflows.py", description='validate_commflows.py — shape + derivation validator for communication-flows.yaml.\n\n`governance/communication-flows.yaml` is a **derived, validatable** projection of\nthe org communication graph (ADR-0026). Every edge MUST trace to one of the\nauthoritative SSOTs; no topology is authored by hand. This script is the small\nshape/derivation validator that ADR-0026 §Enforcement calls the contract for the\nauthored file (WS2 O2-T02, ticket DAS-1465). It is deliberately scoped to the\n*shape* of the file and its round-trip derivation from `board/ROUTING.md`; the\nfuller drift diff-check (`check_comm_flows.py`) is a later ticket (WS2 O2-T03).\n\nFile shape (ADR-0026 §1)\n------------------------\n    version: <int >= 1>\n    flows:\n      - sender:   <fleet role key from board/ROUTING.md>\n        receiver: <fleet role key from board/ROUTING.md>\n        kind:     delegation | escalation\n        source:   routing.reports_to | schema.escalation\n\nClosed enums\n------------\n* ``kind``   ∈ {``delegation``, ``escalation``} exactly. ``delegation`` runs DOWN\n  the reporting chain (manager → direct report); ``escalation`` runs UP it\n  (report → manager). RACI *consult* edges are **out of scope for v1** per\n  ADR-0026 §Consequences — a possible future ``kind``, not emitted now.\n* ``source`` ∈ {``routing.reports_to``, ``schema.escalation``}.\n* ``sender`` / ``receiver`` MUST be fleet role keys present in ``board/ROUTING.md``.\n  The string ``founder`` is **forbidden** as a sender or receiver: the founder is\n  an external human gate above the chairman, not a routing node (ADR-0026 §3).\n\nDerivation rules enforced (ADR-0026 §1 rules 1–4)\n-------------------------------------------------\n1. Role-node closure — every sender/receiver is a fleet role in ROUTING.md;\n   ``founder`` never appears.\n2. Reporting-line completeness + soundness — for each ROUTING.md row\n   ``report → manager`` whose reviewer is a fleet role (not ``—``), the file\n   contains EXACTLY the two edges\n   ``delegation(manager → report)`` and ``escalation(report → manager)``,\n   both ``source: routing.reports_to`` — no more, no fewer, no duplicates.\n   Roles whose reviewer is ``—`` (``chairman``, ``board-member``) have no upward\n   fleet edge; the chain terminates at the top of the fleet.\n3. Escalation-ladder consistency — the ``schema.routing.escalation`` ladder is\n   present and terminates in the external ``founder`` rung; no fleet edge is\n   emitted for that rung.\n4. No invented topology — the authored edge set equals the set derived purely\n   from the SSOTs. Any extra or missing edge is an error.\n\nUsage\n-----\n    python3 scripts/validate_commflows.py            # validate the authored file\n    python3 scripts/validate_commflows.py --emit     # print the canonical YAML\n    python3 scripts/validate_commflows.py --file P    # validate an explicit path\n\nExit codes\n----------\n0  the file is a sound derived projection of the SSOTs\n1  a validation error (bad shape, bad enum, dangling role, invented/missing edge)\n2  usage / environment error (a source SSOT is unreadable)')
     parser.add_argument(
         "--emit",
         action="store_true",

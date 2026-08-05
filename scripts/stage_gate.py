@@ -1,47 +1,5 @@
 #!/usr/bin/env python3
-"""stage_gate.py — machine-enforced stage-gated delivery (P22 / DAS-1494).
 
-DasLab already mandates the six-stage AI-agent lifecycle
-(``Planning → Design → Development → Testing → Deployment → Maintenance`` —
-``governance/policies/ai-agent-lifecycle.md``) and a never-auto-approve law for
-the deployment gate (``gate5_deployment`` in ``config/risk_taxonomy.yaml``). This
-module supplies the **end-to-end machine enforcement** that turns the documented
-gate order into a hard block, so a project board is provably *executed through the
-AADL gates* rather than advanced by convention:
-
-- **Gate order** — a stage-N ticket may not *advance* (reach ``in_progress`` /
-  ``in_review`` / ``done``) while GATE-(N-1) is still open (the same goal's
-  stage-(N-1) work is not ``done``). A ``todo`` / ``backlog`` stage-N ticket is a
-  legitimate *waiting* state and is NOT a violation — only advancing past an open
-  gate is (``gate_order_violations``).
-- **GATE-5 ⇒ no production deploy** — a production-deploy ticket (classified
-  against the *existing* ``gate5_deployment`` risk category, not a new path) must
-  not be auto-approved (GATE-5 is human-only, QONUN-5) and must not advance while
-  its goal's GATE-5 (Deployment) is open (``production_deploy_violations``).
-- **Gate walk** — ``walk_gates`` reads a compiled project board
-  (``projects/<name>/board-tickets/``), computes each goal's gate states, and
-  refuses to advance past an open gate. Open gates that block downstream stages
-  are surfaced as **interrupt-cards** (``emit_gate_cards`` → ``board/interrupts/``,
-  DAS-1446 schema) so the Founder — never the machine — signs the gate.
-- **Maintenance** — ``maintenance_schedule`` declares the recurring health/eval
-  runs the Maintenance stage (GATE-6) owns: the WS4 heartbeat tick and the WS6
-  golden-eval harness. It is DATA (a descriptor), not an installer — cadence lives
-  in the Founder-owned OS scheduler entry (ADR-0027 SI-1); nothing here deploys.
-
-The gate model keys off the ``stage: GATE-N`` frontmatter field that
-``gateway_compile.py`` stamps on every story ticket, plus the ticket's ``goal``.
-It reuses ``check_gates`` (ticket loader / frontmatter parser) and
-``check_never_auto_approve`` (the ``gate5_deployment`` matcher + auto-approval
-detector) — no parallel classification path.
-
-Usage::
-
-    python3 scripts/stage_gate.py <board-dir> [--emit-cards] [--interrupts DIR] [--json]
-
-``<board-dir>`` is a compiled board directory (``projects/<name>/board-tickets/``).
-Exit codes: 0 = board may advance (no gate violation), 1 = an open-gate violation
-blocks advancement, 2 = usage / IO error.
-"""
 from __future__ import annotations
 
 import argparse
@@ -53,21 +11,15 @@ from pathlib import Path
 
 from _paths import ROOT
 
-# scripts/ is on sys.path when run directly; make the sibling imports robust.
+
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import check_gates as ck  # noqa: E402  (reused loader + frontmatter parser)
-import check_never_auto_approve as cna  # noqa: E402  (reused gate5 matcher + auto detector)
+import check_gates as ck
+import check_never_auto_approve as cna
 
-# --------------------------------------------------------------------------- #
-# Constants
-# --------------------------------------------------------------------------- #
 
-# A ticket in one of these states has ADVANCED past the waiting line: it is being
-# worked or is complete. Advancing a stage while its predecessor gate is open is
-# the violation; a `todo`/`backlog` stage ticket is the legitimate waiting state.
 ADVANCED_STATUSES: frozenset[str] = frozenset({"in_progress", "in_review", "done"})
 
 GATE5_CATEGORY = "gate5_deployment"
@@ -81,32 +33,19 @@ STAGE_NAMES: dict[int, str] = {
     6: "Maintenance",
 }
 
-# Extract the AADL stage number from a `stage: GATE-N` frontmatter value.
+
 _STAGE_FIELD_RE = re.compile(r"GATE-([1-6])", re.IGNORECASE)
 _TICKET_ID_RE = re.compile(r"^DAS-\d+$")
 
 Ticket = tuple[Path, dict[str, str]]
 
 
-# --------------------------------------------------------------------------- #
-# Frontmatter field helpers
-# --------------------------------------------------------------------------- #
-
 def stage_of(fm: dict[str, str]) -> int | None:
-    """Return the AADL stage number (1–6) from the ticket's ``stage:`` field, or None."""
     m = _STAGE_FIELD_RE.search(str(fm.get("stage", "")))
     return int(m.group(1)) if m else None
 
 
 def _coerce_list(raw: object) -> list[str]:
-    """Coerce a raw frontmatter value into a clean list of string tokens.
-
-    The regex frontmatter parser (``check_gates``/``board_lint``) captures a list
-    value like ``[deploy, gate-5]`` as the raw string ``"[deploy, gate-5]"`` and a
-    scalar as a bare string. This normalises both into ``["deploy", "gate-5"]`` so
-    the reused ``check_never_auto_approve.matches_category`` (which expects
-    scalar-or-list) binds correctly (mirrors ``board_lint._schema_names_of``).
-    """
     if raw is None:
         return []
     if isinstance(raw, list):
@@ -125,15 +64,9 @@ def _coerce_list(raw: object) -> list[str]:
 
 
 def load_gate5_matcher(config_path: Path | None = None) -> dict | None:
-    """Return the ``gate5_deployment`` matcher from ``config/risk_taxonomy.yaml``.
-
-    Returns None (R12/gate-walk skips the prod-deploy rule) if the config is
-    absent or malformed — the deploy classification KEYS OFF the taxonomy config
-    (QONUN-5) rather than a hard-coded parallel list.
-    """
     try:
         import yaml
-    except ImportError:  # pragma: no cover - environment guard
+    except ImportError:
         return None
     p = Path(config_path) if config_path else (ROOT / "config" / "risk_taxonomy.yaml")
     try:
@@ -146,12 +79,6 @@ def load_gate5_matcher(config_path: Path | None = None) -> dict | None:
 
 
 def is_production_deploy(fm: dict[str, str], matcher: dict | None) -> bool:
-    """True iff the ticket is a production-deploy per the ``gate5_deployment`` category.
-
-    Reuses ``check_never_auto_approve.matches_category`` against the taxonomy's
-    ``gate5_deployment`` matcher (labels ``deploy``/``gate-5`` or ``stage: GATE-5``)
-    — the SAME classifier the never-auto-approve gate uses, not a fork.
-    """
     if not matcher:
         return False
     coerced = {
@@ -163,18 +90,7 @@ def is_production_deploy(fm: dict[str, str], matcher: dict | None) -> bool:
     return cna.matches_category(coerced, matcher)
 
 
-# --------------------------------------------------------------------------- #
-# Gate-state model (keyed on `stage: GATE-N` + `goal`)
-# --------------------------------------------------------------------------- #
-
 def gate_status(tickets: list[Ticket]) -> dict[str, dict[int, str]]:
-    """Return ``{goal: {stage_no: 'done' | 'open'}}`` from the board's stage tickets.
-
-    A goal's gate-N is ``'done'`` iff at least one stage-N ticket exists for that
-    goal and every stage-N ticket for it is ``done``; otherwise ``'open'``. A stage
-    with no ticket for a goal is simply absent (the caller treats an absent prior
-    gate as "cannot verify → skip", mirroring ``check_gates``).
-    """
     per: dict[str, dict[int, list[str]]] = {}
     for _path, fm in tickets:
         n = stage_of(fm)
@@ -194,7 +110,6 @@ def gate_status(tickets: list[Ticket]) -> dict[str, dict[int, str]]:
 
 
 def stage_ticket_ids(tickets: list[Ticket]) -> dict[str, dict[int, str]]:
-    """Return ``{goal: {stage_no: representative ticket id}}`` (first seen wins)."""
     out: dict[str, dict[int, str]] = {}
     for _path, fm in tickets:
         n = stage_of(fm)
@@ -208,21 +123,10 @@ def stage_ticket_ids(tickets: list[Ticket]) -> dict[str, dict[int, str]]:
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Rule 1 — gate order (no advancing past an open gate)
-# --------------------------------------------------------------------------- #
-
 def gate_order_violations(
     tickets: list[Ticket],
     gs: dict[str, dict[int, str]] | None = None,
 ) -> list[str]:
-    """Return violations for stage-N tickets that advanced while GATE-(N-1) is open.
-
-    A violation fires when a stage-N (N>=2) ticket is ``in_progress`` / ``in_review``
-    / ``done`` while the same goal's stage-(N-1) is not ``done``. A stage with no
-    prior-stage ticket is skipped (cannot verify). A ``todo``/``backlog`` stage
-    ticket is never a violation — that is the legitimate gate-waiting state.
-    """
     gs = gs if gs is not None else gate_status(tickets)
     violations: list[str] = []
     for _path, fm in tickets:
@@ -245,27 +149,11 @@ def gate_order_violations(
     return violations
 
 
-# --------------------------------------------------------------------------- #
-# Rule 2 — GATE-5 open ⇒ no production deploy
-# --------------------------------------------------------------------------- #
-
 def production_deploy_violations(
     tickets: list[Ticket],
     matcher: dict | None = None,
     gs: dict[str, dict[int, str]] | None = None,
 ) -> list[str]:
-    """Return violations enforcing "GATE-5 open ⇒ NO production deploy".
-
-    Two machine blocks over the ``gate5_deployment`` category (reused from the
-    risk taxonomy):
-
-    (a) A production-deploy ticket that is auto-approved (``approval: auto*``) —
-        GATE-5 is never-auto-approve; a human (Founder) must sign the deployment
-        gate (QONUN-5).
-    (b) A production-deploy *action* (a gate5 ticket that does NOT itself carry
-        ``stage: GATE-5`` — i.e. it is not the deployment-gate ticket) that has
-        advanced while its goal's GATE-5 (Deployment) is open.
-    """
     matcher = matcher if matcher is not None else load_gate5_matcher()
     if not matcher:
         return []
@@ -277,14 +165,14 @@ def production_deploy_violations(
         tid = fm.get("id", _path.name)
         goal = fm.get("goal", "").strip()
         status = fm.get("status", "").strip()
-        # (a) never-auto-approve: GATE-5 is human-only.
+
         if cna.is_auto_approved(fm):
             violations.append(
                 f"{tid}: production-deploy ticket (gate5_deployment) is auto-approved — "
                 f"GATE-5 is never-auto-approve; a human must sign the deployment gate (QONUN-5)"
             )
-        # (b) gate-open block. Exclude the deployment-gate ticket itself (own stage 5):
-        # its own completion is what CLOSES GATE-5, so it cannot be gated on itself.
+
+
         if stage_of(fm) == 5:
             continue
         g5 = gs.get(goal, {}).get(5)
@@ -300,32 +188,25 @@ def stage_gate_violations(
     tickets: list[Ticket],
     matcher: dict | None = None,
 ) -> list[str]:
-    """Combined stage-gate rule (board_lint R12): gate order + GATE-5 deploy block."""
     gs = gate_status(tickets)
     out = gate_order_violations(tickets, gs)
     out.extend(production_deploy_violations(tickets, matcher, gs))
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Gate walk (WS7 compile-time / delivery-time) + interrupt-card emission
-# --------------------------------------------------------------------------- #
-
 @dataclass
 class GateWalk:
-    """Result of walking a board's AADL gate order."""
 
     board_dir: Path
     gate_states: dict[str, dict[int, str]]
     order_violations: list[str] = field(default_factory=list)
     deploy_violations: list[str] = field(default_factory=list)
-    # (goal, open_gate_stage, stage_ticket_id) for open gates that block a
-    # downstream (stage N+1) that exists on the board.
+
+
     open_blocking_gates: list[tuple[str, int, str]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        """True iff no violation blocks advancement (the board may advance)."""
         return not self.order_violations and not self.deploy_violations
 
     @property
@@ -337,7 +218,6 @@ def walk_gates(
     board_dir: Path | str,
     matcher: dict | None = None,
 ) -> GateWalk:
-    """Walk the AADL gate order over a compiled board; refuse to advance past an open gate."""
     board_dir = Path(board_dir)
     tickets = ck.load_tickets(board_dir)
     gs = gate_status(tickets)
@@ -366,22 +246,15 @@ def emit_gate_cards(
     interrupts_dir: Path | str,
     created_by: str = "cto",
 ) -> list[Path]:
-    """Emit an interrupt-card (DAS-1446 schema) for every open gate that blocks a stage.
-
-    One card per ``(goal, open blocking gate)``, id ``<stage-ticket-id>-gate<N>``.
-    Idempotent: an existing card file for the same key is left untouched (never
-    overwritten, never double-emitted). Gates ALWAYS wait for the Founder — the
-    card asks for a human sign-off; the machine never auto-answers (ADR-0027 SI-7).
-    """
     out_dir = Path(interrupts_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for goal, n, tid in walk.open_blocking_gates:
         if not _TICKET_ID_RE.match(str(tid)):
-            continue  # interrupt schema requires ticket == ^DAS-[0-9]+$
+            continue
         card_path = out_dir / f"{tid}-gate{n}.json"
         if card_path.exists():
-            continue  # idempotent — do not re-emit or clobber
+            continue
         card = {
             "question": (
                 f"AADL GATE-{n} ({STAGE_NAMES.get(n, '?')}) for goal '{goal}' is open: "
@@ -405,32 +278,7 @@ def emit_gate_cards(
     return written
 
 
-# --------------------------------------------------------------------------- #
-# Maintenance stage — recurring health/eval schedule (data, not an installer)
-# --------------------------------------------------------------------------- #
-
 def maintenance_schedule() -> dict:
-    """Return the Maintenance-stage (GATE-6) recurring health/eval run descriptor.
-
-    DATA only — it declares WHAT the Maintenance stage schedules (WS4 heartbeat +
-    WS6 golden evals + ArcRift memory hygiene), never installs an OS scheduler
-    entry (ADR-0027 SI-1: cadence lives in the Founder-owned launchd/cron entry).
-    The runs are never-auto-approve: any acted change (tier promotion, gate
-    re-open) still waits for a human (QONUN-5 / SI-7).
-
-    Schema (DAS-1631 decision — NORMALIZE): every entry carries the base keys
-    ``{name, kind, command, cadence, config, safety}``. ``config`` is the
-    entry's human-readable runbook under ``docs/06-maintenance/`` and is
-    REQUIRED on every recurring run — "every scheduled run has a runbook a human
-    can read" is the standard, with no by-name exemption. A NEW run with no
-    ``config`` is a schema violation caught by
-    ``tests/test_stage_gate.py`` rather than shipping silently.
-    ``command`` is either a ``["python3", "<script>", ...]`` invocation (whose
-    ``command[1]`` must resolve to a file on disk) OR an MCP tool call such as
-    ``["prune_memory"]`` (structurally not a script path — no ``command[1]`` to
-    resolve). That exemption is keyed on the command SHAPE (``command[0]``),
-    never on an entry's name.
-    """
     return {
         "gate": "GATE-6",
         "stage": 6,
@@ -560,10 +408,6 @@ def maintenance_schedule() -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Rendering + CLI
-# --------------------------------------------------------------------------- #
-
 def render_walk(walk: GateWalk) -> str:
     out: list[str] = []
     out.append(f"AADL gate walk — {walk.board_dir}")
@@ -601,7 +445,7 @@ def _as_dict(walk: GateWalk) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description="stage_gate.py — machine-enforced stage-gated delivery (P22 / DAS-1494).\n\nDasLab already mandates the six-stage AI-agent lifecycle\n(``Planning → Design → Development → Testing → Deployment → Maintenance`` —\n``governance/policies/ai-agent-lifecycle.md``) and a never-auto-approve law for\nthe deployment gate (``gate5_deployment`` in ``config/risk_taxonomy.yaml``). This\nmodule supplies the **end-to-end machine enforcement** that turns the documented\ngate order into a hard block, so a project board is provably *executed through the\nAADL gates* rather than advanced by convention:\n\n- **Gate order** — a stage-N ticket may not *advance* (reach ``in_progress`` /\n  ``in_review`` / ``done``) while GATE-(N-1) is still open (the same goal's\n  stage-(N-1) work is not ``done``). A ``todo`` / ``backlog`` stage-N ticket is a\n  legitimate *waiting* state and is NOT a violation — only advancing past an open\n  gate is (``gate_order_violations``).\n- **GATE-5 ⇒ no production deploy** — a production-deploy ticket (classified\n  against the *existing* ``gate5_deployment`` risk category, not a new path) must\n  not be auto-approved (GATE-5 is human-only, QONUN-5) and must not advance while\n  its goal's GATE-5 (Deployment) is open (``production_deploy_violations``).\n- **Gate walk** — ``walk_gates`` reads a compiled project board\n  (``projects/<name>/board-tickets/``), computes each goal's gate states, and\n  refuses to advance past an open gate. Open gates that block downstream stages\n  are surfaced as **interrupt-cards** (``emit_gate_cards`` → ``board/interrupts/``,\n  DAS-1446 schema) so the Founder — never the machine — signs the gate.\n- **Maintenance** — ``maintenance_schedule`` declares the recurring health/eval\n  runs the Maintenance stage (GATE-6) owns: the WS4 heartbeat tick and the WS6\n  golden-eval harness. It is DATA (a descriptor), not an installer — cadence lives\n  in the Founder-owned OS scheduler entry (ADR-0027 SI-1); nothing here deploys.\n\nThe gate model keys off the ``stage: GATE-N`` frontmatter field that\n``gateway_compile.py`` stamps on every story ticket, plus the ticket's ``goal``.\nIt reuses ``check_gates`` (ticket loader / frontmatter parser) and\n``check_never_auto_approve`` (the ``gate5_deployment`` matcher + auto-approval\ndetector) — no parallel classification path.\n\nUsage::\n\n    python3 scripts/stage_gate.py <board-dir> [--emit-cards] [--interrupts DIR] [--json]\n\n``<board-dir>`` is a compiled board directory (``projects/<name>/board-tickets/``).\nExit codes: 0 = board may advance (no gate violation), 1 = an open-gate violation\nblocks advancement, 2 = usage / IO error.", formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("board_dir", help="a compiled board directory (projects/<name>/board-tickets/)")
     ap.add_argument("--emit-cards", action="store_true",

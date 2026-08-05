@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""check_gate6_attestation.py — every APPLIED GATE-6 record is attested (R-2 / ADR-006).
 
-CI gate: scan experiments/ and require a valid cryptographic attestation on every
-record whose result.status is applied/reverted/failed. Inert (exit 0) when no
-applied records exist (loop off). Uses GATE6_ATTEST_KEY for signature verification
-when present; otherwise still enforces hash integrity + multi-source evidence +
-distinct proposer/approver/attester so evidence cannot be fabricated.
-
-Exit codes: 0 = all applied records attested OR none applied, 1 = invalid/missing
-attestation, 2 = usage error.
-
-Usage:
-    python3 scripts/check_gate6_attestation.py [--experiments experiments]
-"""
 from __future__ import annotations
 
 import argparse
@@ -25,16 +12,16 @@ from _paths import ROOT
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - environment guard
+except ImportError:
     sys.stderr.write("PyYAML required: pip install pyyaml\n")
     sys.exit(2)
 
-# result.status values that mean a tuning change actually went live (must attest).
+
 APPLIED_STATES = {"applied", "reverted", "failed"}
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_gate6_attestation.py — every APPLIED GATE-6 record is attested (R-2 / ADR-006).')
     ap.add_argument("--experiments", type=Path, default=ROOT / "experiments")
     args = ap.parse_args(argv)
 

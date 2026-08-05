@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_memory_governance.py — ArcRift memory governance (R-5 / ADR-005)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -12,8 +12,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_memory_governance as cmg  # noqa: E402  (import after path manipulation)
-import memory_lib as ml  # noqa: E402
+import check_memory_governance as cmg
+import memory_lib as ml
 
 REAL_CONFIG = REPO_ROOT / "config" / "memory_governance.yaml"
 NOW = dt.datetime(2026, 6, 21, 0, 0, 0)
@@ -34,13 +34,9 @@ def _mem(mid="m1", provenance="verified_pr", trust=1.0, content="alpha beta gamm
     return m
 
 
-# --------------------------------------------------------------------------- #
-# Library controls
-# --------------------------------------------------------------------------- #
-
 def test_trust_for():
     assert ml.trust_for("verified_pr", CFG["trust_tiers"]) == 1.0
-    assert ml.trust_for("unknown", CFG["trust_tiers"]) == 0.2  # unverified default
+    assert ml.trust_for("unknown", CFG["trust_tiers"]) == 0.2
 
 
 def test_is_expired():
@@ -74,12 +70,8 @@ def test_recallable_excludes_bad_memories():
 def test_memory_health_decays():
     assert ml.memory_health([], NOW, CFG) == 1.0
     mems = [_mem("good"), _mem("q", status="quarantined"), _mem("old", created="2020-01-01T00:00:00Z")]
-    assert ml.memory_health(mems, NOW, CFG) == 0.9  # 2 bad * 0.05 decay
+    assert ml.memory_health(mems, NOW, CFG) == 0.9
 
-
-# --------------------------------------------------------------------------- #
-# CLI validator
-# --------------------------------------------------------------------------- #
 
 def _store(tmp_path: Path, mems: list[dict]) -> Path:
     p = tmp_path / ".arcrift-outbox.jsonl"
@@ -109,7 +101,7 @@ def test_cli_missing_trust_score_exit_1(tmp_path):
 
 
 def test_cli_trust_mismatch_exit_1(tmp_path):
-    # provenance verified_pr should be 1.0, not 0.5
+
     assert _run(tmp_path, [_mem("m1", provenance="verified_pr", trust=0.5)]) == 1
 
 
@@ -125,7 +117,7 @@ def test_cli_contradicted_and_quarantined_exit_0(tmp_path):
 
 
 def test_zero_trust_tier_is_consistent():
-    # a 0.0 provenance tier with trust_score 0.0 must NOT false-fail (review-found `or -1` bug)
+
     cfg = dict(CFG, trust_tiers=dict(CFG["trust_tiers"], rumor=0.0))
     assert cmg.violations([_mem("m1", provenance="rumor", trust=0.0)], cfg, NOW) == []
 
@@ -134,15 +126,10 @@ def test_unparseable_created_at_flagged():
     assert any("unparseable created_at" in p for p in cmg.violations([_mem("m1", created="yesterday")], CFG, NOW))
 
 
-# --------------------------------------------------------------------------- #
-# P21 — recall ranking (DAS-1490)
-# --------------------------------------------------------------------------- #
-
 RANKING_CFG = dict(CFG, ranking={"w_sim": 0.5, "w_recency": 0.3, "w_importance": 0.2, "half_life_days": 30})
 
 
 def test_composite_score_high_sim_wins():
-    """A memory whose content closely matches the query scores higher than a distant one."""
     query = "arcrift memory governance trust"
     near = _mem("near", content="arcrift memory governance trust score", created="2026-06-20T00:00:00Z")
     far = _mem("far", content="unrelated topic about database sharding", created="2026-06-20T00:00:00Z")
@@ -153,7 +140,6 @@ def test_composite_score_high_sim_wins():
 
 
 def test_composite_score_recent_beats_old_same_content():
-    """Given equal content, a fresh memory scores higher than a stale one."""
     query = "arcrift recall path"
     recent = _mem("recent", content="arcrift recall path upgrade", created="2026-06-20T00:00:00Z")
     old = _mem("old_m", content="arcrift recall path upgrade", created="2024-01-01T00:00:00Z")
@@ -164,7 +150,6 @@ def test_composite_score_recent_beats_old_same_content():
 
 
 def test_rank_memories_orders_by_composite():
-    """rank_memories returns candidates in descending composite-score order."""
     query = "arcrift memory recall"
     mems = [
         _mem("low",  content="unrelated database indexing topic",        created="2026-06-20T00:00:00Z"),
@@ -178,14 +163,12 @@ def test_rank_memories_orders_by_composite():
 
 
 def test_rank_memories_stable_on_empty():
-    """rank_memories handles an empty list without error."""
     assert ml.rank_memories([], "any query", NOW, RANKING_CFG) == []
 
 
 def test_rank_memories_importance_field_used():
-    """Explicit importance field is preferred over trust_score as importance proxy."""
     query = "topic"
-    # Two otherwise equal memories; one has importance=1.0
+
     high_imp = _mem("hi_imp", content="topic", created="2026-06-20T00:00:00Z", importance=1.0)
     low_imp = _mem("lo_imp", content="topic", created="2026-06-20T00:00:00Z", importance=0.0)
     ranked = ml.rank_memories([low_imp, high_imp], query, NOW, RANKING_CFG)
@@ -193,17 +176,10 @@ def test_rank_memories_importance_field_used():
 
 
 def test_rank_memories_ab_vs_filter_baseline():
-    """A/B: ranking precision@k >= filter-only (insertion order) precision@k.
-
-    Setup: 6 memories — 3 are relevant to the query (high jaccard), 3 are not.
-    Filter-only (recallable) returns them in insertion order (irrelevant first).
-    rank_memories must surface all relevant notes in the top-3 positions.
-    Precision@3 for ranker must be >= precision@3 for filter-only baseline.
-    """
     NOW_AB = dt.datetime(2026, 6, 21, 0, 0, 0)
     query = "arcrift memory recall trust score"
 
-    # Irrelevant notes first (simulates worst-case insertion order for baseline)
+
     irrelevant = [
         _mem("ir1", content="network packet routing bgp protocol", created="2026-06-20T00:00:00Z"),
         _mem("ir2", content="kubernetes helm chart deployment",    created="2026-06-20T00:00:00Z"),
@@ -214,15 +190,15 @@ def test_rank_memories_ab_vs_filter_baseline():
         _mem("rel2", content="arcrift trust recall score management",        created="2026-06-20T00:00:00Z"),
         _mem("rel3", content="memory trust score recall arcrift",            created="2026-06-20T00:00:00Z"),
     ]
-    all_mems = irrelevant + relevant  # insertion order: irrelevant appear first
+    all_mems = irrelevant + relevant
 
-    # Filter-only baseline (recallable keeps insertion order)
+
     baseline = ml.recallable(all_mems, NOW_AB, CFG)
     baseline_top3_ids = {m["id"] for m in baseline[:3]}
     relevant_ids = {"rel1", "rel2", "rel3"}
     baseline_precision = len(baseline_top3_ids & relevant_ids) / 3
 
-    # Ranked path
+
     eligible = ml.recallable(all_mems, NOW_AB, CFG)
     ranked = ml.rank_memories(eligible, query, NOW_AB, RANKING_CFG)
     ranked_top3_ids = {m["id"] for m in ranked[:3]}
@@ -231,13 +207,9 @@ def test_rank_memories_ab_vs_filter_baseline():
     assert ranked_precision >= baseline_precision, (
         f"ranker precision@3={ranked_precision:.2f} < baseline {baseline_precision:.2f}"
     )
-    # Ranker must put ALL relevant notes in top 3
+
     assert ranked_top3_ids == relevant_ids, f"top-3 from ranker: {ranked_top3_ids}"
 
-
-# --------------------------------------------------------------------------- #
-# P21 — prune hygiene callable (DAS-1490)
-# --------------------------------------------------------------------------- #
 
 def test_prune_hygiene_identifies_expired():
     old = _mem("expired_m", created="2020-01-01T00:00:00Z")
@@ -267,7 +239,6 @@ def test_prune_hygiene_identifies_low_trust():
 
 
 def test_prune_hygiene_no_live_loop():
-    """prune_hygiene_candidates is a pure callable — calling it returns a list, not a generator/coroutine."""
     result = ml.prune_hygiene_candidates([], NOW, CFG)
     assert isinstance(result, list)
 

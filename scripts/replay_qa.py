@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""replay_qa.py — Replay-QA / recovery-drill harness.
 
-Replays each run's recorded routing transitions deterministically and verifies the
-transition chain is intact. A broken chain (a from_status that does not match the
-previous to_status, or an out-of-order / invalid-status resume) is a CORRUPTED
-resume — exactly the failure T5 recovery reliability guards against (guardrail:
-zero corrupted resumes). Optionally emits recovery_drill events that feed
-check_recovery.py (T5). Inert (exit 0) when there are no runs to replay.
-
-Exit codes: 0 = all runs replay cleanly OR unmeasured, 1 = a corrupted replay, 2 = usage.
-
-Usage:
-    python3 scripts/replay_qa.py [--events board/.events.jsonl] [--emit board/.events.jsonl]
-"""
 from __future__ import annotations
 
 import argparse
@@ -43,14 +30,13 @@ def group_runs(events: list[dict]) -> dict[str, list[dict]]:
 
 
 def replay_run(transitions: list[dict]) -> dict:
-    """Replay one run's transitions in order; detect a corrupted resume (broken chain)."""
     ordered = sorted(transitions, key=lambda e: str(e.get("created_at", "")))
     prev_to = None
     steps = 0
     for t in ordered:
         frm, to = t.get("from_status"), t.get("to_status")
-        # A missing/None to_status must NOT silently disable the chain check — it is
-        # itself a corrupted resume (the resume point is unknown).
+
+
         if to is None or to not in VALID_STATUSES:
             return {"replayable": False, "corrupted": True, "reason": f"invalid/missing to_status {to!r}"}
         if frm is not None and frm not in VALID_STATUSES:
@@ -73,7 +59,7 @@ def drill(events: list[dict]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='replay_qa.py — Replay-QA / recovery-drill harness.')
     ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
     ap.add_argument("--emit", type=Path, default=None, help="append recovery_drill events to this store (T5)")
     args = ap.parse_args(argv)

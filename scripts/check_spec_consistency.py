@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""check_spec_consistency.py — Phase 2 SPEC.md consistency (ADR-0015, ADR-0002).
 
-Validates the OPTIONAL, size-gated per-epic SPEC.md layer (spec-kit Phase 2):
-
-A. STRUCTURE — every SPEC.md that exists has the three sections (User Scenarios /
-   Functional Requirements / Success Criteria), >= 1 `FR-NNN`, and unique FR + SC ids.
-
-B. NO DANGLING REFS — a board ticket that declares `spec: <slug>` must point at a real
-   spec, and every id in its `implements: [FR-001, ...]` must be defined in that spec.
-
-Structural limit (honest, matches ADR-0015): passes when no SPEC.md exists (today and on
-a fresh CI runner). The `docs/specs/templates/` template is skipped. Project specs under
-gitignored `projects/<slug>/specs/` are validated only locally. The reverse "every FR is
-covered by a ticket" is deliberately NOT a hard gate (it would false-fail a fresh spec) —
-that is a planner/reviewer judgement.
-
-Usage:
-    python scripts/check_spec_consistency.py [--specs docs/specs] [--projects projects] [--board board/tickets]
-
-Exit 0 = clean. Exit 1 = violation(s). Exit 2 = usage error.
-"""
 from __future__ import annotations
 
 import argparse
@@ -67,7 +47,6 @@ def check_structure(text: str) -> list[str]:
 
 
 def _fm_field_raw(text: str, key: str) -> str | None:
-    """Return the raw frontmatter value string for *key* (or None)."""
     if not text.startswith("---"):
         return None
     lines = text.splitlines()

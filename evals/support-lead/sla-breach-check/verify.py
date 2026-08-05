@@ -1,8 +1,3 @@
-"""Deterministic verifier — support-lead / sla-breach-check.
-
-No wall-clock or randomness: the reference "now" is a fixed value read from
-fixtures/policy.json, so the same submission always scores the same.
-"""
 from __future__ import annotations
 
 import json

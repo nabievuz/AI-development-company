@@ -1,45 +1,5 @@
 #!/usr/bin/env python3
-"""ws_a2a_health_check.py — A2A OUTBOUND Maintenance health/eval (GATE-6, DAS-1614/DAS-1624).
 
-AADL Stage 6 — Maintenance recurring health/eval for the A2A OUTBOUND surface
-(ADR-0040, ``docs/design/a2a-outbound.md``,
-``docs/06-maintenance/ws-a2a-outbound-health.md``). Three checks, all
-READ-ONLY (never mutates ``config/features.yaml``, ``config/tenant_boundary.yaml``,
-or ``board/.events.jsonl``):
-
-  1. **In-tenant boundary drift (SC-003)** — reuses
-     ``scripts/check_in_tenant.py: evaluate()`` (no fork) over the tracked
-     ``config/tenant_boundary.yaml`` to assert the declared ``a2a_outbound``
-     endpoint (and every other code/IP endpoint) still resolves in-tenant.
-  2. **Flag/publish-state drift** — compares the live ``a2a_outbound`` value
-     in ``config/features.yaml`` (via ``scripts/feature_flags.py: enabled()``,
-     no second reader) against the newest ``event_type == "a2a_publish"``
-     record in ``board/.events.jsonl`` (event shape verbatim from
-     ``tools/a2a/publish.py: build_publish_event`` — read, not restated from
-     memory). Today's honest baseline is flag OFF with zero publish events,
-     which this check reports as OK-with-zero-events, never as an error. A
-     finding is either leg moving without the other: a live flag ON with no
-     logged Founder ``allow`` event (or vice versa: the newest logged event
-     says ``allow``/``flag_state: true`` but the live config still reads
-     ``false``).
-  3. **Negative-test drift (SC-005 "stays green" over time)** — re-runs
-     DAS-1612's suite (``tests/test_a2a_outbound_endpoint.py``,
-     ``tests/test_a2a_intake.py``) via a plain ``pytest`` subprocess (no new
-     test runner) and asserts it still passes clean.
-
-Exit codes: 0 = healthy (no drift, all probes correct), 1 = a finding — the
-caller (Maintenance cadence) treats a non-zero exit as an ALERT, never a
-silent skip / auto-fix / auto-retry. This script never opens a ticket or
-flips ``a2a_outbound`` itself; routing a finding into a board ticket is a
-human/orchestrator step documented in
-``docs/06-maintenance/ws-a2a-outbound-health.md`` — no autonomous
-self-modification (ADR-0029 G5). Publishing stays a Founder-only act
-(QONUN-5, FR-003); this check never touches that decision.
-
-Usage::
-
-    python3 scripts/ws_a2a_health_check.py [--json]
-"""
 from __future__ import annotations
 
 import argparse
@@ -70,7 +30,7 @@ def _load_module(path: Path, name: str) -> ModuleType:
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+    if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -87,13 +47,10 @@ def _feature_flags_mod() -> ModuleType:
 
 
 def check_in_tenant_drift() -> dict:
-    """Reuse scripts/check_in_tenant.py:evaluate() over the tracked tenant
-    boundary config to assert TN-1 still holds for the declared a2a_outbound
-    endpoint (and every other declared code/IP endpoint)."""
     cit = _check_in_tenant_mod()
     try:
         import yaml
-    except ImportError as exc:  # pragma: no cover - yaml is a repo dependency
+    except ImportError as exc:
         return {"ok": False, "detail": f"pyyaml unavailable — cannot evaluate boundary: {exc}"}
     if not TENANT_BOUNDARY_PATH.is_file():
         return {"ok": False, "detail": f"{TENANT_BOUNDARY_PATH} is missing (expected the TN-1 SSOT)"}
@@ -106,9 +63,6 @@ def check_in_tenant_drift() -> dict:
 
 
 def _newest_publish_event(events_path: Path) -> dict | None:
-    """Return the newest ``a2a_publish`` record in the append-only ledger, or
-    ``None`` if the ledger is absent or has never logged one (today's honest
-    baseline)."""
     if not events_path.is_file():
         return None
     newest: dict | None = None
@@ -121,14 +75,11 @@ def _newest_publish_event(events_path: Path) -> dict | None:
         except json.JSONDecodeError:
             continue
         if isinstance(record, dict) and record.get("event_type") == PUBLISH_EVENT_TYPE:
-            newest = record  # append-only ledger — last match wins
+            newest = record
     return newest
 
 
 def check_flag_publish_drift() -> dict:
-    """Compare the live a2a_outbound flag against the newest logged a2a_publish
-    event. Zero events with the flag OFF is the correct, honest baseline —
-    reported OK, never as an error."""
     ff = _feature_flags_mod()
     live_flag = ff.enabled(FLAG, FEATURES_PATH)
     event = _newest_publish_event(EVENTS_PATH)
@@ -167,8 +118,6 @@ def check_flag_publish_drift() -> dict:
 
 
 def check_negative_test_drift() -> dict:
-    """Re-run DAS-1612's negative-test suite via a plain pytest subprocess (no
-    new test runner) and assert it still passes clean."""
     missing = [str(p) for p in TEST_PATHS if not p.is_file()]
     if missing:
         return {"ok": False, "detail": f"expected test file(s) missing: {missing}"}
@@ -205,7 +154,7 @@ def run() -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='ws_a2a_health_check.py — A2A OUTBOUND Maintenance health/eval (GATE-6, DAS-1614/DAS-1624).\n\nAADL Stage 6 — Maintenance recurring health/eval for the A2A OUTBOUND surface\n(ADR-0040, ``docs/design/a2a-outbound.md``,\n``docs/06-maintenance/ws-a2a-outbound-health.md``). Three checks, all\nREAD-ONLY (never mutates ``config/features.yaml``, ``config/tenant_boundary.yaml``,\nor ``board/.events.jsonl``):\n\n  1. **In-tenant boundary drift (SC-003)** — reuses\n     ``scripts/check_in_tenant.py: evaluate()`` (no fork) over the tracked\n     ``config/tenant_boundary.yaml`` to assert the declared ``a2a_outbound``\n     endpoint (and every other code/IP endpoint) still resolves in-tenant.\n  2. **Flag/publish-state drift** — compares the live ``a2a_outbound`` value\n     in ``config/features.yaml`` (via ``scripts/feature_flags.py: enabled()``,\n     no second reader) against the newest ``event_type == "a2a_publish"``\n     record in ``board/.events.jsonl`` (event shape verbatim from\n     ``tools/a2a/publish.py: build_publish_event`` — read, not restated from\n     memory). Today\'s honest baseline is flag OFF with zero publish events,\n     which this check reports as OK-with-zero-events, never as an error. A\n     finding is either leg moving without the other: a live flag ON with no\n     logged Founder ``allow`` event (or vice versa: the newest logged event\n     says ``allow``/``flag_state: true`` but the live config still reads\n     ``false``).\n  3. **Negative-test drift (SC-005 "stays green" over time)** — re-runs\n     DAS-1612\'s suite (``tests/test_a2a_outbound_endpoint.py``,\n     ``tests/test_a2a_intake.py``) via a plain ``pytest`` subprocess (no new\n     test runner) and asserts it still passes clean.\n\nExit codes: 0 = healthy (no drift, all probes correct), 1 = a finding — the\ncaller (Maintenance cadence) treats a non-zero exit as an ALERT, never a\nsilent skip / auto-fix / auto-retry. This script never opens a ticket or\nflips ``a2a_outbound`` itself; routing a finding into a board ticket is a\nhuman/orchestrator step documented in\n``docs/06-maintenance/ws-a2a-outbound-health.md`` — no autonomous\nself-modification (ADR-0029 G5). Publishing stays a Founder-only act\n(QONUN-5, FR-003); this check never touches that decision.\n\nUsage::\n\n    python3 scripts/ws_a2a_health_check.py [--json]')
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     args = parser.parse_args(argv)
 

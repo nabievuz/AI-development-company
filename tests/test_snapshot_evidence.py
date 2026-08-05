@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_snapshot_evidence.py — committed KPI evidence (P13 / DAS-1460).
 
-Proves the committed-evidence mechanism:
-- ``snapshot_evidence`` writes a TRACKED, REDACTED ``metrics/evidence/<run_id>.json``
-  per counted run, keyed by ``run_id``, whose contents match the run's events;
-- it is inert when no runs exist (writes nothing, fabricates nothing);
-- ``check_metric_gaming`` REQUIRES a committed evidence file for a counted run:
-  (a) run WITH evidence passes, (b) counted run WITHOUT evidence fails,
-  (c) no completions => inert exit 0 — with the R-9 gaming check preserved;
-- ``metrics/evidence/`` is committed, not gitignored (a ``.gitkeep`` is tracked).
-
-All snapshot writes target a ``tmp_path`` — never the real ``metrics/evidence/``.
-"""
 from __future__ import annotations
 
 import json
@@ -24,11 +12,11 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_metric_gaming as cmg  # noqa: E402  (import after path manipulation)
-import snapshot_evidence as se  # noqa: E402
-from dispatch_emitter import DispatchRecord, build_wave_events  # noqa: E402
+import check_metric_gaming as cmg
+import snapshot_evidence as se
+from dispatch_emitter import DispatchRecord, build_wave_events
 
-# Fields that must NEVER appear verbatim in a redacted snapshot (payload / secrets).
+
 _FORBIDDEN_KEYS = {
     "context_contract",
     "allowed_tools",
@@ -81,11 +69,6 @@ def _write_store(tmp_path: Path, events: list[dict]) -> Path:
     return p
 
 
-# --------------------------------------------------------------------------- #
-# Snapshot builder
-# --------------------------------------------------------------------------- #
-
-
 def test_snapshot_writes_file_keyed_by_run_id(tmp_path: Path):
     events = _events(_record(run_id="run-A"))
     written = se.snapshot_all(events, tmp_path)
@@ -109,25 +92,17 @@ def test_snapshot_contents_match_event_data(tmp_path: Path):
     assert comp["merged_pr"] is True
     assert comp["t7_pass"] is True
     assert comp["counted"] is True
-    # wave_kpi summary + span aggregate are present and real (one paired run).
+
     assert data["kpi_summary"]["runs_completed"] == 1
     assert data["span_aggregate"]["runs"] == 1
 
 
-# --------------------------------------------------------------------------- #
-# F-2 regression — kpi_summary.model_mix must reflect the run_end model
-# --------------------------------------------------------------------------- #
-
-
 def test_snapshot_model_mix_counts_run_end_model(tmp_path: Path):
-    """ORGANISM audit F-2: model_mix was read off run_start (which carries no
-    ``model``), so a real opus/sonnet run snapshotted an all-zero mix. It must now
-    tally the run_end completion's model."""
     events = _events(_record(run_id="run-mix", model="opus"))
     se.snapshot_all(events, tmp_path)
     data = json.loads((tmp_path / "run-mix.json").read_text(encoding="utf-8"))
     assert data["kpi_summary"]["model_mix"] == {"opus": 1, "sonnet": 0, "haiku": 0}
-    # And it is internally consistent with the completion it recorded.
+
     assert sum(data["kpi_summary"]["model_mix"].values()) == len(data["completions"])
 
 
@@ -144,8 +119,6 @@ def test_snapshot_model_mix_multi_tier(tmp_path: Path):
 
 
 def test_reconcile_repairs_zeroed_model_mix():
-    """The F-2 repair path: a pre-fix snapshot (mix all-zero, completion carries a
-    model) is corrected from its own completions and is idempotent."""
     evidence = {
         "completions": [{"model": "opus"}],
         "kpi_summary": {"busy_fraction": 1.0, "runs_completed": 1,
@@ -153,7 +126,7 @@ def test_reconcile_repairs_zeroed_model_mix():
     }
     assert se.reconcile_model_mix(evidence) is True
     assert evidence["kpi_summary"]["model_mix"] == {"opus": 1, "sonnet": 0, "haiku": 0}
-    assert se.reconcile_model_mix(evidence) is False  # already consistent
+    assert se.reconcile_model_mix(evidence) is False
 
 
 def test_reconcile_noop_when_already_consistent():
@@ -165,9 +138,6 @@ def test_reconcile_noop_when_already_consistent():
 
 
 def test_committed_evidence_model_mix_is_consistent():
-    """Anti-regression over the REAL committed evidence: every snapshot's model_mix
-    must account for the models its completions carry (F-2 can never re-slip into
-    git history). Guards the exact anomaly: busy_fraction set but model_mix zeroed."""
     evidence_dir = REPO_ROOT / "metrics" / "evidence"
     files = sorted(evidence_dir.glob("*.json"))
     assert files, "expected committed evidence snapshots to exist"
@@ -180,8 +150,8 @@ def test_committed_evidence_model_mix_is_consistent():
             f"{path.name}: model_mix {ks['model_mix']} inconsistent with "
             f"{len(modeled)} modeled completion(s)"
         )
-        # The exact F-2 shape: a busy run with modeled completions cannot report a
-        # zeroed mix.
+
+
         if ks.get("busy_fraction") and modeled:
             assert sum(ks["model_mix"].values()) >= ks["runs_completed"], (
                 f"{path.name}: busy run with zeroed model_mix (F-2)"
@@ -189,11 +159,10 @@ def test_committed_evidence_model_mix_is_consistent():
 
 
 def test_snapshot_is_redacted(tmp_path: Path):
-    """No secret/PII/payload fields; presence-only booleans, no PR URL body."""
     events = _events(_record(run_id="run-C", merged_pr=_PR_URL))
     se.snapshot_all(events, tmp_path)
     text = (tmp_path / "run-C.json").read_text(encoding="utf-8")
-    # The raw PR URL must not leak — merged_pr is reduced to a boolean.
+
     assert _PR_URL not in text
     data = json.loads(text)
     comp = data["completions"][0]
@@ -220,27 +189,11 @@ def test_snapshot_inert_when_no_events(tmp_path: Path):
 
 
 def test_snapshot_skips_uncompleted_run(tmp_path: Path):
-    """A store with only a run_start (no completion) yields no snapshot."""
     start_only = [e for e in _events(_record(run_id="run-D")) if e["event_type"] == "run_start"]
     assert se.snapshot_all(start_only, tmp_path) == []
 
 
-# --------------------------------------------------------------------------- #
-# Run-close wiring (DAS-1462) — the exact call /daslab-cycle step 6 makes
-# --------------------------------------------------------------------------- #
-
-
 def test_run_close_wiring_writes_committed_evidence_file(tmp_path: Path):
-    """A run's emitted events -> ``write_run_evidence`` -> a committed file.
-
-    Mirrors the /daslab-cycle step-6 run-close wiring: after
-    ``dispatch_emitter.emit_wave`` appends a wave's ``run_start``/``run_end``/span
-    triplet, the orchestrator passes those same events plus the wave ``run_id`` to
-    ``snapshot_evidence.write_run_evidence(events, run_id, EVIDENCE_DIR)``. This
-    proves that single call materialises a tracked, redacted
-    ``metrics/evidence/<run_id>.json`` whose contents match the run's events —
-    without ``snapshot_all`` (the run-close writes exactly one run).
-    """
     run_id = "run-close-1462"
     events = _events(_record(run_id=run_id, model="opus", t7_score=0.97))
 
@@ -254,15 +207,10 @@ def test_run_close_wiring_writes_committed_evidence_file(tmp_path: Path):
     assert data["tickets"] == ["DAS-9001"]
     assert len(data["completions"]) == 1
     assert data["completions"][0]["counted"] is True
-    # Redaction holds through the run-close path too: no raw PR URL body.
+
     assert _PR_URL not in path.read_text(encoding="utf-8")
-    # The written file satisfies the committed-evidence gate for this counted run.
+
     assert se.missing_evidence_runs(events, tmp_path) == []
-
-
-# --------------------------------------------------------------------------- #
-# Evidence-presence helpers
-# --------------------------------------------------------------------------- #
 
 
 def test_missing_evidence_runs_flags_counted_run_without_file(tmp_path: Path):
@@ -273,15 +221,10 @@ def test_missing_evidence_runs_flags_counted_run_without_file(tmp_path: Path):
 
 
 def test_counted_run_ids_excludes_gamed_and_run_id_less(tmp_path: Path):
-    # A gamed completion (no merged PR) is NOT counted, so needs no evidence.
+
     gamed = _events(_record(run_id="run-F", merged_pr=None))
     assert se.counted_run_ids(gamed) == set()
     assert se.missing_evidence_runs(gamed, tmp_path) == []
-
-
-# --------------------------------------------------------------------------- #
-# check_metric_gaming — the committed-evidence gate teeth
-# --------------------------------------------------------------------------- #
 
 
 def test_gate_counted_run_without_evidence_fails(tmp_path: Path):
@@ -306,22 +249,17 @@ def test_gate_inert_when_no_completions(tmp_path: Path):
 
 
 def test_gate_gaming_violation_still_fails(tmp_path: Path):
-    # R-9 preserved: a gamed completion fails regardless of evidence presence.
+
     store = _write_store(tmp_path, _events(_record(run_id="run-I", ci_status="red")))
     evidence = tmp_path / "evidence"
     se.snapshot_all(_events(_record(run_id="run-I", ci_status="red")), evidence)
     assert cmg.main(["--events", str(store), "--evidence-dir", str(evidence)]) == 1
 
 
-# --------------------------------------------------------------------------- #
-# metrics/evidence/ is committed, not gitignored
-# --------------------------------------------------------------------------- #
-
-
 def test_evidence_dir_is_committed_not_ignored():
     gitkeep = REPO_ROOT / "metrics" / "evidence" / ".gitkeep"
     assert gitkeep.is_file(), "metrics/evidence/.gitkeep must exist (tracked dir)"
-    # A snapshot path under metrics/evidence/ must NOT be gitignored.
+
     probe = REPO_ROOT / "metrics" / "evidence" / "run-probe.json"
     result = subprocess.run(
         ["git", "check-ignore", str(probe)],
@@ -329,7 +267,7 @@ def test_evidence_dir_is_committed_not_ignored():
         capture_output=True,
         text=True,
     )
-    # git check-ignore exits 1 when the path is NOT ignored (the required state).
+
     assert result.returncode == 1, (
         f"metrics/evidence/ is gitignored — snapshots would not be committed: "
         f"{result.stdout}"

@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_learned_distillation.py — daslab-learn P20 distillation round-trip.
 
-Covers:
-- cluster_learnings: greedy single-linkage grouping by token-Jaccard.
-- merge_cluster: confidence boost, most-recent date, narrowest scope.
-- distill_learnings: deny-boundary enforcement, bound, sort order.
-- is_org_promotion / needs_manager_gate: manager-gate detection.
-- format_learned_section: markdown rendering.
-- apply_learned_to_template: insert (no prior section) and replace (prior section).
-- Round-trip demonstration on 2 roles: backend-eng-1 and product-analyst.
-"""
 from __future__ import annotations
 
 import sys
@@ -20,12 +10,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import memory_lib as ml  # noqa: E402,I001  (import after sys.path manipulation)
+import memory_lib as ml
 
-
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
 
 def _lr(
     key: str = "test-key",
@@ -35,7 +21,6 @@ def _lr(
     date: str = "2026-07-01",
     **extra,
 ) -> dict:
-    """Minimal daslab-learn format learning record."""
     r = {
         "key": key,
         "content": content,
@@ -49,10 +34,6 @@ def _lr(
     r.update(extra)
     return r
 
-
-# --------------------------------------------------------------------------- #
-# cluster_learnings
-# --------------------------------------------------------------------------- #
 
 def test_cluster_identical_records_into_one_cluster():
     a = _lr("k1", "build before test always run build first")
@@ -71,7 +52,7 @@ def test_cluster_dissimilar_records_into_separate_clusters():
 
 
 def test_cluster_threshold_respected():
-    # Below threshold: each gets its own cluster.
+
     a = _lr("k1", "one two three")
     b = _lr("k2", "four five six")
     clusters = ml.cluster_learnings([a, b], threshold=0.50)
@@ -88,10 +69,6 @@ def test_cluster_single_record():
     assert clusters == [[r]]
 
 
-# --------------------------------------------------------------------------- #
-# merge_cluster
-# --------------------------------------------------------------------------- #
-
 def test_merge_cluster_raises_on_empty():
     try:
         ml.merge_cluster([])
@@ -103,7 +80,7 @@ def test_merge_cluster_raises_on_empty():
 def test_merge_cluster_single_no_boost():
     r = _lr("k1", content="test content", confidence=5.0)
     merged = ml.merge_cluster([r])
-    assert merged["confidence"] == 5  # no boost — only 1 record
+    assert merged["confidence"] == 5
     assert merged["source_count"] == 1
 
 
@@ -114,7 +91,7 @@ def test_merge_cluster_boosts_confidence():
         _lr("k3", content="similar content gamma", confidence=3.0),
     ]
     merged = ml.merge_cluster(records)
-    # base conf = 5, + 2 corroborating = 7
+
     assert merged["confidence"] == 7
     assert merged["source_count"] == 3
 
@@ -122,7 +99,7 @@ def test_merge_cluster_boosts_confidence():
 def test_merge_cluster_caps_confidence_at_10():
     records = [_lr(f"k{i}", confidence=9.0) for i in range(5)]
     merged = ml.merge_cluster(records)
-    assert merged["confidence"] == 10  # 9 + 4 = 13, capped at 10
+    assert merged["confidence"] == 10
 
 
 def test_merge_cluster_picks_most_recent_date():
@@ -142,7 +119,7 @@ def test_merge_cluster_narrowest_scope_wins():
         _lr("k3", scope="org"),
     ]
     merged = ml.merge_cluster(records)
-    assert merged["scope"] == "daslab"  # project-scoped beats org
+    assert merged["scope"] == "daslab"
 
 
 def test_merge_cluster_all_org_scope_stays_org():
@@ -160,13 +137,9 @@ def test_merge_cluster_highest_confidence_is_base():
         _lr("k2", content="high confidence content", confidence=8.0),
     ]
     merged = ml.merge_cluster(records)
-    # highest-confidence record wins as base
+
     assert "high confidence" in merged["content"]
 
-
-# --------------------------------------------------------------------------- #
-# distill_learnings
-# --------------------------------------------------------------------------- #
 
 def test_distill_empty_records():
     assert ml.distill_learnings([], project="daslab") == []
@@ -177,7 +150,7 @@ def test_distill_filters_deny_project():
         _lr("k1", content="platform insight alpha", scope="daslab", project="daslab"),
         _lr("k2", content="product insight beta", scope="qaqnuz", project="qaqnuz"),
     ]
-    # qaqnuz is deny for the platform project
+
     result = ml.distill_learnings(records, project="daslab", deny_projects=["qaqnuz"])
     assert len(result) == 1
     assert result[0]["key"] == "k1"
@@ -189,7 +162,7 @@ def test_distill_includes_org_scope():
         _lr("k2", content="universal gamma delta", scope="org", project="org"),
     ]
     result = ml.distill_learnings(records, project="daslab")
-    assert len(result) == 2  # both are eligible (daslab + org)
+    assert len(result) == 2
 
 
 def test_distill_excludes_unrelated_project():
@@ -218,19 +191,15 @@ def test_distill_sorted_by_confidence_desc():
 
 
 def test_distill_deny_boundary_never_crossed():
-    # Hard rule: deny-listed project's records NEVER appear in output.
+
     platform_record = _lr("platform-k", content="platform only alpha beta", project="daslab", scope="daslab")
     product_record = _lr("product-k", content="product only gamma delta", project="qaqnuz", scope="qaqnuz")
-    # Distilling for platform — qaqnuz is deny.
+
     result = ml.distill_learnings([platform_record, product_record], project="daslab", deny_projects=["qaqnuz"])
     keys = [r.get("key") for r in result]
     assert "product-k" not in keys
     assert "platform-k" in keys
 
-
-# --------------------------------------------------------------------------- #
-# is_org_promotion / needs_manager_gate
-# --------------------------------------------------------------------------- #
 
 def test_is_org_promotion_true_when_promoted_from_present():
     r = _lr("k1", scope="org", promoted_from="daslab")
@@ -238,7 +207,7 @@ def test_is_org_promotion_true_when_promoted_from_present():
 
 
 def test_is_org_promotion_false_without_promoted_from():
-    r = _lr("k1", scope="org")  # no promoted_from
+    r = _lr("k1", scope="org")
     assert ml.is_org_promotion(r) is False
 
 
@@ -256,10 +225,6 @@ def test_needs_manager_gate_false_for_normal_record():
     r = _lr("k1", scope="daslab")
     assert ml.needs_manager_gate(r) is False
 
-
-# --------------------------------------------------------------------------- #
-# format_learned_section
-# --------------------------------------------------------------------------- #
 
 def test_format_learned_section_empty():
     section = ml.format_learned_section([], date="2026-07-03")
@@ -289,10 +254,6 @@ def test_format_learned_section_date_in_banner():
     section = ml.format_learned_section([], date="2026-07-03")
     assert "2026-07-03" in section
 
-
-# --------------------------------------------------------------------------- #
-# apply_learned_to_template
-# --------------------------------------------------------------------------- #
 
 _BARE_TEMPLATE = (
     "# Role — Example\n\n"
@@ -324,7 +285,7 @@ def test_apply_replaces_existing_section():
     records = [_lr("updated-key", content="Updated insight", confidence=9.0, date="2026-07-03")]
     result = ml.apply_learned_to_template(_TEMPLATE_WITH_LEARNED, records, date="2026-07-03")
     assert "`updated-key`" in result
-    assert "`old-key`" not in result  # old section replaced
+    assert "`old-key`" not in result
 
 
 def test_apply_preserves_content_before_learned():
@@ -338,7 +299,7 @@ def test_apply_idempotent_on_same_records():
     records = [_lr("stable-key", content="Stable insight content", confidence=6.0, date="2026-07-03")]
     first = ml.apply_learned_to_template(_BARE_TEMPLATE, records, date="2026-07-03")
     second = ml.apply_learned_to_template(first, records, date="2026-07-03")
-    assert first == second  # idempotent
+    assert first == second
 
 
 def test_apply_empty_distilled_emits_placeholder():
@@ -365,12 +326,7 @@ def test_apply_next_section_preserved_after_learned():
     assert "`old`" not in result
 
 
-# --------------------------------------------------------------------------- #
-# Round-trip demonstration — 2 roles
-# --------------------------------------------------------------------------- #
-
 def test_roundtrip_backend_eng1():
-    """Round-trip for backend-eng-1: simulated Founder feedback -> distill -> ## Learned."""
     feedback_records = [
         _lr(
             "build-before-test",
@@ -403,11 +359,11 @@ def test_roundtrip_backend_eng1():
     )
     assert len(distilled) >= 1
 
-    # Confidence boost: the two build-before-test records cluster together -> boost
+
     keys = [r.get("key", r.get("id", "")) for r in distilled]
     assert any("build" in str(k) for k in keys)
 
-    # Apply to a bare backend template
+
     bare = (
         "# Role — Backend Engineer 1\n\n"
         "## Mission\nImplementation tickets.\n\n"
@@ -419,15 +375,14 @@ def test_roundtrip_backend_eng1():
 
     assert "## Learned" in result
     assert "DISTILLATION" in result
-    # Source-count boost: clustered records show higher confidence than input
-    # The two "build-before-test" variants cluster (similar tokens) -> confidence bump
+
+
     for r in distilled:
         if r.get("source_count", 1) > 1:
-            assert ml._record_confidence(r) > 6.0  # boosted above highest input
+            assert ml._record_confidence(r) > 6.0
 
 
 def test_roundtrip_product_analyst():
-    """Round-trip for product-analyst: simulated Founder feedback -> distill -> ## Learned."""
     feedback_records = [
         _lr(
             "metric-denominator-check",
@@ -471,24 +426,22 @@ def test_roundtrip_product_analyst():
 
     assert "## Learned" in result
     assert "2026-07-03" in result
-    # Deny-boundary: no qaqnuz records leaked in
+
     assert "qaqnuz" not in result
 
 
 def test_roundtrip_deny_boundary_hard():
-    """Deny boundary is absolute: even if deny-project records are high-confidence,
-    they must NOT appear in the distilled output for the other project."""
     platform_record = _lr(
         "platform-insight",
         content="platform unique alpha beta gamma",
-        confidence=10.0,  # maximum confidence
+        confidence=10.0,
         scope="daslab",
         project="daslab",
     )
     product_record = _lr(
         "product-insight",
         content="product unique delta epsilon zeta",
-        confidence=10.0,  # maximum confidence — still denied
+        confidence=10.0,
         scope="qaqnuz",
         project="qaqnuz",
     )
@@ -504,27 +457,20 @@ def test_roundtrip_deny_boundary_hard():
 
 
 def test_roundtrip_manager_gate_flagged_not_auto_promoted():
-    """A narrow-to-org promotion is flagged by needs_manager_gate — the agent must
-    not auto-promote; it must escalate to the manager."""
     promotion_candidate = _lr(
         "narrow-insight",
         content="This is a project insight being promoted",
         confidence=9.0,
-        scope="org",            # scope set to org
-        promoted_from="daslab", # but flagged as promoted from daslab
+        scope="org",
+        promoted_from="daslab",
     )
     assert ml.needs_manager_gate(promotion_candidate) is True
-    # A record without promoted_from at org scope is NOT a promotion candidate.
+
     native_org = _lr("org-practice", content="Universal git discipline", scope="org")
     assert ml.needs_manager_gate(native_org) is False
 
 
-# --------------------------------------------------------------------------- #
-# Live overlay files carry the ## Learned section
-# --------------------------------------------------------------------------- #
-
 def test_backend_eng1_overlay_has_learned_section():
-    """The backend-eng-1 overlay must have a ## Learned section after distillation."""
     overlay = REPO_ROOT / "engineering" / "agents" / "backend-eng-1" / "AGENTS.md"
     assert overlay.exists(), f"overlay missing: {overlay}"
     text = overlay.read_text(encoding="utf-8")
@@ -533,7 +479,6 @@ def test_backend_eng1_overlay_has_learned_section():
 
 
 def test_product_analyst_overlay_has_learned_section():
-    """The product-analyst overlay must have a ## Learned section after distillation."""
     overlay = REPO_ROOT / "product" / "agents" / "product-analyst" / "AGENTS.md"
     assert overlay.exists(), f"overlay missing: {overlay}"
     text = overlay.read_text(encoding="utf-8")

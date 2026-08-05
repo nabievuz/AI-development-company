@@ -1,15 +1,3 @@
-"""Deterministic verifier — frontend-em / code-split-boundary.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ splittable| - |reported \\ splittable|) / |splittable| )
-
-The splittable set is derived from the SAME route report the agent was given
-(initial_bundle_kb > 150 AND not is_critical_path) — doing the architecture
-call correctly reproduces it, so nothing is leaked: the fixture is the input,
-and grading it is the graded skill. Deterministic (no clock/model). An empty
-submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -30,7 +18,6 @@ def _splittable(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _splittable(fixtures)
     if not expected:
         return 0.0

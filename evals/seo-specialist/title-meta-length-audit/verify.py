@@ -1,15 +1,3 @@
-"""Deterministic verifier — seo-specialist / title-meta-length-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ violations| - |reported \\ violations|) / |violations| )
-
-The violating-page set is derived from the SAME fixture the agent was given —
-title length outside [30, 60] chars or meta description length outside
-[70, 160] chars — so nothing is leaked into the prompt: applying the length
-rule correctly *is* the graded skill. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -34,7 +22,6 @@ def _violations(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _violations(fixtures)
     if not expected:
         return 0.0

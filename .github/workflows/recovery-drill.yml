@@ -1,21 +1,9 @@
 name: Recovery drill (T5, scheduled)
 
-# ORGANISM WS1 PULSE — the EXPENSIVE tier of the T5 recovery-reliability gate
-# (DAS-1451). The cheap smoke (1 kill + 1 fork drill) runs on every PR in ci.yml;
-# this workflow runs the >=20-iteration kill/resume accumulation + fork drill on a
-# schedule so T5 accrues real evidence without adding latency to every PR.
-#
-# Each iteration spawns a real child process that `kill -9`s itself mid-wave-2,
-# then resumes via resume_fork and asserts zero-lost / zero-duplicated; all
-# iterations emit `recovery_drill` events that scripts/check_recovery.py scores
-# (ratio >= 0.99, zero corrupted). Events go to a throwaway temp store, never
-# board/.events.jsonl.
-#
-# Trigger manually any time via the Actions tab (workflow_dispatch).
 
 on:
   schedule:
-    - cron: "17 4 * * *"   # daily at 04:17 UTC
+    - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       iterations:
@@ -34,11 +22,11 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.11"
 

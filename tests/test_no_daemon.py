@@ -1,40 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_no_daemon.py — SI-1 regression guard: no in-process daemons.
 
-Scans the WS4 HEARTBEAT scheduler source files (SI-1 scope) using AST-based
-analysis and FAILs if any file introduces an in-process timer, loop, or thread
-that would violate the ADR-0027 SI-1 "NOT a daemon / one-shot" property.
-
-Scanned files (SCHEDULER_FILES):
-  scripts/loop_controller.py       — P15 scheduler tick entrypoint
-  scripts/flow_router.py           — P14 pure-python trigger router
-  scripts/check_loop_mode.py       — OFF-tripwire (scheduler safety trio)
-  scripts/metrics_history_feeder.py — WS4 metrics feeder
-  scripts/run_workspace.py         — WS4 P16 run-workspaces
-
-Patterns that trigger a FAIL (in executable code, not docstrings/comments):
-  - ``while True`` loops           — keeps the process alive indefinitely
-  - ``threading.Timer`` / ``threading.Thread`` construction or import
-  - ``sched`` module import        — Python in-process scheduler
-  - ``asyncio.get_event_loop`` / ``asyncio.new_event_loop`` /
-    ``asyncio.get_running_loop`` or any ``.run_forever()`` call
-    — creates / runs a persistent asyncio event loop
-  - ``time.sleep()`` inside a loop body — polling / busy-wait pattern
-
-Docstrings and comments are NOT flagged: the Python AST parser strips comments
-entirely, and string-literal nodes (including docstrings) are ``ast.Constant``
-nodes, never ``ast.While`` / ``ast.Call`` nodes — so the scanner is inherently
-docstring-safe.
-
-Rationale (ADR-0027 SI-1 + QONUN-5):
-The heartbeat's cadence lives exclusively in an external, Founder-owned OS
-scheduler (launchd/cron).  The Python code is a one-shot evaluator: invoked by
-the OS, it runs exactly once and exits.  Any in-process loop or timer would make
-the process self-pacing, bypassing the QONUN-5 governance gate that requires the
-Founder to enable live mode explicitly.  This test provides a permanent,
-automated tripwire so the "NOT a daemon" property cannot be silently eroded by
-future edits.
-"""
 from __future__ import annotations
 
 import ast
@@ -44,9 +9,6 @@ from typing import NamedTuple
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Repo layout
-# ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
@@ -54,21 +16,14 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-# ---------------------------------------------------------------------------
-# SI-1 scope: files scanned for daemon patterns
-# ---------------------------------------------------------------------------
 
 SCHEDULER_FILES: list[Path] = [
-    SCRIPTS / "loop_controller.py",          # P15: scheduler tick entrypoint
-    SCRIPTS / "flow_router.py",              # P14: pure-python trigger router
-    SCRIPTS / "check_loop_mode.py",          # scheduler safety OFF-tripwire
-    SCRIPTS / "metrics_history_feeder.py",   # WS4 metrics feeder
-    SCRIPTS / "run_workspace.py",            # WS4 P16 run-workspaces
+    SCRIPTS / "loop_controller.py",
+    SCRIPTS / "flow_router.py",
+    SCRIPTS / "check_loop_mode.py",
+    SCRIPTS / "metrics_history_feeder.py",
+    SCRIPTS / "run_workspace.py",
 ]
-
-# ---------------------------------------------------------------------------
-# Violation record
-# ---------------------------------------------------------------------------
 
 
 class Violation(NamedTuple):
@@ -78,33 +33,26 @@ class Violation(NamedTuple):
     detail: str
 
 
-# ---------------------------------------------------------------------------
-# Daemon-pattern detectors (AST-based)
-# ---------------------------------------------------------------------------
-
-# threading attributes that spawn background threads or timers
 _THREADING_DAEMON_ATTRS: frozenset[str] = frozenset({"Timer", "Thread"})
 
-# asyncio attributes that create or run a persistent event loop
+
 _ASYNCIO_LOOP_ATTRS: frozenset[str] = frozenset(
     {"get_event_loop", "new_event_loop", "get_running_loop"}
 )
 
 
 def _parse(path: Path) -> ast.Module:
-    """Parse a Python source file into an AST module."""
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
 def _scan_while_true(tree: ast.Module, rel: str) -> list[Violation]:
-    """Detect ``while True:`` loops in executable code (AST nodes, not strings)."""
     found: list[Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.While):
             continue
         test = node.test
-        # ast.Constant covers Python 3.8+; the NameConstant branch guards older
-        # parsers that might surface in the test environment.
+
+
         is_literal_true = isinstance(test, ast.Constant) and test.value is True
         if is_literal_true:
             found.append(Violation(
@@ -116,10 +64,9 @@ def _scan_while_true(tree: ast.Module, rel: str) -> list[Violation]:
 
 
 def _scan_threading_daemon(tree: ast.Module, rel: str) -> list[Violation]:
-    """Detect threading.Timer() / threading.Thread() constructions and imports."""
     found: list[Violation] = []
     for node in ast.walk(tree):
-        # threading.Timer(...) / threading.Thread(...)
+
         if isinstance(node, ast.Call):
             func = node.func
             if (
@@ -133,7 +80,7 @@ def _scan_threading_daemon(tree: ast.Module, rel: str) -> list[Violation]:
                     f"threading.{func.attr}() — spawns a background thread or timer "
                     "(SI-1: no background threads in the scheduler code)",
                 ))
-        # from threading import Timer / Thread
+
         if isinstance(node, ast.ImportFrom) and node.module == "threading":
             for alias in node.names:
                 if alias.name in _THREADING_DAEMON_ATTRS:
@@ -146,7 +93,6 @@ def _scan_threading_daemon(tree: ast.Module, rel: str) -> list[Violation]:
 
 
 def _scan_sched_module(tree: ast.Module, rel: str) -> list[Violation]:
-    """Detect imports of the Python ``sched`` standard-library module."""
     found: list[Violation] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -169,7 +115,6 @@ def _scan_sched_module(tree: ast.Module, rel: str) -> list[Violation]:
 
 
 def _scan_asyncio_loop(tree: ast.Module, rel: str) -> list[Violation]:
-    """Detect asyncio event-loop creation and run_forever calls."""
     found: list[Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -178,7 +123,7 @@ def _scan_asyncio_loop(tree: ast.Module, rel: str) -> list[Violation]:
         if not isinstance(func, ast.Attribute):
             continue
 
-        # asyncio.get_event_loop() / asyncio.new_event_loop() / asyncio.get_running_loop()
+
         if (
             func.attr in _ASYNCIO_LOOP_ATTRS
             and isinstance(func.value, ast.Name)
@@ -190,8 +135,7 @@ def _scan_asyncio_loop(tree: ast.Module, rel: str) -> list[Violation]:
                 "use asyncio.run() for one-shot async calls (SI-1)",
             ))
 
-        # <anything>.run_forever() — only an asyncio event-loop exposes this method;
-        # flagging it regardless of the receiver avoids alias-tracking complexity.
+
         if func.attr == "run_forever":
             found.append(Violation(
                 rel, node.lineno, "asyncio_loop",
@@ -201,24 +145,23 @@ def _scan_asyncio_loop(tree: ast.Module, rel: str) -> list[Violation]:
 
 
 class _SleepInLoopVisitor(ast.NodeVisitor):
-    """Collect ``time.sleep()`` calls that appear inside any while/for loop body."""
 
     def __init__(self, rel: str) -> None:
         self._rel = rel
         self._depth = 0
         self.violations: list[Violation] = []
 
-    def visit_While(self, node: ast.While) -> None:  # noqa: N802
+    def visit_While(self, node: ast.While) -> None:
         self._depth += 1
         self.generic_visit(node)
         self._depth -= 1
 
-    def visit_For(self, node: ast.For) -> None:  # noqa: N802
+    def visit_For(self, node: ast.For) -> None:
         self._depth += 1
         self.generic_visit(node)
         self._depth -= 1
 
-    def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+    def visit_Call(self, node: ast.Call) -> None:
         if self._depth > 0:
             func = node.func
             if (
@@ -236,14 +179,12 @@ class _SleepInLoopVisitor(ast.NodeVisitor):
 
 
 def _scan_sleep_in_loop(tree: ast.Module, rel: str) -> list[Violation]:
-    """Detect ``time.sleep()`` inside while or for loop bodies."""
     v = _SleepInLoopVisitor(rel)
     v.visit(tree)
     return v.violations
 
 
 def scan_file(path: Path) -> list[Violation]:
-    """Run all SI-1 daemon-pattern checks on *path* and return violations."""
     tree = _parse(path)
     rel = path.name
     return (
@@ -255,13 +196,7 @@ def scan_file(path: Path) -> list[Violation]:
     )
 
 
-# ---------------------------------------------------------------------------
-# Tests: all scanned files must exist
-# ---------------------------------------------------------------------------
-
-
 class TestSchedulerFilesPresent:
-    """Every file in SCHEDULER_FILES must be present; a missing file blinds SI-1."""
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_file_exists(self, path: Path) -> None:
@@ -272,17 +207,10 @@ class TestSchedulerFilesPresent:
         )
 
 
-# ---------------------------------------------------------------------------
-# Tests: no daemon patterns in production code
-# ---------------------------------------------------------------------------
-
-
 class TestNoDaemonPatterns:
-    """Each scheduler file must be free of in-process timer/loop/thread patterns."""
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_no_while_true(self, path: Path) -> None:
-        """while True loops are forbidden: the process must exit after one evaluation."""
         if not path.is_file():
             pytest.skip(f"{path.name} not present — existence guard is in TestSchedulerFilesPresent")
         bad = [v for v in scan_file(path) if v.kind == "while_true"]
@@ -293,7 +221,6 @@ class TestNoDaemonPatterns:
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_no_threading_timer_or_thread(self, path: Path) -> None:
-        """threading.Timer/Thread construction or import is forbidden (background threads)."""
         if not path.is_file():
             pytest.skip(f"{path.name} not present")
         bad = [v for v in scan_file(path) if v.kind.startswith("threading_daemon")]
@@ -304,7 +231,6 @@ class TestNoDaemonPatterns:
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_no_sched_module(self, path: Path) -> None:
-        """The sched stdlib module is an in-process scheduler — forbidden (SI-1)."""
         if not path.is_file():
             pytest.skip(f"{path.name} not present")
         bad = [v for v in scan_file(path) if v.kind == "sched_import"]
@@ -315,7 +241,6 @@ class TestNoDaemonPatterns:
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_no_asyncio_event_loop(self, path: Path) -> None:
-        """asyncio event-loop creation or run_forever is forbidden (SI-1)."""
         if not path.is_file():
             pytest.skip(f"{path.name} not present")
         bad = [v for v in scan_file(path) if v.kind == "asyncio_loop"]
@@ -326,7 +251,6 @@ class TestNoDaemonPatterns:
 
     @pytest.mark.parametrize("path", SCHEDULER_FILES, ids=lambda p: p.name)
     def test_no_time_sleep_in_loop(self, path: Path) -> None:
-        """time.sleep() inside a loop creates a polling daemon — forbidden (SI-1)."""
         if not path.is_file():
             pytest.skip(f"{path.name} not present")
         bad = [v for v in scan_file(path) if v.kind == "sleep_in_loop"]
@@ -336,17 +260,7 @@ class TestNoDaemonPatterns:
         )
 
 
-# ---------------------------------------------------------------------------
-# Canary tests: prove the scanner detects violations in synthetic code
-# ---------------------------------------------------------------------------
-
-
 class TestScannerCanary:
-    """Verify the scanner correctly flags violations in synthetic snippets.
-
-    These tests prove the scanner itself works; they do NOT scan production files.
-    If a canary fails the scanner is broken, not the production code.
-    """
 
     def test_canary_while_true(self, tmp_path: Path) -> None:
         src = tmp_path / "canary.py"
@@ -445,7 +359,6 @@ class TestScannerCanary:
         )
 
     def test_canary_sleep_outside_loop_allowed(self, tmp_path: Path) -> None:
-        """time.sleep() at module level or in a plain function is NOT flagged."""
         src = tmp_path / "canary.py"
         src.write_text(
             "import time\ndef startup():\n    time.sleep(0.1)  # one-shot delay\n",
@@ -457,7 +370,6 @@ class TestScannerCanary:
         )
 
     def test_canary_docstring_mention_not_flagged(self, tmp_path: Path) -> None:
-        """Docstring text containing banned keywords must NOT trigger violations."""
         src = tmp_path / "canary.py"
         src.write_text(
             '"""Module docstring: while True, threading.Timer, import sched example."""\n'
@@ -472,11 +384,6 @@ class TestScannerCanary:
         )
 
     def test_canary_comment_not_flagged(self, tmp_path: Path) -> None:
-        """Comments containing banned keywords must NOT trigger violations.
-
-        Comments are stripped by the Python parser and are invisible to AST
-        analysis — this test confirms no regex fallback is accidentally scanning them.
-        """
         src = tmp_path / "canary.py"
         src.write_text(
             "# while True  threading.Timer  import sched  asyncio.get_event_loop\n"

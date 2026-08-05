@@ -1,46 +1,5 @@
 #!/usr/bin/env python3
-"""check_agents_sync.py — detect drift between .claude/agents/* shims,
-board/ROUTING.md, and the model-allocation policy.
 
-Compares three artefacts that ``scripts/gen_subagents.py`` keeps in sync:
-
-1. ``.claude/agents/<key>.md`` — Claude Code subagent shim files.
-2. ``board/ROUTING.md`` — role-to-reviewer routing table (generated header
-   marks it as authoritative).
-3. ``governance/policies/model-allocation.md`` — model assignment table
-   (board-level policy; may not be present in sparse worktrees).
-
-Policy-file tolerance
----------------------
-``governance/policies/model-allocation.md`` is folded post-checkpoint and
-is NOT present in this worktree yet.  When the file is absent the script
-prints ``policy not yet in-tree`` and exits 0 — the model-consistency check
-is skipped.  The shim ↔ ROUTING.md cross-check always runs regardless.
-
-Drift detected (exits 1)
-------------------------
-* A role key appears in ROUTING.md but has no matching shim file.
-* A shim file exists but its key is absent from ROUTING.md (unless the
-  key is in the known SKIP set of external-runtime pilots).
-* A shim file's ``name:`` frontmatter field does not match its filename stem.
-* A shim file's ``model:`` field is not one of the three valid tiers
-  (opus / sonnet / haiku).
-* When the policy file IS present: a shim model does not match the
-  policy-table row for that role key.
-
-Usage::
-
-    python3 scripts/check_agents_sync.py [options]
-
-    --agents   PATH  Path to .claude/agents/ directory (default: auto-detected).
-    --routing  PATH  Path to board/ROUTING.md (default: auto-detected).
-    --policy   PATH  Path to governance/policies/model-allocation.md
-                     (default: auto-detected; absence is tolerated — exit 0).
-    --strict         Treat a missing policy file as an error (exit 1).
-
-Exit codes: 0 = in sync (or policy absent without --strict), 1 = drift found,
-2 = usage / IO error.
-"""
 
 from __future__ import annotations
 
@@ -51,27 +10,20 @@ from pathlib import Path
 
 from _paths import ROOT
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 VALID_MODELS: frozenset[str] = frozenset({"opus", "sonnet", "haiku"})
 
-# Role keys for external-runtime pilots that gen_subagents.py skips.
+
 SKIP_KEYS: frozenset[str] = frozenset()
 
 _REPO_ROOT = ROOT
 
-# ---------------------------------------------------------------------------
-# Frontmatter parser (shim files)
-# ---------------------------------------------------------------------------
 
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _KV_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_-]*):[^\S\n]*(.*?)[^\S\n]*$", re.MULTILINE)
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
-    """Return key->value dict from YAML frontmatter, or empty dict if absent."""
     m = _FM_RE.match(text)
     if not m:
         return {}
@@ -85,15 +37,7 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return data
 
 
-# ---------------------------------------------------------------------------
-# Shim loader
-# ---------------------------------------------------------------------------
-
 def load_shims(agents_dir: Path) -> dict[str, dict[str, str]]:
-    """Return ``{role_key: frontmatter}`` for every .md in *agents_dir*.
-
-    Keys in ``SKIP_KEYS`` are excluded.
-    """
     shims: dict[str, dict[str, str]] = {}
     for path in sorted(agents_dir.glob("*.md")):
         key = path.stem
@@ -104,10 +48,6 @@ def load_shims(agents_dir: Path) -> dict[str, dict[str, str]]:
     return shims
 
 
-# ---------------------------------------------------------------------------
-# ROUTING.md parser
-# ---------------------------------------------------------------------------
-
 _ROUTING_ROW_RE = re.compile(
     r"^\|\s*`([a-z0-9-]+)`\s*\|[^\n]*\|\s*([^\n|]+?)\s*\|\s*$",
     re.MULTILINE,
@@ -115,20 +55,9 @@ _ROUTING_ROW_RE = re.compile(
 
 
 def load_routing(routing_path: Path) -> dict[str, str]:
-    """Return ``{role_key: reports_to}`` parsed from ROUTING.md.
-
-    Matches rows whose first cell is a backtick-quoted role key and captures
-    the last pipe-separated cell as the "reports_to" value.  The header row
-    and divider row are skipped because their first cell either is unquoted or
-    starts with ``---``.
-    """
     text = routing_path.read_text(encoding="utf-8")
     return {m.group(1): m.group(2).strip() for m in _ROUTING_ROW_RE.finditer(text)}
 
-
-# ---------------------------------------------------------------------------
-# Model-allocation policy parser
-# ---------------------------------------------------------------------------
 
 _MODEL_ROW_RE = re.compile(
     r"^\|\s*`?([a-z0-9-]+)`?\s*\|\s*(opus|sonnet|haiku)\s*\|",
@@ -137,46 +66,37 @@ _MODEL_ROW_RE = re.compile(
 
 
 def load_policy_models(policy_path: Path) -> dict[str, str] | None:
-    """Return ``{role_key: model}`` from the policy file, or None if absent."""
     if not policy_path.exists():
         return None
     text = policy_path.read_text(encoding="utf-8")
     return dict(_MODEL_ROW_RE.findall(text))
 
 
-# ---------------------------------------------------------------------------
-# Drift checks
-# ---------------------------------------------------------------------------
-
 def check_sync(
     shims: dict[str, dict[str, str]],
     routing: dict[str, str],
     policy_models: dict[str, str] | None,
 ) -> list[str]:
-    """Run all drift checks and return a list of human-readable violation strings."""
     errors: list[str] = []
 
     shim_keys = set(shims.keys())
     routing_keys = set(routing.keys())
 
-    # --- Cross-check: shims vs ROUTING.md ----------------------------------
 
-    # Role in ROUTING.md but no shim file
     for key in sorted(routing_keys - shim_keys):
         errors.append(
             f"{key}: present in ROUTING.md but no .claude/agents/{key}.md shim found"
         )
 
-    # Shim exists but not in ROUTING.md
+
     for key in sorted(shim_keys - routing_keys):
         errors.append(
             f"{key}: shim .claude/agents/{key}.md exists but key missing from ROUTING.md"
         )
 
-    # --- Per-shim field validation -----------------------------------------
 
     for key, fm in sorted(shims.items()):
-        # name field must match filename stem
+
         shim_name = fm.get("name", "").strip()
         if shim_name and shim_name != key:
             errors.append(
@@ -185,7 +105,7 @@ def check_sync(
         if not shim_name:
             errors.append(f"{key}: shim is missing 'name:' frontmatter field")
 
-        # model field must be a valid tier
+
         shim_model = fm.get("model", "").strip()
         if not shim_model:
             errors.append(f"{key}: shim is missing 'model:' frontmatter field")
@@ -195,7 +115,7 @@ def check_sync(
                 f"(must be one of {sorted(VALID_MODELS)})"
             )
 
-        # model must match policy table (when policy is present)
+
         if policy_models is not None and shim_model in VALID_MODELS:
             expected = policy_models.get(key)
             if expected is None:
@@ -211,14 +131,10 @@ def check_sync(
     return errors
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="check_agents_sync",
-        description=__doc__,
+        description="check_agents_sync.py — detect drift between .claude/agents/* shims,\nboard/ROUTING.md, and the model-allocation policy.\n\nCompares three artefacts that ``scripts/gen_subagents.py`` keeps in sync:\n\n1. ``.claude/agents/<key>.md`` — Claude Code subagent shim files.\n2. ``board/ROUTING.md`` — role-to-reviewer routing table (generated header\n   marks it as authoritative).\n3. ``governance/policies/model-allocation.md`` — model assignment table\n   (board-level policy; may not be present in sparse worktrees).\n\nPolicy-file tolerance\n---------------------\n``governance/policies/model-allocation.md`` is folded post-checkpoint and\nis NOT present in this worktree yet.  When the file is absent the script\nprints ``policy not yet in-tree`` and exits 0 — the model-consistency check\nis skipped.  The shim ↔ ROUTING.md cross-check always runs regardless.\n\nDrift detected (exits 1)\n------------------------\n* A role key appears in ROUTING.md but has no matching shim file.\n* A shim file exists but its key is absent from ROUTING.md (unless the\n  key is in the known SKIP set of external-runtime pilots).\n* A shim file's ``name:`` frontmatter field does not match its filename stem.\n* A shim file's ``model:`` field is not one of the three valid tiers\n  (opus / sonnet / haiku).\n* When the policy file IS present: a shim model does not match the\n  policy-table row for that role key.\n\nUsage::\n\n    python3 scripts/check_agents_sync.py [options]\n\n    --agents   PATH  Path to .claude/agents/ directory (default: auto-detected).\n    --routing  PATH  Path to board/ROUTING.md (default: auto-detected).\n    --policy   PATH  Path to governance/policies/model-allocation.md\n                     (default: auto-detected; absence is tolerated — exit 0).\n    --strict         Treat a missing policy file as an error (exit 1).\n\nExit codes: 0 = in sync (or policy absent without --strict), 1 = drift found,\n2 = usage / IO error.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
@@ -250,7 +166,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: UP007
+def main(argv: list[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
@@ -258,7 +174,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: UP007
     routing_path: Path = args.routing
     policy_path: Path = args.policy
 
-    # --- Input validation ---------------------------------------------------
 
     if not agents_dir.is_dir():
         print(f"ERROR: agents directory not found: {agents_dir}", file=sys.stderr)
@@ -267,7 +182,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: UP007
         print(f"ERROR: ROUTING.md not found: {routing_path}", file=sys.stderr)
         return 2
 
-    # --- Load data ----------------------------------------------------------
 
     try:
         shims = load_shims(agents_dir)
@@ -301,7 +215,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: UP007
             print(f"ERROR reading policy file: {exc}", file=sys.stderr)
             return 2
 
-    # --- Run drift checks ---------------------------------------------------
 
     errors = check_sync(shims, routing, policy_models)
 

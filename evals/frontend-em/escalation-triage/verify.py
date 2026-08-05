@@ -1,15 +1,3 @@
-"""Deterministic verifier — frontend-em / escalation-triage.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ escalate_set| - |reported \\ escalate_set|) / |escalate_set| )
-
-The escalate set is derived from the SAME decision queue the agent was given
-(cross_dept_impact OR exceeds_charter_authority OR blocked_waves > 1) — doing
-the triage correctly reproduces it per the role's own escalation policy, so
-nothing is leaked: the fixture is the input, and grading it is the graded
-skill. Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -31,7 +19,6 @@ def _escalate_set(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _escalate_set(fixtures)
     if not expected:
         return 0.0

@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""check_break_glass_review.py — enforce the 24h post-incident review (R-8 / ADR-008).
 
-Scans the audit log (``board/.events.jsonl``) for BREAK-GLASS activations and
-fails CI if any activation lacks a CLOSED post-incident review within 24 hours.
-A pending activation that is still inside its 24h window is not yet a violation;
-a missing event store (gitignored runtime, loop off) means no activations and is
-clean.
-
-Exit codes: 0 = every activation reviewed in time (or none), 1 = a missing/late
-review, 2 = usage error.
-
-Usage:
-    python3 scripts/check_break_glass_review.py [--events board/.events.jsonl] [--now ISO8601Z]
-"""
 from __future__ import annotations
 
 import argparse
@@ -27,15 +14,6 @@ DEFAULT_STORE = ROOT / "board" / ".events.jsonl"
 
 
 def find_problems(activations: list[dict], reviews: list[dict], now: datetime) -> list[str]:
-    """Return review violations; empty == every activation covered in time.
-
-    A closed review satisfies an activation only if its created_at falls in
-    [activation_start, activation_start + 24h], and each review can satisfy at
-    most ONE activation occurrence. A MAXIMUM bipartite matching (not a greedy
-    first-fit) is used so the verdict never depends on event order — a reused
-    activation_id cannot be blanket-covered by one review, a pre-dated or late
-    review never counts, and a genuinely fully-reviewed set never false-fails.
-    """
     closed = [
         (bg.parse_ts(str(r.get("created_at", ""))), str(r.get("review_for")))
         for r in reviews
@@ -57,7 +35,7 @@ def find_problems(activations: list[dict], reviews: list[dict], now: datetime) -
         t, rfor = closed[rev_j]
         return t is not None and rfor == aid and start <= t <= deadline
 
-    # Kuhn's augmenting-path maximum bipartite matching (review -> activation).
+
     review_owner = [-1] * len(closed)
 
     def assign(act_i: int, seen: list[bool]) -> bool:
@@ -81,7 +59,7 @@ def find_problems(activations: list[dict], reviews: list[dict], now: datetime) -
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description='check_break_glass_review.py — enforce the 24h post-incident review (R-8 / ADR-008).')
     ap.add_argument("--events", type=Path, default=DEFAULT_STORE)
     ap.add_argument("--now", default=None, help="ISO-8601 Z 'now' override (default: current UTC)")
     args = ap.parse_args(argv)

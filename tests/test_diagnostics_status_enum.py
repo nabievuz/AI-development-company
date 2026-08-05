@@ -1,22 +1,3 @@
-"""Regression test for DAS-1646: diagnostics.py's status enum must never
-re-diverge from scripts/board_lint.py's VALID_STATUSES (the single source of
-truth).
-
-The original bug was NOT "diagnostics.py forgot the value 'interrupted'" in
-isolation — it was that diagnostics.py carried its own hand-maintained COPY of
-the status enum, so any future addition to board_lint.VALID_STATUSES (not just
-"interrupted") would silently re-create the same failure mode: a validly-formed
-ticket zeroes the whole Consistency dimension (15/100) while board_lint passes
-the same board clean.
-
-So this test does NOT hard-code the expected status set (that would just
-reproduce the bug in a new place — a second copy of the enum, this time in a
-test file). Instead it asserts the two modules' sets are identical, by
-identity of *definition*: diagnostics.VALID_STATUS must literally be sourced
-from board_lint.VALID_STATUSES, so the two can never disagree again. It also
-smoke-tests the actual behaviour the original bug broke: a board containing an
-"interrupted" ticket must not fail diagnostics.py's status-enum check.
-"""
 
 from __future__ import annotations
 
@@ -30,13 +11,6 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
 def _load_diagnostics():
-    """Import scripts/diagnostics.py as a module for white-box checks.
-
-    Mirrors tests/test_diagnostics.py's loader: the module is registered in
-    sys.modules before execution because its dataclasses use
-    `from __future__ import annotations`, which resolves field annotations
-    against sys.modules[cls.__module__] at class-definition time.
-    """
     spec = importlib.util.spec_from_file_location("diagnostics_ssot_test", DIAGNOSTICS)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -46,11 +20,6 @@ def _load_diagnostics():
 
 
 def _load_board_lint():
-    """Import scripts/board_lint.py the same way (independent of diagnostics'
-    own sys.path bootstrap), so this test does not merely check that
-    diagnostics imported *some* module — it re-derives the SSOT itself and
-    compares.
-    """
     if str(SCRIPTS_DIR) not in sys.path:
         sys.path.insert(0, str(SCRIPTS_DIR))
     spec = importlib.util.spec_from_file_location("board_lint_ssot_test", SCRIPTS_DIR / "board_lint.py")
@@ -62,13 +31,6 @@ def _load_board_lint():
 
 
 def test_diagnostics_status_enum_matches_board_lint_ssot() -> None:
-    """diagnostics.VALID_STATUS must be set-equal to board_lint.VALID_STATUSES.
-
-    This is the divergence guard: it fails for ANY future mismatch (an
-    addition, removal, or typo on either side), not just the historical
-    "interrupted" omission — because it never states the expected set, only
-    that the two sources must agree.
-    """
     diagnostics = _load_diagnostics()
     board_lint = _load_board_lint()
 
@@ -81,13 +43,6 @@ def test_diagnostics_status_enum_matches_board_lint_ssot() -> None:
 
 
 def test_diagnostics_status_enum_is_sourced_from_board_lint_not_redeclared() -> None:
-    """Guard against a future "fix" that re-copies the values by hand.
-
-    Equal *contents* is necessary but not sufficient — a hand-copied literal
-    would pass the set-equality test above too, right up until board_lint
-    changes again. This asserts diagnostics actually imported board_lint's
-    module object, so there is one definition, not two agreeing by luck.
-    """
     diagnostics = _load_diagnostics()
     board_lint = _load_board_lint()
 
@@ -101,10 +56,6 @@ def test_diagnostics_status_enum_is_sourced_from_board_lint_not_redeclared() -> 
 
 
 def test_interrupted_ticket_passes_diagnostics_status_enum_check(tmp_path, monkeypatch) -> None:
-    """End-to-end regression for the bug as originally reported: a validly
-    formed 'interrupted' ticket must not fail diagnostics.py's status-enum
-    check (the failure that zeroed the whole 15-point Consistency dimension).
-    """
     diagnostics = _load_diagnostics()
 
     board_dir = tmp_path / "tickets"

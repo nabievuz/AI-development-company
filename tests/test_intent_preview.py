@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_intent_preview.py — Agent Intent Preview (R10 / RFC-003 §2)."""
+
 from __future__ import annotations
 
 import json
@@ -11,8 +11,8 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import intent_preview as ip  # noqa: E402  (import after path manipulation)
-import yaml  # noqa: E402
+import intent_preview as ip
+import yaml
 
 REAL_TAXONOMY = yaml.safe_load((REPO_ROOT / "config" / "risk_taxonomy.yaml").read_text())
 REAL_CONFIG = REPO_ROOT / "config" / "risk_taxonomy.yaml"
@@ -59,9 +59,8 @@ def test_cli_missing_inputs_exit_2(tmp_path):
 
 
 def test_cli_ticket_from_real_board(tmp_path):
-    # An existing board ticket renders an intent preview (exit 0). The live
-    # platform board may be empty (platform-only; project tickets live in
-    # projects/<slug>/board-tickets/), so fall back to a real archived ticket.
+
+
     live_tickets = sorted((REPO_ROOT / "board" / "tickets").glob("DAS-*.md"))
     if live_tickets:
         ticket_id = "-".join(live_tickets[0].name.split("-", 2)[:2])
@@ -81,7 +80,7 @@ def test_cli_ticket_from_real_board(tmp_path):
 
 
 def test_malformed_ticket_is_fail_closed(tmp_path):
-    # a ticket with unparseable frontmatter must NOT preview as auto-approvable
+
     board = tmp_path / "board"
     (board / "tickets").mkdir(parents=True)
     (board / "tickets" / "DAS-9.md").write_text(

@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_clarify_gate_enforcement.py — ADR-0014 clarify-gate enforcement guarantees.
 
-The clarify gate has two enforcement layers; this pins both so neither silently rots:
-
-1. BACKSTOP (hard, CI-enforced): `check_clarifications --strict` fails on an unresolved
-   marker in ANY active status (in_progress / in_review / done). So a marked ticket can
-   never reach an active state — and thus can never be merged — even if the orchestrator
-   forgets to skip it. This makes the gate's CORRECTNESS enforced, not advisory.
-
-2. ROUTING + CIRCUIT-BREAKER (runtime wave behaviour, not repo state): these are
-   /daslab-cycle orchestrator directives — a static CI check can't observe a wave, so
-   they are not separately enforceable. We guard them against silent deletion by
-   asserting the rule tokens remain present in the skill, and we name the validator that
-   backstops them.
-"""
 from __future__ import annotations
 
 import sys
@@ -26,7 +12,7 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import check_clarifications as cc  # noqa: E402  (import after path manipulation)
+import check_clarifications as cc
 
 CYCLE_SKILL = REPO_ROOT / ".claude" / "skills" / "daslab-cycle" / "SKILL.md"
 
@@ -41,10 +27,6 @@ def _board_with(tmp_path: Path, status: str, body: str) -> Path:
     return tickets
 
 
-# --------------------------------------------------------------------------- #
-# Layer 1 — the hard backstop (correctness, CI-enforced)
-# --------------------------------------------------------------------------- #
-
 @pytest.mark.parametrize("status", ["in_progress", "in_review", "done"])
 def test_backstop_blocks_marker_in_every_active_status(tmp_path, status):
     tickets = _board_with(tmp_path, status, "[NEEDS CLARIFICATION: which provider?]")
@@ -56,16 +38,11 @@ def test_backstop_allows_clean_active_ticket(tmp_path):
     assert cc.main(["--tickets", str(tickets), "--strict"]) == 0
 
 
-# --------------------------------------------------------------------------- #
-# Layer 2 — skill-rule guards (against silent deletion of the runtime directives)
-# --------------------------------------------------------------------------- #
-
 def _skill() -> str:
     return CYCLE_SKILL.read_text(encoding="utf-8")
 
 
 def _skill_flat() -> str:
-    """Skill text with whitespace collapsed, so a line-wrapped phrase still matches."""
     return " ".join(CYCLE_SKILL.read_text(encoding="utf-8").lower().split())
 
 

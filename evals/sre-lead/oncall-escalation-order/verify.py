@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-lead / oncall-escalation-order."""
 from __future__ import annotations
 
 import json

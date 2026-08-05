@@ -1,15 +1,3 @@
-# governance/communication-flows.yaml
-# DERIVED + VALIDATABLE view of the org communication graph (ADR-0026).
-# Every edge is a (sender -> receiver) ordered pair mechanically derived
-# from board/ROUTING.md reporting lines; NEVER hand-author new topology
-# here. Regenerate with:  python3 scripts/validate_commflows.py --emit
-# Validated by scripts/validate_commflows.py (WS2 O2-T02, DAS-1465).
-#
-# founder is an EXTERNAL human gate above the chairman, not a routing
-# node: the escalation ladder is ['ic', 'lead', 'cxo', 'founder'] but its terminal 'founder'
-# rung produces NO fleet edge (ADR-0026 section 3). consult edges are
-# deferred to a future kind (ADR-0026 Consequences); v1 is delegation +
-# escalation only.
 version: 1
 flows:
   - sender: chairman

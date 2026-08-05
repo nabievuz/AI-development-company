@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tests/test_p4_affordances.py — escalation context + approval digest + memory explain (RFC-003 §2)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -11,19 +11,15 @@ SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import approval_digest as ad  # noqa: E402  (import after path manipulation)
-import escalation_context as ec  # noqa: E402
-import memory_lib as ml  # noqa: E402
-import yaml  # noqa: E402
+import approval_digest as ad
+import escalation_context as ec
+import memory_lib as ml
+import yaml
 
 REAL_TAXONOMY = yaml.safe_load((REPO_ROOT / "config" / "risk_taxonomy.yaml").read_text())
 MEM_CFG = {"recall": {"min_trust": 0.3}, "ttl_days": {"fact": 180, "default": 120}, "health": {"decay_per_bad": 0.05}}
 NOW = dt.datetime(2026, 6, 21)
 
-
-# --------------------------------------------------------------------------- #
-# Escalation context
-# --------------------------------------------------------------------------- #
 
 def test_escalation_package_assembles_trace_error_memory():
     events = [
@@ -52,10 +48,6 @@ def test_escalation_cli_real_board_exit_0():
     assert ec.main(["--ticket", "DAS-1381"]) == 0
 
 
-# --------------------------------------------------------------------------- #
-# Approval digest
-# --------------------------------------------------------------------------- #
-
 def test_digest_batches_low_risk_and_escalates_qonun5():
     tickets = [
         {"id": "DAS-1", "title": "fix typo", "status": "in_review"},
@@ -72,7 +64,7 @@ def test_digest_cli_real_board_exit_0():
 
 
 def test_digest_malformed_taxonomy_fails_closed(tmp_path):
-    # a malformed taxonomy must error (exit 2), NEVER default to {} and batch everything
+
     bad = tmp_path / "tax.yaml"
     bad.write_text("{invalid: [unclosed", encoding="utf-8")
     assert ad.main(["--config", str(bad)]) == 2
@@ -85,10 +77,6 @@ def test_escalation_survives_malformed_memory_config(tmp_path):
                   "--memory-store", str(tmp_path / "m.jsonl"), "--memory-config", str(bad)])
     assert rc == 0
 
-
-# --------------------------------------------------------------------------- #
-# Memory-health explanation
-# --------------------------------------------------------------------------- #
 
 def test_explain_quarantine_reasons():
     assert "quarantined" in ml.explain_exclusion({"status": "quarantined"}, NOW, MEM_CFG)

@@ -1,25 +1,3 @@
-"""imagegen sidecar tests (DAS-1645 / ADR-0033 edge, reused).
-
-``tools/mcp_bridges/imagegen_tool_bridge.py`` arrived wired but untested: it is
-the org's FIRST bridge carrying a production credential and the FIRST path to a
-non-Anthropic model, and every other sidecar in ``tools/mcp_bridges/`` has
-coverage. These tests pin the invariants that make the two firsts containable —
-none of them require the network or an API key.
-
-  P1  a prompt carrying an ADR-0012 §2 secret/PII shape is REFUSED, not scrubbed
-      (a silently scrubbed prompt renders the wrong image; a disclosed one leaks)
-  P2  out_path is contained under the generated-media root (no absolute, no
-      ``..`` escape, extension allow-list) — the tool is not a file-write primitive
-  P3  the model is pinned to the reviewed set
-  P4  the credential is read from the environment only, and never reaches the
-      returned transcript on any path
-  P5  the TB-4 egress gate runs BEFORE any network syscall, and a denial is
-      terminal
-  P6  redirects are never followed (C4)
-  P7  the function never raises — a failure is tool output, not a dead wave
-  P8  provider bytes are size-capped, and the file is retargeted rather than
-      mislabelled when the provider's encoding disagrees with the extension
-"""
 from __future__ import annotations
 
 import base64
@@ -35,7 +13,6 @@ BRIDGES = ROOT / "tools" / "mcp_bridges"
 
 
 def _load_bridge():
-    """Import the sidecar by path (it is launched by path, not as a package)."""
     if str(BRIDGES) not in sys.path:
         sys.path.insert(0, str(BRIDGES))
     spec = importlib.util.spec_from_file_location(
@@ -54,16 +31,11 @@ def mod():
 
 @pytest.fixture
 def sandbox(mod, monkeypatch, tmp_path):
-    """Point the generated-media root at tmp_path and supply a dummy credential.
-
-    ``_out_root`` derives from the module's own file location, so the root is
-    redirected by env var rather than by writing into the real ``projects/``.
-    """
     monkeypatch.setenv("DASLAB_IMAGEGEN_OUT_ROOT", str(tmp_path))
     monkeypatch.setattr(mod, "_out_root", lambda: tmp_path.resolve())
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-" + "t" * 32)
-    # Default posture for the happy path: egress allowed. Individual tests
-    # override this to assert the gate.
+
+
     monkeypatch.setattr(mod, "check_egress", lambda url, profile: (True, ""))
     monkeypatch.setattr(mod, "active_profile", lambda: "imagegen-openrouter")
     return tmp_path
@@ -78,7 +50,6 @@ def _provider_response(url: str) -> dict:
 
 
 class _FakeResponse:
-    """Minimal stand-in for the urlopen context manager."""
 
     def __init__(self, payload: dict):
         self._body = json.dumps(payload).encode()
@@ -94,7 +65,6 @@ class _FakeResponse:
 
 
 def _stub_opener(mod, monkeypatch, payload: dict, spy: list | None = None):
-    """Replace the module opener so no test ever reaches the network."""
 
     class _Opener:
         def open(self, request, timeout=None):
@@ -103,11 +73,6 @@ def _stub_opener(mod, monkeypatch, payload: dict, spy: list | None = None):
             return _FakeResponse(payload)
 
     monkeypatch.setattr(mod, "_OPENER", _Opener())
-
-
-# --------------------------------------------------------------------------- #
-# P1 — the prompt is disclosed to a third party, so it is refused, not scrubbed
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -122,8 +87,8 @@ def _stub_opener(mod, monkeypatch, payload: dict, spy: list | None = None):
     ],
 )
 def test_prompt_carrying_a_forbidden_shape_is_refused(mod, sandbox, monkeypatch, secret):
-    # The opener asserts on use: a refusal that still reached the network — i.e.
-    # disclosed the very prompt it refused — is the bug this pins.
+
+
     monkeypatch.setattr(mod, "_OPENER", _never_opened())
     result = mod.generate_image(f"a poster, {secret}", "out.png")
     assert result.startswith("error: prompt refused")
@@ -132,7 +97,7 @@ def test_prompt_carrying_a_forbidden_shape_is_refused(mod, sandbox, monkeypatch,
 
 def _never_opened():
     class _Boom:
-        def open(self, request, timeout=None):  # pragma: no cover - must not run
+        def open(self, request, timeout=None):
             raise AssertionError("network reached despite a refused prompt")
 
     return _Boom()
@@ -157,11 +122,6 @@ def test_empty_and_oversized_prompts_are_rejected(mod, sandbox, monkeypatch):
     assert mod.generate_image("   ", "out.png") == "error: prompt is required"
     too_long = "x" * (mod._MAX_PROMPT_CHARS + 1)
     assert "exceeds" in mod.generate_image(too_long, "out.png")
-
-
-# --------------------------------------------------------------------------- #
-# P2 — containment: this writes images, it is not a file-write primitive
-# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize(
@@ -206,11 +166,6 @@ def test_a_contained_nested_path_is_written_under_the_root(mod, sandbox, monkeyp
     assert written.is_file(), result
 
 
-# --------------------------------------------------------------------------- #
-# P3 — the model is pinned to the reviewed set
-# --------------------------------------------------------------------------- #
-
-
 def test_unreviewed_model_is_refused(mod, sandbox, monkeypatch):
     monkeypatch.setattr(mod, "_OPENER", _never_opened())
     result = mod.generate_image("a poster", "out.png", model="openai/dall-e-3")
@@ -231,11 +186,6 @@ def test_every_reviewed_model_is_accepted(mod, sandbox, monkeypatch, model):
     assert result.startswith("imagegen: wrote") and model in result
 
 
-# --------------------------------------------------------------------------- #
-# P4 — the credential lives in the environment and never in the transcript
-# --------------------------------------------------------------------------- #
-
-
 def test_missing_key_is_a_plain_error_not_a_traceback(mod, sandbox, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(mod, "_OPENER", _never_opened())
@@ -251,7 +201,7 @@ def test_the_key_is_sent_as_a_bearer_header_and_never_returned(mod, sandbox, mon
     result = mod.generate_image("a poster", "out.png")
     assert result.startswith("imagegen: wrote")
     assert key not in result, "the success line leaked the credential"
-    # It did travel — as a header, not as a body field or a query parameter.
+
     request = spy[0]
     assert request.get_header("Authorization") == f"Bearer {key}"
     assert key not in request.full_url
@@ -259,21 +209,6 @@ def test_the_key_is_sent_as_a_bearer_header_and_never_returned(mod, sandbox, mon
 
 
 def test_the_key_is_never_accepted_as_a_tool_argument(mod):
-    """Pins the tool signature. LOAD-BEARING TWICE — do not relax it.
-
-    1. P4, its original purpose: a credential must never be a tool argument.
-    2. The security review's egress risk acceptance
-       (``governance/policies/third-party-model-tools.md`` §5a, 2026-08-04).
-       Server-scoped egress was accepted INSTEAD of per-role
-       ``DASLAB_EGRESS_PROFILE`` injection on the grounds that a caller of this
-       server cannot steer the destination: ``_ENDPOINT`` is a module constant
-       and no parameter influences the request target. A ``url`` / ``host`` /
-       ``endpoint`` / ``base_url`` argument would make the destination
-       caller-controlled and VOID that acceptance (bound (a)) — per-role
-       injection would have to land first.
-
-    So widening this parameter set is not a test fix; it is a governance change.
-    """
     import inspect
 
     params = set(inspect.signature(mod.generate_image).parameters)
@@ -301,7 +236,6 @@ def test_a_provider_http_error_body_is_scrubbed_before_it_is_returned(mod, sandb
 
 
 class _BodyFile:
-    """Minimal file-like for HTTPError's fp argument."""
 
     def __init__(self, data: bytes):
         self._data = data
@@ -311,11 +245,6 @@ class _BodyFile:
 
     def close(self):
         return None
-
-
-# --------------------------------------------------------------------------- #
-# P5 — the egress gate runs before the network, and a denial is terminal
-# --------------------------------------------------------------------------- #
 
 
 def test_egress_denial_blocks_the_call_entirely(mod, sandbox, monkeypatch):
@@ -346,11 +275,6 @@ def test_egress_denial_writes_no_file(mod, sandbox, monkeypatch):
     assert not (sandbox / "nothing.png").exists()
 
 
-# --------------------------------------------------------------------------- #
-# P6 — redirects are never followed (C4)
-# --------------------------------------------------------------------------- #
-
-
 def test_the_opener_refuses_every_redirect(mod):
     handler = mod._NoRedirect()
     assert handler.redirect_request(None, None, 302, "Found", {}, "http://169.254.169.254/") is None
@@ -360,11 +284,6 @@ def test_the_opener_refuses_every_redirect(mod):
 
 def test_the_module_opener_is_built_with_the_no_redirect_handler(mod):
     assert any(isinstance(h, mod._NoRedirect) for h in mod._OPENER.handlers)
-
-
-# --------------------------------------------------------------------------- #
-# P7 — never raises: a failure is tool output, not a dead wave
-# --------------------------------------------------------------------------- #
 
 
 def test_an_arbitrary_transport_exception_becomes_an_error_string(mod, sandbox, monkeypatch):
@@ -411,11 +330,6 @@ def test_an_undecodable_payload_is_reported(mod):
     assert raw is None and "empty image payload" in error
 
 
-# --------------------------------------------------------------------------- #
-# P8 — size cap and honest file labelling
-# --------------------------------------------------------------------------- #
-
-
 def test_an_oversized_image_is_capped(mod, sandbox, monkeypatch):
     huge = b"\x00" * (mod._MAX_BYTES + 1)
     _stub_opener(mod, monkeypatch, _provider_response(_png_data_url(huge)))
@@ -425,8 +339,8 @@ def test_an_oversized_image_is_capped(mod, sandbox, monkeypatch):
 
 
 def test_a_mime_mismatch_retargets_the_file_instead_of_mislabelling_it(mod, sandbox, monkeypatch):
-    # Requested .png, provider returned JPEG bytes: writing JPEG into a .png
-    # breaks every downstream consumer silently.
+
+
     _stub_opener(mod, monkeypatch, _provider_response(_png_data_url(b"\xff\xd8\xffjpegbytes", "image/jpeg")))
     result = mod.generate_image("a poster", "hero.png")
     assert "retargeted to .jpg" in result
@@ -442,8 +356,8 @@ def test_a_matching_mime_is_not_retargeted(mod, sandbox, monkeypatch):
 
 
 def test_the_summary_keeps_the_size_readable_instead_of_scrubbing_it(mod):
-    # The scrubber's PHONE shape eats a bare 7-digit byte count; the summary must
-    # report a unit-bearing size the caller can actually read.
+
+
     line = mod._summary(Path("a/b.png"), 1_468_306, "google/gemini-3-pro-image-preview", "")
     assert "REDACTED" not in line
     assert "1.4 MB" in line
@@ -452,19 +366,13 @@ def test_the_summary_keeps_the_size_readable_instead_of_scrubbing_it(mod):
 
 
 def test_a_display_path_outside_the_repo_does_not_raise(mod, tmp_path, monkeypatch):
-    # DASLAB_IMAGEGEN_OUT_ROOT may legitimately point outside the repo (a worktree
-    # writing into the main checkout). relative_to() raises on that; the contract
-    # is never-raise, AFTER the bytes were already paid for.
+
+
     outside = tmp_path / "elsewhere" / "img.png"
     monkeypatch.setattr(mod, "_out_root", lambda: tmp_path)
     assert mod._display_path(outside) == Path("elsewhere/img.png")
     monkeypatch.setattr(mod, "_out_root", lambda: Path("/nonexistent-root"))
-    assert mod._display_path(outside) == outside  # falls back, does not raise
-
-
-# --------------------------------------------------------------------------- #
-# Wiring — the admission surface this sidecar depends on
-# --------------------------------------------------------------------------- #
+    assert mod._display_path(outside) == outside
 
 
 def test_the_tool_is_declared_in_the_compiled_allowlist(mod):

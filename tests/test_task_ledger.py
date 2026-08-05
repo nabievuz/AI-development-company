@@ -1,18 +1,3 @@
-"""tests/test_task_ledger.py — pytest suite for scripts/task_ledger.py.
-
-Coverage (DAS-1469 acceptance criteria):
-- build_task_ledger writes board/runs/<run_id>/task-ledger.md with facts
-  (given / known / to-look-up / educated-guesses) AND the plan.
-- read_task_ledger round-trips the rendered content (facts + plan + metadata).
-- update_task_ledger REGENERATES on replan (facts-update path and plan-update
-  path) — the refreshed ledger reflects current state, is NOT appended, bumps
-  the revision, preserves created_at, and advances updated_at.
-- created_at is a caller-supplied argument (injectable) — never generated
-  inside the helper.
-- Reuse of the WS1 run-model: DEFAULT_RUNS_DIR / generate_ulid come from
-  pulse_checkpoint (no forked run-dir scheme).
-- Gitignore posture: task-ledger.md stays gitignored under board/runs/.
-"""
 
 from __future__ import annotations
 
@@ -20,21 +5,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Path setup — make scripts/ importable regardless of pytest invocation root.
-# ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import pulse_checkpoint as pc  # noqa: E402
-import task_ledger as tl  # noqa: E402
+import pulse_checkpoint as pc
+import task_ledger as tl
 
-# ---------------------------------------------------------------------------
-# Shared fixtures / helpers
-# ---------------------------------------------------------------------------
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 REPLAN_TS = "2026-07-03T13:30:00Z"
@@ -63,11 +42,6 @@ def _runs_dir(tmp_path: Path) -> Path:
     return tmp_path / "runs"
 
 
-# ---------------------------------------------------------------------------
-# TestReuseRunModel — no forked run-dir scheme / ULID source
-# ---------------------------------------------------------------------------
-
-
 class TestReuseRunModel:
     def test_default_runs_dir_is_pulse_checkpoints(self):
         assert tl.DEFAULT_RUNS_DIR == pc.DEFAULT_RUNS_DIR
@@ -79,11 +53,6 @@ class TestReuseRunModel:
         rd = _runs_dir(tmp_path)
         p = tl.ledger_path(RUN_ID, rd)
         assert p == rd / RUN_ID / "task-ledger.md"
-
-
-# ---------------------------------------------------------------------------
-# TestBuild — initial ledger has facts + plan
-# ---------------------------------------------------------------------------
 
 
 class TestBuild:
@@ -172,11 +141,6 @@ class TestBuild:
         assert data["plan"] == []
 
 
-# ---------------------------------------------------------------------------
-# TestReadRoundTrip
-# ---------------------------------------------------------------------------
-
-
 class TestReadRoundTrip:
     def test_round_trip_preserves_facts_and_plan(self, tmp_path):
         rd = _runs_dir(tmp_path)
@@ -199,7 +163,7 @@ class TestReadRoundTrip:
             goal="g", wave=1, runs_dir=rd,
         )
         first = tl.read_task_ledger(RUN_ID, rd)
-        # Re-render from the parsed structure and re-parse: must be identical.
+
         rerendered = tl.render_task_ledger(
             run_id=first["run_id"], facts=first["facts"], plan=first["plan"],
             created_at=first["created_at"], updated_at=first["updated_at"],
@@ -218,11 +182,6 @@ class TestReadRoundTrip:
         except FileNotFoundError:
             return
         raise AssertionError("expected FileNotFoundError for missing ledger")
-
-
-# ---------------------------------------------------------------------------
-# TestReplanRegeneration — the key acceptance criterion
-# ---------------------------------------------------------------------------
 
 
 class TestReplanRegeneration:
@@ -244,7 +203,7 @@ class TestReplanRegeneration:
         data = tl.read_task_ledger(RUN_ID, rd)
         assert data["facts"].given == ["Revised given after replan"]
         assert data["facts"].known == ["New fact discovered"]
-        # Plan carried forward unchanged (facts-only replan).
+
         assert data["plan"] == _plan()
 
     def test_plan_update_path_regenerates_plan(self, tmp_path):
@@ -259,7 +218,7 @@ class TestReplanRegeneration:
         )
         data = tl.read_task_ledger(RUN_ID, rd)
         assert data["plan"] == new_plan
-        # Facts carried forward unchanged (plan-only replan).
+
         assert data["facts"].as_dict() == _facts().as_dict()
 
     def test_replan_replaces_not_appends(self, tmp_path):
@@ -274,11 +233,11 @@ class TestReplanRegeneration:
             plan=["only step now"], runs_dir=rd,
         )
         text = tl.ledger_path(RUN_ID, rd).read_text(encoding="utf-8")
-        # Exactly one of each section header — not a stale appended second copy.
+
         assert text.count("## Facts") == 1
         assert text.count("## Plan") == 1
         assert text.count("### Given") == 1
-        # Stale content from the first revision is gone.
+
         assert "Ship the task-ledger (P7 outer loop)" not in text
         assert "Add tests/test_task_ledger.py" not in text
         assert "only this now" in text
@@ -295,8 +254,8 @@ class TestReplanRegeneration:
         )
         d1 = tl.read_task_ledger(RUN_ID, rd)
         assert d1["revision"] == 2
-        assert d1["created_at"] == FIXED_TS       # preserved
-        assert d1["updated_at"] == REPLAN_TS      # advanced
+        assert d1["created_at"] == FIXED_TS
+        assert d1["updated_at"] == REPLAN_TS
         tl.update_task_ledger(
             run_id=RUN_ID, created_at=REPLAN_TS2, facts=tl.Facts(), runs_dir=rd,
         )
@@ -316,11 +275,6 @@ class TestReplanRegeneration:
         raise AssertionError("expected FileNotFoundError updating a missing ledger")
 
 
-# ---------------------------------------------------------------------------
-# TestInjectableTimestamp — created_at is always an argument
-# ---------------------------------------------------------------------------
-
-
 class TestInjectableTimestamp:
     def test_build_uses_supplied_created_at_verbatim(self, tmp_path):
         rd = _runs_dir(tmp_path)
@@ -331,24 +285,13 @@ class TestInjectableTimestamp:
         assert tl.read_task_ledger(RUN_ID, rd)["created_at"] == "1999-01-01T00:00:00Z"
 
     def test_no_wallclock_call_in_module_source(self):
-        """A pure helper must never generate its own timestamp (WS1 discipline)."""
         src = (_SCRIPTS / "task_ledger.py").read_text(encoding="utf-8")
         for banned in ("datetime.now", "datetime.utcnow", "time.time("):
             assert banned not in src, f"task_ledger.py must not call {banned}"
 
 
-# ---------------------------------------------------------------------------
-# TestGitignore — task-ledger stays gitignored under board/runs/
-# ---------------------------------------------------------------------------
-
-
 class TestGitignore:
     def test_task_ledger_is_gitignored(self):
-        """task-ledger.md under board/runs/ must be gitignored (ADR-0023 §5).
-
-        It is NOT run-summary.md, so it is covered by ``board/runs/**`` and no
-        un-ignore rule applies — the existing .gitignore already covers it.
-        """
         result = subprocess.run(
             ["git", "check-ignore", "--quiet",
              f"board/runs/{RUN_ID}/task-ledger.md"],

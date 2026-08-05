@@ -1,14 +1,3 @@
-"""Deterministic verifier — cdo / raw-hex-audit.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ raw_hex| - |reported \\ raw_hex|) / |raw_hex| )
-
-The raw-hex set is derived from the SAME style manifest the agent was given —
-doing the design-token governance audit correctly reproduces it — so nothing is
-leaked: the fixture is the input, and grading it is the graded skill.
-Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -26,7 +15,6 @@ def _raw_hex(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _raw_hex(fixtures)
     if not expected:
         return 0.0

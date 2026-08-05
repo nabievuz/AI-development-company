@@ -1,8 +1,3 @@
-"""tests/test_token_usage.py — parse_usage maps agent usage to span token buckets.
-
-R6 source seam (see scripts/token_usage.py). Verifies the honest mapping and the
-Truth-Oath contract: unknown → 0, malformed → raise (never fabricate a cost).
-"""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ import pytest
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
-from token_usage import TokenUsage, parse_usage, usage_token_fields  # noqa: E402
+from token_usage import TokenUsage, parse_usage, usage_token_fields
 
 
 def test_none_and_empty_are_zero() -> None:
@@ -44,8 +39,8 @@ def test_cache_creation_folds_into_input() -> None:
             "cache_read_input_tokens": 200,
         }
     )
-    assert tu.input_tokens == 130  # 100 base + 30 cache-creation (full-priced bucket)
-    assert tu.cached_input_tokens == 200  # cache-read only, billed at the cached rate
+    assert tu.input_tokens == 130
+    assert tu.cached_input_tokens == 200
     assert tu.output_tokens == 50
 
 
@@ -55,13 +50,13 @@ def test_openai_style_aliases() -> None:
 
 
 def test_cached_input_tokens_alias() -> None:
-    # A caller that already speaks the span bucket name maps through unchanged.
+
     tu = parse_usage({"input_tokens": 1, "output_tokens": 1, "cached_input_tokens": 9})
     assert tu.cached_input_tokens == 9
 
 
 def test_present_but_none_alias_falls_through() -> None:
-    # A present-but-null preferred alias must not mask a real later alias (no silent drop).
+
     tu = parse_usage(
         {"cache_read_input_tokens": None, "cached_input_tokens": 200, "input_tokens": 100, "output_tokens": 50}
     )
@@ -107,7 +102,7 @@ def test_usage_token_fields_none_is_zero() -> None:
 
 def test_non_mapping_raises() -> None:
     with pytest.raises(TypeError):
-        parse_usage([1, 2, 3])  # type: ignore[arg-type]
+        parse_usage([1, 2, 3])
 
 
 def test_token_usage_default_is_zero() -> None:

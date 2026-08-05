@@ -1,10 +1,9 @@
-"""Deterministic verifier — frontend-eng-1 / ui-state-bug-classification."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-# id -> accepted synonyms for the correct category.
+
 _ACCEPTED = {
     "s1": {"missing-cleanup", "no-cleanup", "uncleared-interval", "missing-teardown"},
     "s2": {"stale-closure", "stale-state", "missing-dependency", "stale-value"},

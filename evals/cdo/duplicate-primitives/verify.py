@@ -1,15 +1,3 @@
-"""Deterministic verifier — cdo / duplicate-primitives.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ duplicates| - |reported \\ duplicates|) / |duplicates| )
-
-The duplicate set is derived by grouping the SAME component manifest the agent
-was given by its `purpose` field — correctly performing the design-system
-consolidation audit reproduces it, so nothing is leaked: the fixture is the
-input, and grading it is the graded skill. Deterministic (no clock/model). An
-empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -31,7 +19,6 @@ def _duplicates(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _duplicates(fixtures)
     if not expected:
         return 0.0

@@ -1,4 +1,3 @@
-"""Deterministic verifier — sre-eng / alert-threshold."""
 from __future__ import annotations
 
 import json

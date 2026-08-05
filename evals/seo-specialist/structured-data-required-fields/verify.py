@@ -1,14 +1,3 @@
-"""Deterministic verifier — seo-specialist / structured-data-required-fields.
-
-Fractional credit rewards true positives and penalises false positives:
-
-    credit = clamp01( (|reported ∩ invalid| - |reported \\ invalid|) / |invalid| )
-
-The invalid-field set is derived from the SAME JSON-LD block the agent was
-given — a required field is invalid when missing or present-but-empty — so
-nothing is leaked into the prompt: correctly validating the block *is* the
-graded skill. Deterministic (no clock/model). An empty submission scores 0.0.
-"""
 
 from __future__ import annotations
 
@@ -48,7 +37,6 @@ def _invalid_fields(fixtures: Path) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    """Return fractional credit in [0.0, 1.0] for one submission."""
     expected = _invalid_fields(fixtures)
     if not expected:
         return 0.0
