@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -14,9 +15,9 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import check_dependency_graph as dg
+import wave_planner as wp
 from board_lint import parse_frontmatter
 from fanout import emit_fanout, is_actionable
-
 
 _PARENT_META = {
     "author": "senior-pm",
@@ -271,22 +272,58 @@ def test_real_repo_board_passes_after_extension():
     assert dg.main([]) == 0
 
 
-def _skill_flat() -> str:
-    p = REPO_ROOT / ".claude" / "skills" / "daslab-cycle" / "SKILL.md"
-    return " ".join(p.read_text(encoding="utf-8").lower().split())
+_FANOUT_ORG = wp.OrgModel(
+    role_models={"backend-eng-1": "sonnet", "backend-eng-2": "sonnet", "backend-em": "opus"}
+)
 
 
-def test_skill_documents_defer_guard():
-    skill = _skill_flat()
-    assert "defer" in skill, "SKILL.md must document the defer: true guard"
+def _planner_board(board_dir: Path):
+    return wp.load_board_tickets(board_dir)
 
 
-def test_skill_documents_fanout_emission():
-    skill = _skill_flat()
-    assert "fanout" in skill, "SKILL.md must document fanout emission in step 5"
+def test_planner_refuses_a_deferred_ticket(tmp_path):
+    _emit(tmp_path)
+    tickets = _planner_board(tmp_path)
+    deferred = [t for t in tickets if t.deferred]
+    assert deferred, "fanout must emit a deferred synthesis ticket"
+
+    plan = wp.plan_wave(tickets, _FANOUT_ORG, [])
+    dispatched = {pt.ticket_id for pt in plan.dispatch}
+    for ticket in deferred:
+        assert ticket.ticket_id not in dispatched
+    reasons = {r.ticket_id: r.reason for r in plan.refused}
+    for ticket in deferred:
+        assert reasons[ticket.ticket_id] is wp.RefusalReason.DEFERRED
 
 
-def test_skill_keeps_dep_blocked_rule():
-    skill = _skill_flat()
-    assert "dep-blocked" in skill
-    assert "depends_on" in skill
+def test_planner_dispatches_the_synthesis_ticket_once_defer_is_cleared(tmp_path):
+    _emit(tmp_path)
+    synthesis = next(t for t in _planner_board(tmp_path) if t.deferred)
+    cleared = replace(synthesis, deferred=False, depends_on=())
+    plan = wp.plan_wave([cleared], _FANOUT_ORG, [])
+    assert [pt.ticket_id for pt in plan.dispatch] == [cleared.ticket_id]
+
+
+def test_fanout_emission_produces_children_and_a_dependent_synthesis(tmp_path):
+    _emit(tmp_path)
+    fm = _load_all_fm(tmp_path)
+    children = [k for k, v in fm.items() if not v.get("defer")]
+    synthesis = [k for k, v in fm.items() if v.get("defer", "").lower() == "true"]
+    assert len(children) == len(_THREE_CHILDREN)
+    assert len(synthesis) == 1
+    depends = _DAS_RE.findall(fm[synthesis[0]].get("depends_on", ""))
+    assert sorted(depends) == sorted(children)
+
+
+def test_planner_keeps_the_dep_blocked_rule_on_a_fanout_board(tmp_path):
+    _emit(tmp_path)
+    tickets = _planner_board(tmp_path)
+    synthesis = next(t for t in tickets if t.deferred)
+    assert synthesis.depends_on
+
+    undeferred = [replace(t, deferred=False) for t in tickets]
+    plan = wp.plan_wave(undeferred, _FANOUT_ORG, [])
+    refusal = next(r for r in plan.refused if r.ticket_id == synthesis.ticket_id)
+    assert refusal.reason is wp.RefusalReason.UNMET_DEPENDENCY
+    for dep in synthesis.depends_on:
+        assert dep in refusal.detail

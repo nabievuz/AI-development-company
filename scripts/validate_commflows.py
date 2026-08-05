@@ -7,10 +7,12 @@ import re
 import sys
 from pathlib import Path
 
+import org_model
 import yaml
 from _paths import ROOT
 
 ROUTING_MD: Path = ROOT / "board" / "ROUTING.md"
+ROUTING_SOURCE: str = "config/org.yaml"
 SCHEMA_YAML: Path = ROOT / "org" / "schema.daslab.yaml"
 FLOWS_YAML: Path = ROOT / "governance" / "communication-flows.yaml"
 
@@ -31,11 +33,11 @@ class SourceError(RuntimeError):
     pass
 
 
-def _parse_routing() -> tuple[list[str], dict[str, str]]:
+def _parse_legacy_routing_markdown(path: Path) -> tuple[list[str], dict[str, str]]:
     try:
-        text = ROUTING_MD.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise SourceError(f"cannot read {ROUTING_MD}: {exc}") from exc
+        raise SourceError(f"cannot read {path}: {exc}") from exc
 
     order: list[str] = []
     name_to_key: dict[str, str] = {}
@@ -52,7 +54,7 @@ def _parse_routing() -> tuple[list[str], dict[str, str]]:
         reviewer_name[key] = m.group("reviewer").strip()
 
     if not order:
-        raise SourceError(f"no role rows parsed from {ROUTING_MD}")
+        raise SourceError(f"no role rows parsed from {path}")
 
     manager: dict[str, str] = {}
     for key in order:
@@ -64,9 +66,29 @@ def _parse_routing() -> tuple[list[str], dict[str, str]]:
         if mgr_key is None:
             raise SourceError(
                 f"reviewer {rev!r} for role {key!r} is not a known display name "
-                f"in {ROUTING_MD}"
+                f"in {path}"
             )
         manager[key] = mgr_key
+    return order, manager
+
+
+def _parse_routing() -> tuple[list[str], dict[str, str]]:
+    if ROUTING_MD.is_file():
+        return _parse_legacy_routing_markdown(ROUTING_MD)
+    try:
+        table = org_model.routing_table()
+    except org_model.OrgConfigError as exc:
+        raise SourceError(f"cannot read the org routing table: {exc}") from exc
+    if not table:
+        raise SourceError(f"{ROUTING_SOURCE} declares no roles")
+    order = [r.role for r in table]
+    manager = {r.role: (r.reviewer or "") for r in table}
+    for key, mgr in manager.items():
+        if mgr and mgr not in manager:
+            raise SourceError(
+                f"reviewer {mgr!r} for role {key!r} is not a known role key "
+                f"in {ROUTING_SOURCE}"
+            )
     return order, manager
 
 
@@ -99,19 +121,11 @@ def derive_expected_edges() -> list[Edge]:
 def emit_yaml() -> str:
     ladder = _parse_escalation_ladder()
     edges = derive_expected_edges()
+    if FOUNDER not in ladder or ladder[-1] != FOUNDER:
+        raise SourceError(
+            f"{FOUNDER!r} must be the terminal escalation rung, got {ladder}"
+        )
     lines: list[str] = [
-        "# governance/communication-flows.yaml",
-        "# DERIVED + VALIDATABLE view of the org communication graph (ADR-0026).",
-        "# Every edge is a (sender -> receiver) ordered pair mechanically derived",
-        "# from board/ROUTING.md reporting lines; NEVER hand-author new topology",
-        "# here. Regenerate with:  python3 scripts/validate_commflows.py --emit",
-        "# Validated by scripts/validate_commflows.py (WS2 O2-T02, DAS-1465).",
-        "#",
-        "# founder is an EXTERNAL human gate above the chairman, not a routing",
-        f"# node: the escalation ladder is {ladder!r} but its terminal 'founder'",
-        "# rung produces NO fleet edge (ADR-0026 section 3). consult edges are",
-        "# deferred to a future kind (ADR-0026 Consequences); v1 is delegation +",
-        "# escalation only.",
         "version: 1",
         "flows:",
     ]
@@ -191,13 +205,13 @@ def validate(path: Path) -> list[str]:
 
     for sender, receiver, _kind, _source in file_edges:
         if sender not in fleet:
-            errors.append(f"dangling sender role {sender!r} (not in ROUTING.md)")
+            errors.append(f"dangling sender role {sender!r} (not in {ROUTING_SOURCE})")
         if receiver not in fleet:
-            errors.append(f"dangling receiver role {receiver!r} (not in ROUTING.md)")
+            errors.append(f"dangling receiver role {receiver!r} (not in {ROUTING_SOURCE})")
 
     invented = file_edges - expected
     for edge in sorted(invented):
-        errors.append(f"invented edge (no ROUTING.md reporting line): {edge}")
+        errors.append(f"invented edge (no reporting line in {ROUTING_SOURCE}): {edge}")
     missing = expected - file_edges
     for edge in sorted(missing):
         errors.append(f"missing derived edge: {edge}")
@@ -217,7 +231,7 @@ def validate(path: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="validate_commflows.py", description='validate_commflows.py — shape + derivation validator for communication-flows.yaml.\n\n`governance/communication-flows.yaml` is a **derived, validatable** projection of\nthe org communication graph (ADR-0026). Every edge MUST trace to one of the\nauthoritative SSOTs; no topology is authored by hand. This script is the small\nshape/derivation validator that ADR-0026 §Enforcement calls the contract for the\nauthored file (WS2 O2-T02, ticket DAS-1465). It is deliberately scoped to the\n*shape* of the file and its round-trip derivation from `board/ROUTING.md`; the\nfuller drift diff-check (`check_comm_flows.py`) is a later ticket (WS2 O2-T03).\n\nFile shape (ADR-0026 §1)\n------------------------\n    version: <int >= 1>\n    flows:\n      - sender:   <fleet role key from board/ROUTING.md>\n        receiver: <fleet role key from board/ROUTING.md>\n        kind:     delegation | escalation\n        source:   routing.reports_to | schema.escalation\n\nClosed enums\n------------\n* ``kind``   ∈ {``delegation``, ``escalation``} exactly. ``delegation`` runs DOWN\n  the reporting chain (manager → direct report); ``escalation`` runs UP it\n  (report → manager). RACI *consult* edges are **out of scope for v1** per\n  ADR-0026 §Consequences — a possible future ``kind``, not emitted now.\n* ``source`` ∈ {``routing.reports_to``, ``schema.escalation``}.\n* ``sender`` / ``receiver`` MUST be fleet role keys present in ``board/ROUTING.md``.\n  The string ``founder`` is **forbidden** as a sender or receiver: the founder is\n  an external human gate above the chairman, not a routing node (ADR-0026 §3).\n\nDerivation rules enforced (ADR-0026 §1 rules 1–4)\n-------------------------------------------------\n1. Role-node closure — every sender/receiver is a fleet role in ROUTING.md;\n   ``founder`` never appears.\n2. Reporting-line completeness + soundness — for each ROUTING.md row\n   ``report → manager`` whose reviewer is a fleet role (not ``—``), the file\n   contains EXACTLY the two edges\n   ``delegation(manager → report)`` and ``escalation(report → manager)``,\n   both ``source: routing.reports_to`` — no more, no fewer, no duplicates.\n   Roles whose reviewer is ``—`` (``chairman``, ``board-member``) have no upward\n   fleet edge; the chain terminates at the top of the fleet.\n3. Escalation-ladder consistency — the ``schema.routing.escalation`` ladder is\n   present and terminates in the external ``founder`` rung; no fleet edge is\n   emitted for that rung.\n4. No invented topology — the authored edge set equals the set derived purely\n   from the SSOTs. Any extra or missing edge is an error.\n\nUsage\n-----\n    python3 scripts/validate_commflows.py            # validate the authored file\n    python3 scripts/validate_commflows.py --emit     # print the canonical YAML\n    python3 scripts/validate_commflows.py --file P    # validate an explicit path\n\nExit codes\n----------\n0  the file is a sound derived projection of the SSOTs\n1  a validation error (bad shape, bad enum, dangling role, invented/missing edge)\n2  usage / environment error (a source SSOT is unreadable)')
+    parser = argparse.ArgumentParser(prog="validate_commflows.py", description='validate_commflows.py — shape + derivation validator for communication-flows.yaml')
     parser.add_argument(
         "--emit",
         action="store_true",
@@ -247,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         f"validate_commflows: OK — {args.file.name} is a sound derived "
-        "projection of ROUTING.md (delegation + escalation edges)."
+        f"projection of {ROUTING_SOURCE} (delegation + escalation edges)."
     )
     return 0
 

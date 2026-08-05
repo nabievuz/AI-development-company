@@ -12,7 +12,6 @@ from pathlib import Path
 import yaml
 from _paths import ROOT
 
-
 _FLOWS_DEFAULT: Path = ROOT / "governance" / "communication-flows.yaml"
 _TICKETS_DEFAULT: Path = ROOT / "board" / "tickets"
 
@@ -126,7 +125,7 @@ def scan_tickets(tickets_dir: Path) -> tuple[list[tuple[str, tuple[str, str]]], 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="check_comm_flows",
-        description='check_comm_flows.py — reject any ticket/dispatch referencing an undeclared route.\n\n`governance/communication-flows.yaml` is the single source of truth for the closed\nset of allowed ``(sender, receiver)`` communication routes (ADR-0026, authored and\nshape-validated by DAS-1465 / `scripts/validate_commflows.py`). This validator is\nthe *enforcement* half of the LOOM fabric (WS2 O2-T03, DAS-1466 §5 row 9): it FAILS\n(exit 1) any ticket or dispatch that references a ``(sender, receiver)`` pair which\nis **not** declared in that file. The structural half — compiling each role\'s allowed\noutbound routes into its `.claude/agents/<role>.md` shim so an undeclared route is\nunrepresentable — lives in `scripts/gen_subagents.py`; this script catches anything\nthat slips past the structure.\n\nWhat counts as a route reference\n--------------------------------\n* **Ticket** — a `routes:` frontmatter field listing one or more route tokens\n  (``sender>receiver`` / ``sender->receiver`` / ``sender→receiver``, a single token\n  or a bracketed/comma list). Tickets that declare no `routes:` field reference no\n  route and are trivially clean — so the whole board passes today.\n* **Dispatch** — an explicit ``--route sender>receiver`` (repeatable) and/or a\n  ``--dispatch FILE.json`` holding a JSON list of ``{"sender": ..., "receiver": ...}``\n  records. The orchestrator calls this before wiring a cross-role message.\n\nAn undeclared pair is one absent from the flows file — including a pair to an unknown\nrole. `kind` (delegation/escalation) is *not* part of the key: a route is the ordered\npair, and being declared in either direction is what this validator checks.\n\nUsage::\n\n    python3 scripts/check_comm_flows.py                      # scan board/tickets/*.md\n    python3 scripts/check_comm_flows.py --route backend-em>cto\n    python3 scripts/check_comm_flows.py --dispatch wave.json\n    python3 scripts/check_comm_flows.py --flows F --tickets T\n\n    --flows    PATH  Path to governance/communication-flows.yaml (default: auto).\n    --tickets  PATH  Path to board/tickets/ directory (default: auto). Scanned only\n                     when no --route/--dispatch is given (ticket mode vs dispatch mode).\n    --route    TOK   A route token to validate; repeatable (dispatch mode).\n    --dispatch PATH  JSON file of [{"sender","receiver"}, ...] records (dispatch mode).\n\nExit codes: 0 = every referenced route is declared, 1 = an undeclared route was\nreferenced, 2 = usage / IO error (flows file unreadable, bad --route token, …).',
+        description='check_comm_flows.py — reject any ticket/dispatch referencing an undeclared route',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(

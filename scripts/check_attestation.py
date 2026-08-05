@@ -10,7 +10,6 @@ from pathlib import Path
 import snapshot_evidence
 import wave_runner
 
-
 _METRICS_FIELDS = ("outcome", "model", "merged_pr", "ci_status", "t7_pass", "t7_score")
 
 

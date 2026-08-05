@@ -10,7 +10,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 BANNED: list[tuple[str, list[str]]] = [
     ("langgraph", ["langgraph"]),
     ("agent-framework", ["agent_framework", "agentframework"]),

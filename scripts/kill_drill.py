@@ -13,7 +13,6 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
@@ -21,7 +20,6 @@ if str(_SCRIPTS) not in sys.path:
 import pulse_checkpoint as pc
 import resume_fork as rf
 import wave_runner as wr
-
 
 _BASE = datetime(2026, 7, 3, 0, 0, 0, tzinfo=UTC)
 _WAVE_STRIDE = 1000
@@ -69,29 +67,24 @@ def _drive_wave(
         tickets=[wr.TicketPlan(t, role=_ROLE, model=_MODEL, from_status=from_status) for t in tickets],
         anchor_ticket=tickets[0],
     )
-    results = wr.WaveResults(
-        tickets=[
-            wr.TicketResult(
-                ticket_id=t,
-                outcome=outcome,
-                merged_pr=True,
-                ci_status="green",
-                t7_pass=True,
-                t7_score=0.95,
-                start=ts,
-                end=ts,
-                final_status=final_status,
-                output=f"kill-drill {t}",
-            )
-            for t in tickets
-        ],
-        request_satisfied=True,
-        in_loop=False,
-        progress_being_made=True,
-    )
+    ticket_results = [
+        wr.TicketResult(
+            ticket_id=t,
+            outcome=outcome,
+            merged_pr=True,
+            ci_status="green",
+            t7_pass=True,
+            t7_score=0.95,
+            start=ts,
+            end=ts,
+            final_status=final_status,
+            output=f"kill-drill {t}",
+        )
+        for t in tickets
+    ]
     return wr.run_wave(
         plan,
-        results,
+        wr.replay_executor(ticket_results),
         created_at=ts,
         store_path=events_path,
         runs_dir=runs_dir,

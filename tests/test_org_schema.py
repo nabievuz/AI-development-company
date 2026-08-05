@@ -36,10 +36,17 @@ def test_committed_generated_matches_schema():
     assert committed == gen_org.render(_schema())
 
 
-def test_generated_module_banner_is_do_not_edit():
-    committed = gen_org.GENERATED_PATH.read_text(encoding="utf-8")
-    assert "DO NOT EDIT" in committed
-    assert "# ruff: noqa" in committed
+def test_generated_module_declares_itself_generated():
+    import _org_generated
+
+    assert _org_generated.HAND_EDITS_ARE_DRIFT is True
+    assert _org_generated.GENERATED_BY == "scripts/gen_org.py"
+    assert _org_generated.GENERATED_FROM == "org/schema.daslab.yaml"
+    assert _org_generated.REGENERATE_COMMAND == "python3 scripts/gen_org.py"
+    assert _org_generated.DRIFT_GATE == "scripts/check_org_drift.py"
+    assert Path(ROOT / _org_generated.GENERATED_BY).is_file()
+    assert Path(ROOT / _org_generated.GENERATED_FROM).is_file()
+    assert Path(ROOT / _org_generated.DRIFT_GATE).is_file()
 
 
 def test_generated_never_auto_approve_matches_schema_and_config():

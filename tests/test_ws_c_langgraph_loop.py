@@ -108,7 +108,7 @@ def test_sc001a_resume_preserves_completed_work_and_reaches_same_terminal_state_
 
 
     plan1, results1 = _plan(run_id, 1, "DAS-9201"), _results("DAS-9201")
-    att1 = lg.commit_wave(plan1, results1, created_at=_WAVE_TS, checkpointer=ckpt, **w1_kwargs)
+    att1 = lg.commit_wave(plan1, wr.replay_executor(results1.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **w1_kwargs)
     assert att1 is not None
     after_w1_lines = ledger_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(after_w1_lines) == 1
@@ -117,7 +117,7 @@ def test_sc001a_resume_preserves_completed_work_and_reaches_same_terminal_state_
     assert wr.verify_wave_ledger(ledger_path, attest_dir=attest_dir) == []
 
 
-    att1_resumed = lg.commit_wave(plan1, results1, created_at=_WAVE_TS, checkpointer=ckpt, **w1_kwargs)
+    att1_resumed = lg.commit_wave(plan1, wr.replay_executor(results1.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **w1_kwargs)
     assert att1_resumed is att1
     assert ledger_path.read_text(encoding="utf-8").strip().splitlines() == after_w1_lines
 
@@ -125,7 +125,7 @@ def test_sc001a_resume_preserves_completed_work_and_reaches_same_terminal_state_
     plan2, results2 = _plan(run_id, 2, "DAS-9202"), _results("DAS-9202")
     w2_kwargs = dict(w1_kwargs)
     _write_ticket(w1_kwargs["tickets_dir"], "DAS-9202", "backend-eng-1")
-    att2 = lg.commit_wave(plan2, results2, created_at=_WAVE_TS, checkpointer=ckpt, **w2_kwargs)
+    att2 = lg.commit_wave(plan2, wr.replay_executor(results2.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **w2_kwargs)
     assert att2 is not None
     resumed_final_lines = ledger_path.read_text(encoding="utf-8").strip().splitlines()
     assert len(resumed_final_lines) == 2
@@ -136,8 +136,8 @@ def test_sc001a_resume_preserves_completed_work_and_reaches_same_terminal_state_
     c1_kwargs = _run_wave_kwargs(control_dir, "DAS-9201")
     c2_kwargs = dict(c1_kwargs)
     _write_ticket(c1_kwargs["tickets_dir"], "DAS-9202", "backend-eng-1")
-    lg.commit_wave(plan1, results1, created_at=_WAVE_TS, checkpointer=control_ckpt, **c1_kwargs)
-    lg.commit_wave(plan2, results2, created_at=_WAVE_TS, checkpointer=control_ckpt, **c2_kwargs)
+    lg.commit_wave(plan1, wr.replay_executor(results1.tickets), created_at=_WAVE_TS, checkpointer=control_ckpt, **c1_kwargs)
+    lg.commit_wave(plan2, wr.replay_executor(results2.tickets), created_at=_WAVE_TS, checkpointer=control_ckpt, **c2_kwargs)
     control_ledger = c1_kwargs["ledger_path"]
     control_lines = control_ledger.read_text(encoding="utf-8").strip().splitlines()
 
@@ -277,14 +277,14 @@ def test_sc004a_flag_off_wave_is_byte_identical_to_a_pre_merge_wave(tmp_path: Pa
     pre_kwargs = _run_wave_kwargs(pre_merge_dir, "DAS-9220")
     import wave_runner as _wr
 
-    _wr.run_wave(plan, results, created_at=_WAVE_TS, **pre_kwargs)
+    _wr.run_wave(plan, _wr.replay_executor(results.tickets), created_at=_WAVE_TS, **pre_kwargs)
     pre_ledger = pre_kwargs["ledger_path"].read_text(encoding="utf-8").strip()
 
 
     post_merge_dir = tmp_path / "post-merge"
     post_kwargs = _run_wave_kwargs(post_merge_dir, "DAS-9220")
     ckpt = lg.RunIdCheckpointer()
-    lg.commit_wave(plan, results, created_at=_WAVE_TS, checkpointer=ckpt, **post_kwargs)
+    lg.commit_wave(plan, _wr.replay_executor(results.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **post_kwargs)
     post_ledger = post_kwargs["ledger_path"].read_text(encoding="utf-8").strip()
 
     assert post_ledger == pre_ledger

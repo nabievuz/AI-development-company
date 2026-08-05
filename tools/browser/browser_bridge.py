@@ -11,7 +11,6 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import action_gate
 
-
 _MCP_BRIDGES = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mcp_bridges"
 )

@@ -5,7 +5,6 @@ import sys
 import textwrap
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
@@ -17,7 +16,6 @@ from board_lint import (
     same_zone_pair_allowed,
     zone_wave_conflicts,
 )
-
 
 _KNOWN_ROLES = frozenset(
     {

@@ -7,12 +7,16 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import e2e_run
+import gateway_compile as gc
+import stage_gate as sg
 
 SAMPLE_PACK = REPO_ROOT / "evals" / "e2e" / "sample-pack"
 REAL_RUNS_DIR = REPO_ROOT / "board" / "runs"
@@ -25,12 +29,6 @@ def _copy_pack(tmp_path: Path) -> Path:
     return dst
 
 
-def _extract_inlined_evidence(summary_text: str) -> dict:
-    assert "```json" in summary_text, "run-summary.md has no inlined ```json evidence block"
-    block = summary_text.split("```json", 1)[1].split("```", 1)[0].strip()
-    return json.loads(block)
-
-
 def _snapshot_tree(root: Path) -> dict[str, bytes]:
     if not root.exists():
         return {}
@@ -41,142 +39,163 @@ def _snapshot_tree(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_e2e_run_drives_sample_pack_end_to_end(tmp_path: Path) -> None:
+def _stage_ticket(board: Path, ticket_id: str, stage: int, status: str = "todo") -> None:
+    board.mkdir(parents=True, exist_ok=True)
+    approval_line = "approval: human:founder\n" if stage == 5 else ""
+    (board / f"{ticket_id}-t.md").write_text(
+        "---\n"
+        f"id: {ticket_id}\n"
+        f"title: Stage {stage} ticket\n"
+        f"status: {status}\n"
+        "goal: acme-goal\n"
+        f"stage: GATE-{stage}\n"
+        f"{approval_line}"
+        "assignee: backend-eng-1\n"
+        "author: cto\ndept: engineering\npriority: p1\n"
+        "---\n\nBody.\n",
+        encoding="utf-8",
+    )
+
+
+def _six_stage_board_without_gate5_approval(tmp_path: Path) -> Path:
+    board = tmp_path / "board-tickets"
+    for stage in range(1, 7):
+        _stage_ticket(board, f"DAS-40{stage:02d}", stage)
+    gate5 = board / "DAS-4005-t.md"
+    gate5.write_text(
+        gate5.read_text(encoding="utf-8").replace("approval: human:founder\n", ""),
+        encoding="utf-8",
+    )
+    return board
+
+
+def _six_stage_board(tmp_path: Path) -> Path:
+    board = tmp_path / "board-tickets"
+    for stage in range(1, 7):
+        _stage_ticket(board, f"DAS-40{stage:02d}", stage)
+    return board
+
+
+def test_committed_sample_pack_no_longer_compiles(tmp_path: Path) -> None:
+    pack = _copy_pack(tmp_path)
+    result = gc.run_pipeline(pack, projects_dir=tmp_path / "projects")
+    assert result.ok is False
+    assert result.rejected_stage == "validate"
+    assert any("docs/" in str(e) for e in result.errors)
+
+
+def test_driver_refuses_an_incomplete_pack_instead_of_claiming_a_pass(tmp_path: Path) -> None:
     pack = _copy_pack(tmp_path)
     runs_dir = tmp_path / "runs"
-
-    summary = e2e_run.e2e_run(pack, run_id="e2e-test-1", runs_dir=runs_dir)
-
-
-    assert summary["ticket_count"] >= 25
-    assert summary["ticket_count"] == 28
-    assert summary["pack"] == "acme-tasks"
+    with pytest.raises(RuntimeError) as exc:
+        e2e_run.e2e_run(pack, run_id="e2e-test-1", runs_dir=runs_dir)
+    assert "compile rejected" in str(exc.value)
+    assert not (runs_dir / "e2e-test-1" / "run-summary.md").exists()
 
 
-    assert summary["gates_walked"] == [1, 2, 3, 4, 5, 6]
-    assert summary["violations"] == []
-
-
-    assert summary["health_check"] is True
-    assert summary["result"] == "PASS"
-
-
-def test_run_summary_written_with_inlined_evidence(tmp_path: Path) -> None:
+def test_cli_exits_2_and_writes_no_summary_for_an_uncompilable_pack(tmp_path: Path, capsys) -> None:
     pack = _copy_pack(tmp_path)
     runs_dir = tmp_path / "runs"
-
-    summary = e2e_run.e2e_run(pack, run_id="e2e-test-2", runs_dir=runs_dir)
-
-    summary_path = Path(summary["run_summary_path"])
-    assert summary_path == runs_dir / "e2e-test-2" / "run-summary.md"
-    assert summary_path.is_file()
-
-    text = summary_path.read_text(encoding="utf-8")
-
-    evidence = _extract_inlined_evidence(text)
-    assert evidence["run_id"] == "e2e-test-2"
-    assert evidence["pack"] == "acme-tasks"
-    assert evidence["result"] == "PASS"
-    assert evidence["compiled"]["ticket_count"] == 28
-    assert evidence["compiled"]["zero_hand_written"] is True
-    assert evidence["compiled"]["hand_written_tickets"] == []
-    assert evidence["gate_walk"]["gates_walked"] == [1, 2, 3, 4, 5, 6]
-    assert evidence["gate_walk"]["all_goals_all_gates_done"] is True
-    assert evidence["gate_walk"]["violations"] == []
+    rc = e2e_run.main([str(pack), "--run-id", "e2e-cli-1", "--runs-dir", str(runs_dir), "--json"])
+    assert rc == 2
+    assert not (runs_dir / "e2e-cli-1").exists()
+    assert "ERROR" in capsys.readouterr().err
 
 
-    assert evidence["gate_walk"]["negative_probe"]["fired"] is True
-    assert evidence["gate_walk"]["negative_probe"]["forced_stage"] >= 2
-
-
-    for stages in evidence["gate_walk"]["gate_states"].values():
-        assert {stages[str(n)] for n in range(1, 7)} == {"done"}
-
-
-    assert "GATE-1..GATE-6" in text
-
-
-def test_d5_health_check_recorded_honestly(tmp_path: Path) -> None:
-    pack = _copy_pack(tmp_path)
-    runs_dir = tmp_path / "runs"
-
-    e2e_run.e2e_run(pack, run_id="e2e-test-3", runs_dir=runs_dir)
-    text = (runs_dir / "e2e-test-3" / "run-summary.md").read_text(encoding="utf-8")
-    health = _extract_inlined_evidence(text)["d5_health_check"]
-
-    assert health["passed"] is True
-
-    assert health["board_lint"]["clean"] is True
-    assert health["board_lint"]["violations"] == []
-    assert health["board_lint"]["tickets"] == 28
-
-    assert health["workspace_created"] is True
-    assert health["probe"]["exit_ok"] is True
-    assert health["probe"]["returncode"] == 0
-
-    assert health["pack_tests"]["present"] is False
-    assert health["pack_tests"]["passed"] is None
-
-    checklist = health["checklist"]
-    assert len(checklist) == 6
-    assert all(item["ok"] in (True, None) for item in checklist)
-    assert any("board_lint on the delivered board" in item["label"] for item in checklist)
-    assert any("gate-walk" in item["label"] for item in checklist)
-    assert any("negative probe" in item["label"] for item in checklist)
-
-    assert health["negative_probe"]["fired"] is True
-
-
-    assert health["probe"]["ephemeral"] is True
-    assert "(delivered)" not in " ".join(health["probe"]["command"])
-
-
-    assert "- [ ] pack-shipped tests: pack ships no runnable test suite" in text
-
-
-def test_workspace_gc_leaves_only_run_summary(tmp_path: Path) -> None:
-    pack = _copy_pack(tmp_path)
-    runs_dir = tmp_path / "runs"
-
-    e2e_run.e2e_run(pack, run_id="e2e-test-4", runs_dir=runs_dir)
-
-    run_dir = runs_dir / "e2e-test-4"
-    assert (run_dir / "run-summary.md").is_file()
-
-    assert not (run_dir / "workspace").exists()
+def test_missing_pack_dir_exits_2(tmp_path: Path) -> None:
+    assert e2e_run.main([str(tmp_path / "nope")]) == 2
 
 
 def test_driver_never_writes_real_board_runs_or_evals(tmp_path: Path) -> None:
     pack = _copy_pack(tmp_path)
-    runs_dir = tmp_path / "runs"
-
     before_runs = sorted(p.name for p in REAL_RUNS_DIR.iterdir()) if REAL_RUNS_DIR.exists() else []
     before_e2e = _snapshot_tree(E2E_DIR)
 
-    e2e_run.e2e_run(pack, run_id="e2e-test-5", runs_dir=runs_dir)
+    e2e_run.main([str(pack), "--run-id", "e2e-test-5", "--runs-dir", str(tmp_path / "runs")])
 
     after_runs = sorted(p.name for p in REAL_RUNS_DIR.iterdir()) if REAL_RUNS_DIR.exists() else []
-    after_e2e = _snapshot_tree(E2E_DIR)
-
-
     assert before_runs == after_runs
-
-    assert before_e2e == after_e2e
-
+    assert before_e2e == _snapshot_tree(E2E_DIR)
     assert not (SAMPLE_PACK / "board-tickets").exists()
 
 
-    assert (runs_dir / "e2e-test-5" / "run-summary.md").is_file()
+def test_simulated_gate_walk_advances_every_stage_in_order(tmp_path: Path) -> None:
+    board = _six_stage_board(tmp_path)
+    walk = e2e_run._simulate_gate_walk(board)
+
+    assert walk["gates_walked"] == [1, 2, 3, 4, 5, 6]
+    assert walk["violations"] == []
+    assert walk["all_goals_all_gates_done"] is True
+    assert walk["simulated_status_rewrites"] == 6
+    assert [s["tickets_advanced"] for s in walk["per_stage"]] == [1, 1, 1, 1, 1, 1]
 
 
-def test_cli_returns_0_and_writes_summary(tmp_path: Path, capsys) -> None:
-    pack = _copy_pack(tmp_path)
-    runs_dir = tmp_path / "runs"
+def test_simulated_gate_walk_refuses_a_gate5_close_with_no_human_approval(
+    tmp_path: Path,
+) -> None:
+    board = _six_stage_board_without_gate5_approval(tmp_path)
+    walk = e2e_run._simulate_gate_walk(board)
+    assert any(
+        "DAS-4005" in v and "no named human approval" in v for v in walk["violations"]
+    )
 
-    rc = e2e_run.main([str(pack), "--run-id", "e2e-cli-1", "--runs-dir", str(runs_dir), "--json"])
-    assert rc == 0
 
-    out = json.loads(capsys.readouterr().out)
-    assert out["result"] == "PASS"
-    assert out["run_id"] == "e2e-cli-1"
-    assert Path(out["run_summary_path"]).is_file()
+def test_simulated_gate_walk_declares_what_it_does_not_prove(tmp_path: Path) -> None:
+    walk = e2e_run._simulate_gate_walk(_six_stage_board(tmp_path))
+    assert walk["proves"] == e2e_run.GATE_WALK_PROVES
+    assert walk["does_not_prove"] == e2e_run.GATE_WALK_DOES_NOT_PROVE
+    assert "NOT delivery evidence" in walk["does_not_prove"]
+
+
+def test_negative_probe_fires_on_a_forced_out_of_order_state(tmp_path: Path) -> None:
+    board = _six_stage_board(tmp_path)
+    probe = e2e_run._negative_gate_probe(board)
+    assert probe["fired"] is True
+    assert probe["forced_stage"] >= 2
+    assert probe["sample_violation"]
+
+
+def test_simulated_status_rewrite_only_touches_the_status_field(tmp_path: Path) -> None:
+    board = _six_stage_board(tmp_path)
+    path = board / "DAS-4003-t.md"
+    before = path.read_text(encoding="utf-8")
+    e2e_run._simulate_status_done(path)
+    after = path.read_text(encoding="utf-8")
+    assert before.replace("status: todo", "status: done") == after
+    assert sg.stage_of({"stage": "GATE-3"}) == 3
+
+
+def test_run_summary_is_json_only_and_marked_not_delivery_evidence(tmp_path: Path) -> None:
+    evidence = {"run_id": "e2e-json", "checks": e2e_run.CHECKS_GREEN, "gate_walk": {}}
+    path = e2e_run._write_run_summary(tmp_path, "e2e-json", evidence)
+
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("```json")
+    document = json.loads(text.split("```json", 1)[1].rsplit("```", 1)[0])
+    assert document["delivery_evidence"] is False
+    assert document["evidence_class"] == e2e_run.EVIDENCE_CLASS
+    assert document["kind"] == "e2e-gate-checker-simulation"
+    assert "PASS" not in text
+    assert "D-5 deploy" not in text
+
+
+def test_render_never_presents_the_run_as_delivery_evidence() -> None:
+    rendered = e2e_run._render(
+        {
+            "pack": "acme-tasks",
+            "run_id": "e2e-x",
+            "ticket_count": 3,
+            "gates_walked": [1, 2, 3, 4, 5, 6],
+            "violations": [],
+            "health_check": True,
+            "run_summary_path": "/tmp/run-summary.md",
+            "checks": e2e_run.CHECKS_GREEN,
+        }
+    )
+    assert "NOT DELIVERY EVIDENCE" in rendered
+    assert "checks-green" in rendered
+    assert "RESULT: PASS" not in rendered
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-q"]))

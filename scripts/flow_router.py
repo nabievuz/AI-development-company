@@ -8,7 +8,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-
 DISPATCH = "dispatch"
 VALIDATE = "validate"
 IDLE = "idle"

@@ -11,7 +11,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
@@ -19,8 +18,8 @@ if str(_HERE) not in sys.path:
 import check_gates as ck
 import check_never_auto_approve as cna
 
-
 ADVANCED_STATUSES: frozenset[str] = frozenset({"in_progress", "in_review", "done"})
+TERMINAL_STATUS: str = "done"
 
 GATE5_CATEGORY = "gate5_deployment"
 
@@ -171,6 +170,12 @@ def production_deploy_violations(
                 f"{tid}: production-deploy ticket (gate5_deployment) is auto-approved — "
                 f"GATE-5 is never-auto-approve; a human must sign the deployment gate (QONUN-5)"
             )
+        elif status == TERMINAL_STATUS and cna.lacks_human_approval(fm):
+            violations.append(
+                f"{tid}: production-deploy ticket (gate5_deployment) is '{status}' but carries "
+                f"no named human approval — GATE-5 is never-auto-approve and absence fails "
+                f"CLOSED; a human must sign the deployment gate (QONUN-5)"
+            )
 
 
         if stage_of(fm) == 5:
@@ -298,7 +303,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws6-eval",
                 "command": ["python3", "scripts/agent_eval.py"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/golden-eval.md",
+                "config": "governance/schemas/eval-harness.yaml",
                 "safety": "read-only scorecard; tier/model changes need GATE-6 human sign-off",
             },
             {
@@ -306,7 +311,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws4-scheduled",
                 "command": ["prune_memory"],
                 "cadence": "weekly",
-                "config": "docs/06-maintenance/memory-hygiene.md",
+                "config": "config/memory_governance.yaml",
                 "safety": "ArcRift prune of stale/incorrect memories (Persistent Memory Law)",
             },
             {
@@ -314,7 +319,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-a-eval",
                 "command": ["python3", "scripts/ws_a_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-a-tool-edge-health.md",
+                "config": "board/.tool-allowlist.json",
                 "safety": "read-only allow-list-drift + redaction probe (ADR-0033 GATE-6, "
                           "DAS-1551); a non-zero exit is an ALERT routed to a follow-up "
                           "ticket, never silently retried or auto-fixed",
@@ -324,7 +329,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-b-eval",
                 "command": ["python3", "scripts/ws_b_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-b-runner-health.md",
+                "config": "config/budgets.yaml",
                 "safety": "read-only dispatch-equivalence drift (single run_wave() caller + "
                           "ledger reconciliation) + budget-ceiling drift (mustaqil: SI-5 caps "
                           "and metered_overflow: false intact) (ADR-0034 GATE-6, DAS-1559); a "
@@ -336,7 +341,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-d-eval",
                 "command": ["python3", "scripts/ws_d_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-d-lens-health.md",
+                "config": "config/tenant_boundary.yaml",
                 "safety": "read-only exporter redaction-on-export probe + in-tenant target "
                           "check (langfuse_observability) + promptfoo/AgentShield/Presidio "
                           "allow-list drift (ADR-0036/ADR-0033 GATE-6, DAS-1577); a non-zero "
@@ -348,7 +353,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-c-eval",
                 "command": ["python3", "scripts/ws_c_loop_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-c-loop-health.md",
+                "config": "config/features.yaml",
                 "safety": "read-only board-canonical reconcile drift (checkpoint never a "
                           "tiebreaker) + sandbox fail-closed-wall drift (host/cross-task/"
                           "unscoped-credential/egress) + import-ban carve-out drift "
@@ -361,7 +366,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-e-eval",
                 "command": ["python3", "scripts/ws_e_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-e-tenant-health.md",
+                "config": "config/rbac.yaml",
                 "safety": "read-only RBAC-grant drift (gate.approve/config.edit.security "
                           "stay founder-only; agent:* still denied gate.approve) + gateway "
                           "TN-1 host-pin drift (a rogue role=model host stays refused) + "
@@ -376,7 +381,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-h-eval",
                 "command": ["python3", "scripts/ws_h_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-h-control-health.md",
+                "config": "config/features.yaml",
                 "safety": "read-only RBAC-grant drift (gate.approve/run.trigger stay "
                           "founder-only; agent:* still denied both) + audit-redaction "
                           "drift (the ADR-0012 scrubber still redacts a secret-shaped "
@@ -393,7 +398,7 @@ def maintenance_schedule() -> dict:
                 "kind": "ws-a2a-eval",
                 "command": ["python3", "scripts/ws_a2a_health_check.py", "--json"],
                 "cadence": "daily",
-                "config": "docs/06-maintenance/ws-a2a-outbound-health.md",
+                "config": "config/tenant_boundary.yaml",
                 "safety": "read-only in-tenant boundary drift (check_in_tenant.py, SC-003) "
                           "+ flag/publish-state drift (a2a_outbound vs the newest logged "
                           "a2a_publish event in board/.events.jsonl; flag OFF with zero "
@@ -445,7 +450,7 @@ def _as_dict(walk: GateWalk) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="stage_gate.py — machine-enforced stage-gated delivery (P22 / DAS-1494).\n\nDasLab already mandates the six-stage AI-agent lifecycle\n(``Planning → Design → Development → Testing → Deployment → Maintenance`` —\n``governance/policies/ai-agent-lifecycle.md``) and a never-auto-approve law for\nthe deployment gate (``gate5_deployment`` in ``config/risk_taxonomy.yaml``). This\nmodule supplies the **end-to-end machine enforcement** that turns the documented\ngate order into a hard block, so a project board is provably *executed through the\nAADL gates* rather than advanced by convention:\n\n- **Gate order** — a stage-N ticket may not *advance* (reach ``in_progress`` /\n  ``in_review`` / ``done``) while GATE-(N-1) is still open (the same goal's\n  stage-(N-1) work is not ``done``). A ``todo`` / ``backlog`` stage-N ticket is a\n  legitimate *waiting* state and is NOT a violation — only advancing past an open\n  gate is (``gate_order_violations``).\n- **GATE-5 ⇒ no production deploy** — a production-deploy ticket (classified\n  against the *existing* ``gate5_deployment`` risk category, not a new path) must\n  not be auto-approved (GATE-5 is human-only, QONUN-5) and must not advance while\n  its goal's GATE-5 (Deployment) is open (``production_deploy_violations``).\n- **Gate walk** — ``walk_gates`` reads a compiled project board\n  (``projects/<name>/board-tickets/``), computes each goal's gate states, and\n  refuses to advance past an open gate. Open gates that block downstream stages\n  are surfaced as **interrupt-cards** (``emit_gate_cards`` → ``board/interrupts/``,\n  DAS-1446 schema) so the Founder — never the machine — signs the gate.\n- **Maintenance** — ``maintenance_schedule`` declares the recurring health/eval\n  runs the Maintenance stage (GATE-6) owns: the WS4 heartbeat tick and the WS6\n  golden-eval harness. It is DATA (a descriptor), not an installer — cadence lives\n  in the Founder-owned OS scheduler entry (ADR-0027 SI-1); nothing here deploys.\n\nThe gate model keys off the ``stage: GATE-N`` frontmatter field that\n``gateway_compile.py`` stamps on every story ticket, plus the ticket's ``goal``.\nIt reuses ``check_gates`` (ticket loader / frontmatter parser) and\n``check_never_auto_approve`` (the ``gate5_deployment`` matcher + auto-approval\ndetector) — no parallel classification path.\n\nUsage::\n\n    python3 scripts/stage_gate.py <board-dir> [--emit-cards] [--interrupts DIR] [--json]\n\n``<board-dir>`` is a compiled board directory (``projects/<name>/board-tickets/``).\nExit codes: 0 = board may advance (no gate violation), 1 = an open-gate violation\nblocks advancement, 2 = usage / IO error.", formatter_class=argparse.RawDescriptionHelpFormatter
+        description='stage_gate.py — machine-enforced stage-gated delivery (P22 / DAS-1494)', formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("board_dir", help="a compiled board directory (projects/<name>/board-tickets/)")
     ap.add_argument("--emit-cards", action="store_true",

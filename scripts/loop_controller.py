@@ -198,6 +198,41 @@ def _window_start(now: datetime, *, unit: str) -> datetime:
     raise ValueError(f"_window_start: unsupported unit {unit!r} (want 'month' or 'day')")
 
 
+class BudgetConfigError(RuntimeError):
+    pass
+
+
+def _ensure_scripts_on_path() -> None:
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+
+
+def load_budget_regime(budgets_path: Path) -> dict | None:
+    if not Path(budgets_path).exists():
+        return None
+    _ensure_scripts_on_path()
+    try:
+        from ws_b_admission import load_mustaqil_budgets
+
+        return load_mustaqil_budgets(budgets_path)
+    except Exception as exc:
+        raise BudgetConfigError(
+            f"budget config {budgets_path} exists but could not be read: {exc}"
+        ) from exc
+
+
+def _spend_usd_since(events_path: Path, budgets_path: Path, since: datetime) -> float | None:
+    path = Path(events_path)
+    if not path.is_file() or path.stat().st_size == 0:
+        return 0.0
+    _ensure_scripts_on_path()
+    from cost.cost_ledger import aggregate_spans
+
+    ledger = aggregate_spans(path, budgets_path, since=since)
+    return None if ledger is None else ledger.raw_estimated_cost_usd
+
+
 def _per_day_budget_exceeded(
     budgets_path: Path,
     events_path: Path,
@@ -205,33 +240,24 @@ def _per_day_budget_exceeded(
     now: datetime | None = None,
 ) -> bool:
     try:
-        scripts_dir = Path(__file__).resolve().parent
-        if str(scripts_dir) not in sys.path:
-            sys.path.insert(0, str(scripts_dir))
-        from ws_b_admission import load_mustaqil_budgets
-
-        mustaqil = load_mustaqil_budgets(budgets_path)
-        cap_usd = float((((mustaqil.get("caps") or {}).get("per_day")) or {}).get("max_cost_usd", 0) or 0)
-    except Exception:
+        mustaqil = load_budget_regime(budgets_path)
+    except BudgetConfigError:
+        return True
+    if mustaqil is None:
         return False
+    cap_usd = float((((mustaqil.get("caps") or {}).get("per_day")) or {}).get("max_cost_usd", 0) or 0)
     if cap_usd <= 0:
         return False
 
 
+    _now = now or datetime.now(tz=UTC)
     try:
-        scripts_dir = Path(__file__).resolve().parent
-        if str(scripts_dir) not in sys.path:
-            sys.path.insert(0, str(scripts_dir))
-        from cost.cost_ledger import aggregate_spans
-        _now = now or datetime.now(tz=UTC)
-        day_start = _window_start(_now, unit="day")
-        ledger = aggregate_spans(events_path, budgets_path, since=day_start)
-        if ledger is None:
-            return False
-        total_usd = ledger.raw_estimated_cost_usd
-        return total_usd >= cap_usd
+        total_usd = _spend_usd_since(events_path, budgets_path, _window_start(_now, unit="day"))
     except Exception:
+        return True
+    if total_usd is None:
         return False
+    return total_usd >= cap_usd
 
 
 def _monthly_credit_exhausted(
@@ -242,32 +268,64 @@ def _monthly_credit_exhausted(
     now: datetime | None = None,
 ) -> bool:
     try:
-        scripts_dir = Path(__file__).resolve().parent
-        if str(scripts_dir) not in sys.path:
-            sys.path.insert(0, str(scripts_dir))
-        from ws_b_admission import (
-            CreditState,
-            check_credit_exhaustion,
-            load_mustaqil_budgets,
-        )
+        mustaqil = load_budget_regime(budgets_path)
+    except BudgetConfigError:
+        return True
+    if mustaqil is None:
+        return False
 
-        mustaqil = load_mustaqil_budgets(budgets_path)
+    _ensure_scripts_on_path()
+    try:
+        from ws_b_admission import CreditState, check_credit_exhaustion
+
         if credit_state is None:
             ceiling_cfg = mustaqil.get("monthly_credit_ceiling") or {}
             active_plan = ceiling_cfg.get("active_plan")
             if not isinstance(active_plan, str) or not active_plan.strip():
                 return False
-            from cost.cost_ledger import aggregate_spans
-
             _now = now or datetime.now(tz=UTC)
             month_start = _window_start(_now, unit="month")
-            ledger = aggregate_spans(events_path, budgets_path, since=month_start)
-            used_usd = ledger.raw_estimated_cost_usd if ledger is not None else 0.0
-            credit_state = CreditState(plan=active_plan, used_usd=used_usd)
+            used_usd = _spend_usd_since(events_path, budgets_path, month_start)
+            credit_state = CreditState(plan=active_plan, used_usd=used_usd or 0.0)
         exhaustion = check_credit_exhaustion(credit_state, mustaqil)
-        return exhaustion is not None
     except Exception:
+        return True
+    return exhaustion is not None
+
+
+DEFAULT_BOARD_DIR = ROOT / "board" / "tickets"
+DEFAULT_ORG_PATH = ROOT / "org" / "schema.daslab.yaml"
+
+
+def actionable_work_exists(
+    board_dir: Path | None = None,
+    org_path: Path | None = None,
+    *,
+    occupied_zones: list[str] | None = None,
+) -> bool:
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        import wave_planner
+    except ImportError as exc:
+        sys.stderr.write(
+            f"loop_controller: wave_planner unavailable ({exc}); "
+            "treating the board as having no actionable work\n"
+        )
         return False
+    try:
+        tickets = wave_planner.load_board_tickets(board_dir or DEFAULT_BOARD_DIR)
+        org = wave_planner.load_org_model(org_path or DEFAULT_ORG_PATH)
+        plan = wave_planner.plan_wave(tickets, org, occupied_zones or [])
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(
+            f"loop_controller: cannot read the board to decide pending work "
+            f"({type(exc).__name__}: {exc}); treating the board as having no "
+            "actionable work\n"
+        )
+        return False
+    return bool(plan.dispatch)
 
 
 def tick(
@@ -279,11 +337,16 @@ def tick(
     events_path: Path | None = None,
     budgets_path: Path | None = None,
     feature_flags_path: Path | None = None,
+    board_dir: Path | None = None,
+    org_path: Path | None = None,
     trigger: str = "cron_tick",
-    pending_work: bool = False,
+    pending_work: bool | None = None,
     now: datetime | None = None,
 ) -> dict:
     _now = now or datetime.now(tz=UTC)
+
+    if pending_work is None:
+        pending_work = actionable_work_exists(board_dir, org_path)
 
 
     _schedule = schedule_path or (ROOT / "board" / "schedule.yaml")
@@ -458,7 +521,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--pending-work",
         action="store_true",
-        help="signal that actionable board work is waiting (drives cron_tick dispatch arm)",
+        default=None,
+        help=(
+            "assert that actionable board work is waiting; omit it and the tick reads "
+            "the board itself instead of taking the claim from the caller"
+        ),
+    )
+    ap.add_argument(
+        "--board",
+        type=Path,
+        default=DEFAULT_BOARD_DIR,
+        help="ticket directory the tick reads to decide whether work is pending",
+    )
+    ap.add_argument(
+        "--org",
+        type=Path,
+        default=DEFAULT_ORG_PATH,
+        help="org model used to allocate a model per role when planning",
     )
     ap.add_argument(
         "--json",
@@ -476,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
             metrics_history=args.metrics_history,
             events_path=args.events,
             budgets_path=args.budgets,
+            board_dir=args.board,
+            org_path=args.org,
             trigger=args.trigger,
             pending_work=args.pending_work,
         )

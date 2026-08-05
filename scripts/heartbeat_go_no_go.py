@@ -24,7 +24,6 @@ import kill_switch_drill as ksd
 import loop_controller as lc
 from _paths import ROOT
 
-
 PASS = "PASS"
 FAIL = "FAIL"
 UNKNOWN = "UNKNOWN"

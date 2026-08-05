@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -28,7 +27,6 @@ from metrics_history_feeder import (
     filter_events_by_window,
     filter_waves_by_date,
 )
-
 
 _T = lc.DEFAULT_TARGETS
 

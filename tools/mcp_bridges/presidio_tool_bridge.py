@@ -29,10 +29,25 @@ def analyze_text(text: str) -> str:
     summary = f"presidio: {count} {noun}"
     if found:
         summary += f" [{', '.join(found)}]"
+    summary += f" | risk: {screen_injection_risk(raw)}"
     summary += f" | redacted: {redacted}"
 
 
     return redact_then_truncate(summary, 4000)
+
+
+UNSCREENED_RISK = "unscreened"
+
+
+def screen_injection_risk(text: str) -> str:
+    try:
+        from untrusted_input import risk_name, screen
+    except ImportError:
+        return UNSCREENED_RISK
+    try:
+        return risk_name(screen(text))
+    except Exception:
+        return UNSCREENED_RISK
 
 
 def build_server():

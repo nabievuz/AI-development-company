@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 _ATOMIC_REQUIREMENTS: list[dict] = [
     {"id": "csv_export", "keywords": ["csv"]},
     {"id": "pdf_export", "keywords": ["pdf"]},

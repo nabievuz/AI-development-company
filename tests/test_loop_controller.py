@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
@@ -595,3 +598,52 @@ def test_real_active_plan_resolves_to_its_authoritative_ceiling_in_tick(tmp_path
     over = CreditState(plan=active_plan, used_usd=resolved_ceiling + 0.01)
     assert lc._monthly_credit_exhausted(real_budgets, events, credit_state=under) is False
     assert lc._monthly_credit_exhausted(real_budgets, events, credit_state=over) is True
+
+
+def test_budget_regime_is_none_when_no_config_exists(tmp_path):
+    assert lc.load_budget_regime(tmp_path / "absent.yaml") is None
+
+
+def test_malformed_budget_config_raises_rather_than_reading_as_no_budget(tmp_path):
+    bad = tmp_path / "budgets.yaml"
+    bad.write_text("mustaqil: [this is: not, a: mapping\n", encoding="utf-8")
+    with pytest.raises(lc.BudgetConfigError):
+        lc.load_budget_regime(bad)
+
+
+def test_per_day_budget_fails_closed_on_a_malformed_config(tmp_path):
+    bad = tmp_path / "budgets.yaml"
+    bad.write_text("mustaqil: [this is: not, a: mapping\n", encoding="utf-8")
+    assert lc._per_day_budget_exceeded(bad, tmp_path / "events.jsonl") is True
+
+
+def test_monthly_credit_fails_closed_on_a_malformed_config(tmp_path):
+    bad = tmp_path / "budgets.yaml"
+    bad.write_text("mustaqil: [this is: not, a: mapping\n", encoding="utf-8")
+    assert lc._monthly_credit_exhausted(bad, tmp_path / "events.jsonl") is True
+
+
+def test_per_day_budget_fails_closed_when_spend_cannot_be_priced(tmp_path):
+    budgets = tmp_path / "budgets.yaml"
+    budgets.write_text(
+        "mustaqil:\n  caps:\n    per_day:\n      max_cost_usd: 5\n", encoding="utf-8"
+    )
+    events = tmp_path / "events.jsonl"
+    events.write_text(
+        '{"event_type": "run_end", "run_id": "R1", "model": "sonnet", '
+        '"created_at": "2026-07-04T10:10:00Z"}\n',
+        encoding="utf-8",
+    )
+    assert lc._per_day_budget_exceeded(budgets, events) is True
+
+
+def test_an_empty_event_store_is_zero_spend_not_an_unpriceable_error(tmp_path):
+    budgets = tmp_path / "budgets.yaml"
+    budgets.write_text(
+        "mustaqil:\n  caps:\n    per_day:\n      max_cost_usd: 5\n", encoding="utf-8"
+    )
+    assert lc._spend_usd_since(tmp_path / "absent.jsonl", budgets, _EPOCH) == 0.0
+    assert lc._per_day_budget_exceeded(budgets, tmp_path / "absent.jsonl") is False
+
+
+_EPOCH = datetime(2026, 1, 1, tzinfo=UTC)

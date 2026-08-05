@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -16,7 +15,6 @@ if str(_SCRIPTS) not in sys.path:
 import pulse_checkpoint as pc
 import replay_qa as rq
 import resume_fork as rf
-
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 FIXED_TS2 = "2026-07-03T12:01:00Z"

@@ -10,7 +10,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 ACTIONABLE_STATUSES: frozenset[str] = frozenset({"todo", "in_progress"})
 
 
@@ -159,7 +158,7 @@ def check_gates(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description='check_gates.py — enforce AADL gate order on the DasLab board.\n\nReads every ``board/tickets/DAS-*.md`` file, identifies stage-gate epics\n(top-level tickets whose title contains ``Stage N`` / ``GATE-N``), then flags\nany ticket that is *actionable* (status: ``todo`` or ``in_progress``) whose\nparent stage epic is at stage N while the preceding gate-epic (stage N-1) for\nthe same project goal is **not** ``done``.\n\nAADL gate order (QONUN 2 / governance/policies/ai-agent-lifecycle.md):\n\n    Stage 1 (Planning)  → GATE-1\n    Stage 2 (Design)    → GATE-2\n    Stage 3 (Dev)       → GATE-3\n    Stage 4 (Testing)   → GATE-4\n    Stage 5 (Deploy)    → GATE-5\n    Stage 6 (Maint.)    → GATE-6\n\nA ticket at stage N may be actionable only when GATE-(N-1) is done.\n\nUsage::\n\n    python3 scripts/check_gates.py [--board <path>]\n\nExit codes: 0 = no violations, 1 = violations found, 2 = usage/IO error.',
+        description='check_gates.py — enforce AADL gate order on the DasLab board',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(

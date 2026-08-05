@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import queue
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 _UA = "DasLab-WS-A-browser-bridge/0.1 (+playwright)"
 _NAV_TIMEOUT_MS = 20_000
 _MAX_TEXT = 4000
 
 
-_GUARD: Callable[[str], bool] = lambda _url: False
+def _deny_all(_url: str) -> bool:
+    return False
+
+
+_GUARD: Callable[[str], bool] = _deny_all
 
 
 def set_guard(fn: Callable[[str], bool]) -> None:
@@ -19,7 +24,7 @@ def set_guard(fn: Callable[[str], bool]) -> None:
     _GUARD = fn
 
 
-_CMD_Q: "queue.Queue" = queue.Queue()
+_CMD_Q: queue.Queue = queue.Queue()
 _STARTED = threading.Event()
 _START_LOCK = threading.Lock()
 _START_ERR: list[str] = []
@@ -80,7 +85,7 @@ def _ensure_started() -> None:
 
 def _call(op: Callable[[Any], Any], timeout: float = 45.0) -> Any:
     _ensure_started()
-    reply: "queue.Queue" = queue.Queue()
+    reply: queue.Queue = queue.Queue()
     _CMD_Q.put((op, reply))
     status, val = reply.get(timeout=timeout)
     if status == "err":

@@ -2,23 +2,42 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
+import logging
+import os
 import sys
-from collections.abc import Callable, Iterator
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
 FLAG = "ws_d_langfuse_lens"
 
+LOGGER = logging.getLogger("daslab.ws_d.otlp_exporter")
+
 
 OTEL_TRACE_PATH = "/api/public/otel/v1/traces"
+
+
+LANGFUSE_PUBLIC_KEY_ENV = "LANGFUSE_PUBLIC_KEY"
+LANGFUSE_SECRET_KEY_ENV = "LANGFUSE_SECRET_KEY"
+OTLP_BEARER_TOKEN_ENV = "DASLAB_OTLP_BEARER_TOKEN"
+
+DEFAULT_POST_ATTEMPTS = 3
+DEFAULT_BACKOFF_SECONDS = 0.5
+DEFAULT_POST_TIMEOUT_SECONDS = 10.0
+
+RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 
 LANGFUSE_ENDPOINT_ROLE = "observability"
@@ -276,17 +295,102 @@ def build_otlp_payload(otlp_spans: list[dict[str, Any]], run_id: str | None = No
     }
 
 
-def http_post_transport(target: str, payload: dict[str, Any]) -> None:
-    import urllib.request
+class ExportAuthError(RuntimeError):
+    pass
 
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        target,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+
+class ExportTransportError(RuntimeError):
+
+    def __init__(self, message: str, *, status: int | None = None, attempts: int = 0) -> None:
+        super().__init__(message)
+        self.status = status
+        self.attempts = attempts
+
+
+class ExportOutcome(StrEnum):
+    DISABLED = "disabled"
+    NOTHING_TO_EXPORT = "nothing_to_export"
+    COLLECTED_NOT_POSTED = "collected_not_posted"
+    EXPORTED = "exported"
+    EXPORT_FAILED = "export_failed"
+
+
+def auth_headers(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    source = os.environ if env is None else env
+    public = str(source.get(LANGFUSE_PUBLIC_KEY_ENV, "")).strip()
+    secret = str(source.get(LANGFUSE_SECRET_KEY_ENV, "")).strip()
+    if public and secret:
+        encoded = base64.b64encode(f"{public}:{secret}".encode()).decode("ascii")
+        return {"Authorization": "Basic " + encoded}
+    bearer = str(source.get(OTLP_BEARER_TOKEN_ENV, "")).strip()
+    if bearer:
+        return {"Authorization": "Bearer " + bearer}
+    raise ExportAuthError(
+        "no OTLP credentials configured — set "
+        f"{LANGFUSE_PUBLIC_KEY_ENV} + {LANGFUSE_SECRET_KEY_ENV} (Langfuse basic auth) "
+        f"or {OTLP_BEARER_TOKEN_ENV} (bearer auth); "
+        "an unauthenticated POST is rejected by the endpoint with HTTP 401"
     )
-    urllib.request.urlopen(req, timeout=10)
+
+
+def build_headers(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    headers.update(auth_headers(env))
+    return headers
+
+
+def _urlopen(request: urllib.request.Request, timeout: float) -> Any:
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
+def http_post_transport(
+    target: str,
+    payload: dict[str, Any],
+    *,
+    attempts: int = DEFAULT_POST_ATTEMPTS,
+    backoff_seconds: float = DEFAULT_BACKOFF_SECONDS,
+    timeout: float = DEFAULT_POST_TIMEOUT_SECONDS,
+    env: Mapping[str, str] | None = None,
+    opener: Callable[[urllib.request.Request, float], Any] = _urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    headers = build_headers(env)
+    body = json.dumps(payload).encode("utf-8")
+    total = max(1, attempts)
+    last_status: int | None = None
+    last_error: str = "no attempt was made"
+    used = 0
+    for attempt in range(1, total + 1):
+        used = attempt
+        request = urllib.request.Request(target, data=body, headers=headers, method="POST")
+        retryable = True
+        try:
+            with opener(request, timeout) as response:
+                status = int(getattr(response, "status", None) or response.getcode())
+        except urllib.error.HTTPError as exc:
+            last_status = int(exc.code)
+            last_error = f"HTTP {exc.code}"
+            retryable = last_status in RETRYABLE_STATUS
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_status = None
+            last_error = f"{type(exc).__name__}: {exc}"
+        else:
+            if 200 <= status < 300:
+                return status
+            last_status = status
+            last_error = f"HTTP {status}"
+            retryable = status in RETRYABLE_STATUS
+        LOGGER.warning(
+            "otlp export attempt %d/%d to %s failed: %s", attempt, total, target, last_error
+        )
+        if not retryable or attempt == total:
+            break
+        sleep(backoff_seconds * attempt)
+    raise ExportTransportError(
+        f"otlp export to {target} failed after {used} attempt(s): {last_error}",
+        status=last_status,
+        attempts=used,
+    )
 
 
 @dataclass
@@ -298,6 +402,10 @@ class ExportResult:
     dropped: int = 0
     exported: int = 0
     posted: bool = False
+    post_attempted: bool = False
+    failed: int = 0
+    last_error: str | None = None
+    outcome: ExportOutcome = ExportOutcome.DISABLED
     otlp_spans: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -314,7 +422,7 @@ def export_spans(
     post: bool = False,
 ) -> ExportResult:
     if not is_enabled(features_path):
-        return ExportResult(ran=False)
+        return ExportResult(ran=False, outcome=ExportOutcome.DISABLED)
 
 
     target = assert_in_tenant(config_path)
@@ -334,18 +442,69 @@ def export_spans(
         result.otlp_spans.append(map_span_to_otlp(safe))
         result.exported += 1
 
-    if post and result.otlp_spans:
-        send = transport or http_post_transport
-        send(target, build_otlp_payload(result.otlp_spans, run_id=run_id))
-        result.posted = True
+    if not result.otlp_spans:
+        result.outcome = ExportOutcome.NOTHING_TO_EXPORT
+        LOGGER.info("otlp export: nothing to export (read=%d dropped=%d)", result.read, result.dropped)
+        return result
 
+    if not post:
+        result.outcome = ExportOutcome.COLLECTED_NOT_POSTED
+        return result
+
+    result.post_attempted = True
+    send = transport or http_post_transport
+    try:
+        send(target, build_otlp_payload(result.otlp_spans, run_id=run_id))
+    except (ExportAuthError, ExportTransportError, OSError, ValueError) as exc:
+        result.failed = len(result.otlp_spans)
+        result.last_error = f"{type(exc).__name__}: {exc}"
+        result.outcome = ExportOutcome.EXPORT_FAILED
+        LOGGER.error("otlp export FAILED: %d span(s) not delivered — %s", result.failed, result.last_error)
+        return result
+
+    result.posted = True
+    result.outcome = ExportOutcome.EXPORTED
+    LOGGER.info("otlp export: delivered %d span(s) to %s", result.exported, target)
     return result
 
 
-if __name__ == "__main__":
-    res = export_spans()
+EXIT_OK = 0
+EXIT_EXPORT_FAILED = 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="otlp_exporter",
+        description="Export DasLab spans to the in-tenant OTLP endpoint (ws_d_langfuse_lens).",
+    )
+    parser.add_argument(
+        "--post",
+        action="store_true",
+        help="actually POST the payload (default: collect and report only)",
+    )
+    parser.add_argument("--events", default=None, help="path to the events JSONL file")
+    parser.add_argument("--config", default=None, help="path to tenant_boundary.yaml")
+    parser.add_argument("--features", default=None, help="path to features.yaml")
+    args = parser.parse_args(argv)
+
+    res = export_spans(
+        events_path=Path(args.events) if args.events else None,
+        config_path=Path(args.config) if args.config else None,
+        features_path=Path(args.features) if args.features else None,
+        post=args.post,
+    )
     print(
         f"ws_d_langfuse_lens: {'ON' if res.ran else 'OFF (inert)'} — "
-        f"read={res.read} exported={res.exported} dropped={res.dropped} "
+        f"outcome={res.outcome.value} read={res.read} exported={res.exported} "
+        f"dropped={res.dropped} failed={res.failed} posted={res.posted} "
         f"target={res.target}"
     )
+    if res.last_error:
+        print(f"error: {res.last_error}", file=sys.stderr)
+    return EXIT_EXPORT_FAILED if res.outcome is ExportOutcome.EXPORT_FAILED else EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

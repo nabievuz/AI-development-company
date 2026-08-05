@@ -4,7 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
@@ -15,7 +14,6 @@ from check_gates import (
     is_gate_epic,
     load_tickets,
 )
-
 
 _BASE_GATE_EPIC: dict[str, str] = {
     "id": "DAS-9000",

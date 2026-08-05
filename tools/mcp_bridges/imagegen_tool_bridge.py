@@ -12,7 +12,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from egress_guard import active_profile, check_egress
 from redaction import redact_then_truncate

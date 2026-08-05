@@ -1,23 +1,21 @@
 from __future__ import annotations
 
-import re
-
 from guardrails import (
     GuardrailContext,
     GuardrailResult,
     default_input_guardrail,
     default_output_guardrail,
-    ok_result,
-    trip,
 )
+from guardrails.honesty import screen_verified_change
 
 ROLE = "frontend-eng-1"
 
 
-_CI_EVIDENCE = re.compile(
-    r"\b(test|tests|jest|vitest|cypress|playwright|e2e|lint|build|ci|green|"
-    r"pass|passed|passing|coverage|snapshot|storybook|typecheck|tsc)\b",
-    re.IGNORECASE,
+MISSING_EVIDENCE = (
+    "no CI evidence: a frontend change must ship as a reviewed PR with a "
+    "reported check run — name what you ran (jest / vitest / playwright / "
+    "lint / typecheck / build / CI) and give its outcome with counts; the "
+    "output cites none (LAW 5 — green CI = done)."
 )
 
 
@@ -29,10 +27,4 @@ def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
     ok, feedback = default_output_guardrail(ctx)
     if not ok:
         return (ok, feedback)
-    if not _CI_EVIDENCE.search(ctx.output or ""):
-        return trip(
-            "no CI evidence: a frontend change must ship as a reviewed PR with "
-            "green CI (tests / lint / build passing); the output cites none — "
-            "run the checks and report the passing run (LAW 5 — green CI = done)."
-        )
-    return ok_result()
+    return screen_verified_change(ctx.output or "", missing_evidence_reason=MISSING_EVIDENCE)

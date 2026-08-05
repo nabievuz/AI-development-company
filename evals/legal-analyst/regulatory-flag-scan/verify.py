@@ -1,9 +1,9 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-
 
 _REQUIRED_DISCLOSURES: dict[str, str] = {
     "legal_basis": r"legal basis",
@@ -20,8 +20,13 @@ _REQUIRED_DISCLOSURES: dict[str, str] = {
 }
 
 
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
+
+
 def _missing_disclosures(fixtures: Path) -> set[str]:
-    text = (fixtures / "privacy-policy.md").read_text(encoding="utf-8")
+    text = _document(fixtures / "privacy_policy.json")
     return {
         disclosure_id
         for disclosure_id, pattern in _REQUIRED_DISCLOSURES.items()
@@ -32,7 +37,10 @@ def _missing_disclosures(fixtures: Path) -> set[str]:
 def verify(submission: dict, fixtures: Path) -> float:
     expected = _missing_disclosures(fixtures)
     if not expected:
-        return 0.0
+        raise ValueError(
+            "fixture privacy policy is missing no required disclosure — "
+            "this task would grade every answer as wrong"
+        )
 
     reported = submission.get("missing_disclosures", [])
     if not isinstance(reported, list):

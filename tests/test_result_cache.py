@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -18,7 +17,6 @@ from cache.result_cache import (
     ResultCache,
     _cache_key,
 )
-
 
 PROMPT = "Validate ticket DAS-9999 for routing."
 DIGESTS = ["abc123", "def456"]

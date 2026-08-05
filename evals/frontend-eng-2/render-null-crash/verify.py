@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ACCEPTED_FIXES = frozenset({"optional_chaining", "default_prop_value", "early_return_guard"})
 
 

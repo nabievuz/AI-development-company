@@ -8,13 +8,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from _paths import repo_root
-
 
 ROOT = repo_root()
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _ACCEPTED = {
     "s1": {"missing-cleanup", "no-cleanup", "uncleared-interval", "missing-teardown"},
     "s2": {"stale-closure", "stale-state", "missing-dependency", "stale-value"},

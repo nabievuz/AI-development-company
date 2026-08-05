@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ACCEPTED = frozenset(
@@ -8,8 +9,13 @@ ACCEPTED = frozenset(
 _MONEY_MARKERS = ("payment", "charge", "order", "checkout")
 
 
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
+
+
 def verify(submission: dict, fixtures: Path) -> float:
-    text = (fixtures / "endpoint.md").read_text(encoding="utf-8").lower()
+    text = _document(fixtures / "endpoint.json").lower()
     expected = any(m in text for m in _MONEY_MARKERS)
     credit = 0.0
     if submission.get("idempotent") is expected:

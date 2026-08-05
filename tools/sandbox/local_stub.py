@@ -9,7 +9,6 @@ from pathlib import Path
 from tempfile import mkdtemp
 from urllib.parse import urlparse
 
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contract import (
     ExecResult,

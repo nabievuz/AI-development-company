@@ -16,7 +16,6 @@ from pathlib import Path
 import yaml
 from _paths import ROOT
 
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
@@ -28,13 +27,33 @@ import stage_gate as sg
 
 DEFAULT_RUNS_DIR: Path = ROOT / "board" / "runs"
 GATEWAY_SCRIPT: Path = _HERE / "gateway_compile.py"
-ROUTING_PATH: Path = ROOT / "board" / "ROUTING.md"
 
 
 STAGES: tuple[int, ...] = (1, 2, 3, 4, 5, 6)
 
 
 _DONE = "done"
+
+
+EVIDENCE_CLASS = "simulation"
+
+
+CHECKS_GREEN = "checks-green"
+CHECKS_RED = "checks-red"
+
+
+GATE_WALK_PROVES = (
+    "stage_gate.gate_order_violations and stage_gate.production_deploy_violations stay "
+    "empty while ticket status fields are rewritten to 'done' in stage order, and the "
+    "same checker fires on a forced out-of-order state"
+)
+
+
+GATE_WALK_DOES_NOT_PROVE = (
+    "no agent ran, no code was written, no PR was merged and no CI executed: the walk "
+    "rewrites a 'status:' line in a scratch copy of the board, so it is NOT delivery "
+    "evidence and must never be counted as one"
+)
 
 
 _STATUS_LINE_RE = re.compile(r"(?m)^status:[^\n]*$")
@@ -60,7 +79,7 @@ def _display_path(p: Path) -> str:
         return str(p)
 
 
-def _set_status_done(path: Path) -> None:
+def _simulate_status_done(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     new = _STATUS_LINE_RE.sub(f"status: {_DONE}", text, count=1)
     path.write_text(new, encoding="utf-8")
@@ -74,15 +93,17 @@ def _compile_pack(scratch_pack: Path) -> gc.PipelineResult:
     return res
 
 
-def _drive_to_done(board: Path) -> dict:
+def _simulate_gate_walk(board: Path) -> dict:
     walk_violations: list[str] = []
     per_stage: list[dict] = []
+    rewritten = 0
     for n in STAGES:
         advanced = 0
         for path, fm in board_lint.load_tickets(board):
             if sg.stage_of(fm) == n and fm.get("status") != _DONE:
-                _set_status_done(path)
+                _simulate_status_done(path)
                 advanced += 1
+                rewritten += 1
         tickets = board_lint.load_tickets(board)
         order_v = sg.gate_order_violations(tickets)
         deploy_v = sg.production_deploy_violations(tickets)
@@ -99,7 +120,8 @@ def _drive_to_done(board: Path) -> dict:
 
     for path, fm in board_lint.load_tickets(board):
         if sg.stage_of(fm) is None and fm.get("status") != _DONE:
-            _set_status_done(path)
+            _simulate_status_done(path)
+            rewritten += 1
 
     tickets = board_lint.load_tickets(board)
     gate_states = sg.gate_status(tickets)
@@ -112,6 +134,9 @@ def _drive_to_done(board: Path) -> dict:
         "gate_states": {g: {str(n): s for n, s in st.items()} for g, st in gate_states.items()},
         "all_goals_all_gates_done": all_done,
         "violations": walk_violations,
+        "simulated_status_rewrites": rewritten,
+        "proves": GATE_WALK_PROVES,
+        "does_not_prove": GATE_WALK_DOES_NOT_PROVE,
     }
 
 
@@ -172,7 +197,7 @@ def _health_check(
     walk_evidence: dict,
 ) -> dict:
 
-    known_roles = board_lint.load_known_roles(ROUTING_PATH)
+    known_roles = board_lint.load_known_roles()
     tickets = board_lint.load_tickets(board)
     lint_violations = board_lint.lint_tickets(tickets, known_roles)
     lint_clean = lint_violations == []
@@ -215,16 +240,17 @@ def _health_check(
          "label": f"board_lint on the delivered board: {len(tickets)} tickets, "
                   f"{len(lint_violations)} violation(s)"},
         {"ok": (walk_evidence["all_goals_all_gates_done"] and not walk_evidence["violations"]),
-         "label": "all six AADL gates (GATE-1..GATE-6) walked to done for every goal; "
-                  f"{len(walk_evidence['violations'])} gate-order/deploy violation(s) "
-                  "across the walk"},
+         "label": "simulated gate walk (status fields rewritten to done in stage order, "
+                  "no agent and no CI involved) raised "
+                  f"{len(walk_evidence['violations'])} gate-order/deploy violation(s)"},
         {"ok": bool(negative_probe.get("fired")),
          "label": "gate-order checker proven to fire (negative probe): a forced "
                   f"out-of-order state (a stage-{negative_probe.get('forced_stage')} "
                   "ticket advanced while its predecessor gate is open) is flagged"},
         {"ok": workspace_created,
-         "label": f"run workspace created and delivered board staged as the LOCAL "
-                  f"artifact ({run_id}/workspace/delivered-board — scratch, gitignored)"},
+         "label": f"run workspace created and the compiled board copied into it "
+                  f"({run_id}/workspace/delivered-board — scratch, gitignored; a file "
+                  "copy, not a deployment)"},
         {"ok": probe_ok,
          "label": f"probe `gateway_compile --gate-walk` over the delivered board exited "
                   f"{probe.returncode} (0 = board may advance)"},
@@ -236,6 +262,8 @@ def _health_check(
     passed = bool(lint_clean and gate_walk_clean and workspace_created and probe_ok and tests_ok)
     return {
         "passed": passed,
+        "evidence_class": EVIDENCE_CLASS,
+        "delivery_evidence": False,
         "board_lint": {
             "tickets": len(tickets),
             "violations": lint_violations,
@@ -266,80 +294,20 @@ def _write_run_summary(runs_dir: Path, run_id: str, evidence: dict) -> Path:
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "run-summary.md"
-
-    compiled = evidence["compiled"]
-    walk = evidence["gate_walk"]
-    health = evidence["d5_health_check"]
-    goals = compiled["goals"]
-    ticket_word = (
-        "zero hand-written"
-        if compiled["zero_hand_written"]
-        else f"{len(compiled['hand_written_tickets'])} HAND-WRITTEN"
+    document = {
+        "kind": "e2e-gate-checker-simulation",
+        "evidence_class": EVIDENCE_CLASS,
+        "delivery_evidence": False,
+        "claims": {
+            "proves": GATE_WALK_PROVES,
+            "does_not_prove": GATE_WALK_DOES_NOT_PROVE,
+        },
+        "evidence": evidence,
+    }
+    path.write_text(
+        "```json\n" + json.dumps(document, indent=2, sort_keys=True) + "\n```\n",
+        encoding="utf-8",
     )
-
-    lines: list[str] = [
-        "---",
-        f"run_id: {run_id}",
-        f"pack: {evidence['pack']}",
-        "kind: spec-to-build-e2e",
-        f"result: {evidence['result']}",
-        f"generated: {evidence['generated_utc']}",
-        "---",
-        "",
-        f"# Run summary — {run_id}",
-        "",
-        f"Spec->build end-to-end for PROJECT-OS pack `{evidence['pack']}` "
-        f"(`{evidence['pack_dir']}`). One pack driven sample-pack -> compiled "
-        f"stage-gated tickets -> all six AADL gates -> this committed summary.",
-        "",
-        "## Outcome",
-        "",
-        f"- Result: **{evidence['result']}**",
-        f"- Goals: {len(goals)} ({', '.join(goals)})",
-        f"- Compiled tickets: {compiled['ticket_count']} ({ticket_word})",
-        f"- Gates walked: GATE-1..GATE-6 for every goal; "
-        f"{len(walk['violations'])} gate-order/deploy violation(s) across the walk",
-        f"- D-5 health-check: **{'PASS' if health['passed'] else 'FAIL'}**",
-        "",
-        "## Pipeline driven (reused modules — nothing re-implemented)",
-        "",
-        f"1. `gateway_compile.run_pipeline` — compiled the copied pack into "
-        f"{compiled['ticket_count']} self-contained stage-gated story tickets "
-        f"({ticket_word}; every board file is compiler output).",
-        "2. `stage_gate.gate_order_violations` / `production_deploy_violations` — "
-        "drove every stage ticket to `done` in gate order (Stage 1->6) with no order "
-        "violation at any step, and a NEGATIVE PROBE separately confirms the checker "
-        "fires on a forced out-of-order state (so the clean walk is meaningful, not "
-        "vacuous).",
-        "3. `run_workspace.create_workspace` — created the run workspace and staged "
-        "the delivered board as the LOCAL D-5 artifact (scratch, gitignored, gc'd).",
-        "4. `board_lint.lint_tickets` + a `gateway_compile --gate-walk` probe — "
-        "verified the delivered board is lint-clean and the gate-walk CLI exits 0.",
-        "",
-        "## D-5 health-check — exactly what was verified",
-        "",
-    ]
-    for item in health["checklist"]:
-        mark = "x" if item["ok"] else " "
-        suffix = "" if item["ok"] is not False else "  **<- FAILED**"
-        lines.append(f"- [{mark}] {item['label']}{suffix}")
-    lines += [
-        "",
-        "> D-5 semantics here = LOCAL artifact (the delivered board staged in the run "
-        "workspace) + tests (this pack ships none) + health-check evidence. "
-        "No external infra, no public push.",
-        "",
-        "## Evidence (inlined)",
-        "",
-        "`board/runs/*/workspace/` and any `evidence.json` are gitignored (only "
-        "`run-summary.md` is tracked), so the machine-readable evidence lives here:",
-        "",
-        "```json",
-        json.dumps(evidence, indent=2),
-        "```",
-        "",
-    ]
-    path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
 
@@ -371,7 +339,7 @@ def e2e_run(
 
 
         negative_probe = _negative_gate_probe(board)
-        walk_evidence = _drive_to_done(board)
+        walk_evidence = _simulate_gate_walk(board)
         walk_evidence["negative_probe"] = negative_probe
 
 
@@ -383,12 +351,14 @@ def e2e_run(
             walk_evidence=walk_evidence,
         )
 
-        result = "PASS" if (not hand_written and health["passed"]) else "FAIL"
+        checks = CHECKS_GREEN if (not hand_written and health["passed"]) else CHECKS_RED
         evidence = {
             "run_id": run_id,
             "pack": slug,
             "pack_dir": _display_path(pack_dir),
-            "kind": "spec->build e2e (R12)",
+            "kind": "e2e-gate-checker-simulation",
+            "evidence_class": EVIDENCE_CLASS,
+            "delivery_evidence": False,
             "generated_utc": _utc_now(),
             "compiled": {
                 "ticket_count": len(res.tickets),
@@ -397,8 +367,8 @@ def e2e_run(
                 "zero_hand_written": not hand_written,
             },
             "gate_walk": walk_evidence,
-            "d5_health_check": health,
-            "result": result,
+            "health_check": health,
+            "checks": checks,
         }
 
 
@@ -417,28 +387,38 @@ def e2e_run(
         "violations": walk_evidence["violations"],
         "health_check": health["passed"],
         "run_summary_path": str(summary_path),
-        "result": result,
+        "evidence_class": EVIDENCE_CLASS,
+        "delivery_evidence": False,
+        "checks": checks,
     }
 
 
 def _render(summary: dict) -> str:
     out = [
-        f"spec->build e2e — pack '{summary['pack']}' (run {summary['run_id']})",
+        f"gate-checker simulation — pack '{summary['pack']}' (run {summary['run_id']})",
         "=" * 60,
-        f"  compiled tickets : {summary['ticket_count']}",
-        f"  gates walked     : {', '.join(f'GATE-{n}' for n in summary['gates_walked'])}",
-        f"  violations       : {len(summary['violations'])}",
-        f"  D-5 health-check : {'PASS' if summary['health_check'] else 'FAIL'}",
-        f"  run-summary      : {summary['run_summary_path']}",
+        f"  compiled tickets      : {summary['ticket_count']}",
+        f"  stages simulated      : {', '.join(f'GATE-{n}' for n in summary['gates_walked'])}",
+        f"  violations            : {len(summary['violations'])}",
+        f"  health-check          : {'green' if summary['health_check'] else 'red'}",
+        f"  run-summary           : {summary['run_summary_path']}",
         "",
-        f"RESULT: {summary['result']}",
+        f"CHECKS: {summary['checks']}",
+        "NOT DELIVERY EVIDENCE: " + GATE_WALK_DOES_NOT_PROVE,
     ]
     return "\n".join(out)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description='e2e_run.py — spec->build end-to-end run driver (R12 / DAS-1538).\n\nThe WS7 intake compiler (``scripts/gateway_compile.py``) and the six-gate checker\n(``scripts/stage_gate.py``) already exist and are green, but nothing *drives* a\npack through delivery and no run-summary writer exists. This module is the missing\ndriver: it takes ONE Founder-approved **PROJECT-OS pack** and walks it end to end —\n\n  1. **compile** — copy the pack into a scratch dir and run\n     ``gateway_compile.run_pipeline`` to emit self-contained, stage-gated story\n     tickets (asserting ZERO hand-written tickets — every board file is compiler\n     output);\n  2. **gate walk** — drive every stage ticket to ``done`` in AADL gate order\n     (Stage 1 -> 6), confirming ``stage_gate.gate_order_violations`` and\n     ``stage_gate.production_deploy_violations`` stay empty at every step (a\n     stage-N ticket never advances past an open GATE-(N-1));\n  3. **D-5 deploy (LOCAL)** — create the run workspace\n     (``run_workspace.create_workspace``), stage the delivered board as the local\n     artifact, run whatever tests the pack ships (if any) plus a health-check\n     probe, and record *exactly* what was verified;\n  4. **run-summary** — write ``board/runs/<run_id>/run-summary.md`` with the\n     evidence JSON **inlined** in a fenced block, then gc the scratch workspace.\n\nNothing here re-implements compile or gate logic — it reuses the existing modules.\nD-5 deployment semantics = LOCAL artifact (the delivered board staged in the run\nworkspace) + passing tests (if the pack ships any) + health-check evidence; NO\nexternal infra, NO public push.\n\nUnder ``.gitignore``, only ``board/runs/*/run-summary.md`` is tracked\n(``workspace/`` and any ``evidence.json`` are ignored), so the machine-readable\nevidence is INLINED into ``run-summary.md`` rather than left in a separate file.\n\nUsage::\n\n    python3 scripts/e2e_run.py <pack_dir> [--run-id ID] [--runs-dir DIR] [--json]\n\nExit codes: 0 = run passed (PASS), 1 = run completed but failed a check (FAIL),\n2 = usage / IO error.', formatter_class=argparse.RawDescriptionHelpFormatter
+        description=(
+            "e2e_run.py — drives ONE PROJECT-OS pack through gateway_compile and then "
+            "SIMULATES an AADL gate walk over the compiled tickets by rewriting their "
+            "'status:' fields in a scratch copy. What it proves: " + GATE_WALK_PROVES
+            + ". What it does NOT prove: " + GATE_WALK_DOES_NOT_PROVE
+            + ". Exit codes: 0 = every check green, "
+            "1 = a check failed, 2 = usage / IO error."
+        )
     )
     ap.add_argument("pack_dir", help="the PROJECT-OS pack directory (e.g. evals/e2e/sample-pack)")
     ap.add_argument("--run-id", default=None, help="run id (default: e2e-<slug>-<utc-stamp>)")
@@ -463,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(summary, indent=2))
     else:
         print(_render(summary))
-    return 0 if summary["result"] == "PASS" else 1
+    return 0 if summary["checks"] == CHECKS_GREEN else 1
 
 
 if __name__ == "__main__":

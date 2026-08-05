@@ -10,10 +10,10 @@ from typing import Any
 
 import agent_eval
 import check_attestation
+import check_ledger
 import feature_flags
 import snapshot_evidence
 import wave_runner
-
 
 DELIVERY_SCHEMA = "daslab.delivery_attestation.v1"
 
@@ -321,6 +321,28 @@ def scan_committed_receipts(
     return problems
 
 
+def scan_committed_ledger(
+    ledger_path: Path | str,
+    attest_dir: Path | str,
+    tickets_dir: Path | str,
+) -> list[str]:
+    problems = check_ledger.verify_wave_ledger_evidence(
+        ledger_path, attest_dir=attest_dir, tickets_dir=tickets_dir
+    )
+    base = Path(attest_dir)
+    if base.is_dir():
+        for path in sorted(base.glob("*.json")):
+            if path.name.endswith(".delivery.json"):
+                continue
+            if check_ledger.is_fixture_run_id(path.stem):
+                problems.append(
+                    f"{path.name}: a fixture attestation (reserved "
+                    f"{check_ledger.FIXTURE_RUN_ID_PREFIX!r} run-id namespace) is committed "
+                    "as evidence — a fixture can never satisfy this gate"
+                )
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description='check_evidence_gate.py — WS-G GATE-3: the 0->100 evidence + attestation gate.')
     ap.add_argument("--scorecard", type=Path, default=None, help="delivery run-scorecard JSON to compose")
@@ -339,6 +361,18 @@ def main(argv: list[str] | None = None) -> int:
         help="ISO-8601 timestamp stamped into a newly-written receipt (no clock read, caller-supplied)",
     )
     ap.add_argument("--features", type=Path, default=None, help="config/features.yaml path override")
+    ap.add_argument(
+        "--wave-ledger",
+        type=Path,
+        default=wave_runner.LEDGER_PATH,
+        help="committed wave-ledger verified link by link before any delivery is accepted",
+    )
+    ap.add_argument(
+        "--tickets-dir",
+        type=Path,
+        default=check_ledger.DEFAULT_TICKETS_DIR,
+        help="board tickets dir every ledger-referenced ticket must actually exist in",
+    )
     args = ap.parse_args(argv)
 
     if _flag_gate_inert(args.features):
@@ -350,16 +384,21 @@ def main(argv: list[str] | None = None) -> int:
 
 
     scan_problems = scan_committed_receipts(args.attest_dir, args.evidence_dir)
+    ledger_problems = scan_committed_ledger(
+        args.wave_ledger, args.attest_dir, args.tickets_dir
+    )
 
     if args.scorecard is None or not args.scorecard.is_file():
-        if scan_problems:
+        if scan_problems or ledger_problems:
             sys.stderr.write(
-                "FAIL: evidence gate (GATE-3 / ADR-0037 ED-1) — a committed delivery "
-                "receipt is tampered or inconsistent:\n"
+                "FAIL: evidence gate (GATE-3 / ADR-0037 ED-1) — the committed evidence "
+                "chain is tampered, forged or inconsistent:\n"
             )
             for path, errs in sorted(scan_problems.items()):
                 for e in errs:
                     sys.stderr.write(f"  - {path.name}: {e}\n")
+            for problem in ledger_problems:
+                sys.stderr.write(f"  - wave-ledger: {problem}\n")
             return 1
         print(
             "check_evidence_gate: no delivery scorecard given/found — nothing claimed "
@@ -391,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = build_receipt(scorecard, statuses, counts, args.attest_dir, created_at)
     path = write_receipt(payload, args.attest_dir)
 
-    if scan_problems or errors or verdict != "complete":
+    if scan_problems or ledger_problems or errors or verdict != "complete":
         sys.stderr.write(
             "FAIL: evidence gate (GATE-3 / ADR-0037 ED-1) — delivery is NOT a genuine "
             f"all-pass 0->100 (verdict={verdict!r}); receipt committed at {path} for audit:\n"
@@ -403,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
         for other_path, errs in sorted(scan_problems.items()):
             for e in errs:
                 sys.stderr.write(f"  ! {other_path.name}: {e}\n")
+        for problem in ledger_problems:
+            sys.stderr.write(f"  ! wave-ledger: {problem}\n")
         return 1
 
     print(

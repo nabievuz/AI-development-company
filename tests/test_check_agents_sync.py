@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 from check_agents_sync import (
+    ROSTER_SOURCE,
     SKIP_KEYS,
     VALID_MODELS,
     check_sync,
@@ -21,7 +21,6 @@ from check_agents_sync import (
     main,
     parse_frontmatter,
 )
-
 
 _BASE_ROUTING = textwrap.dedent(
     """\
@@ -87,14 +86,14 @@ def test_routing_key_no_shim_detected() -> None:
     shims: dict[str, dict[str, str]] = {}
     routing = make_routing_dict(["qa-eng"])
     errors = check_sync(shims, routing, policy_models=None)
-    assert any("ROUTING.md" in e and "qa-eng" in e for e in errors), errors
+    assert any(ROSTER_SOURCE in e and "qa-eng" in e for e in errors), errors
 
 
 def test_shim_key_not_in_routing_detected() -> None:
     shims = {"ghost-role": make_shim("ghost-role")}
     routing: dict[str, str] = {}
     errors = check_sync(shims, routing, policy_models=None)
-    assert any("ghost-role" in e and "ROUTING.md" in e for e in errors), errors
+    assert any("ghost-role" in e and ROSTER_SOURCE in e for e in errors), errors
 
 
 def test_name_mismatch_detected() -> None:

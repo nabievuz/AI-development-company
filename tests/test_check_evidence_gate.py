@@ -71,7 +71,7 @@ def _drive(tmp: Path, run_id: str, *, counted: bool = True) -> wr.WaveAttestatio
     )
     att = wr.run_wave(
         plan,
-        results,
+        wr.replay_executor(results.tickets),
         created_at=_WAVE_TS,
         store_path=tmp / "events.jsonl",
         runs_dir=tmp / "runs",

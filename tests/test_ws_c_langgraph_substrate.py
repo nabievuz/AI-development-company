@@ -234,7 +234,7 @@ def test_idempotent_resume_no_double_apply_and_ledger_reconciles(tmp_path: Path)
     attest_dir = tmp_path / "attest"
 
 
-    att1 = lg.commit_wave(plan, results, created_at=_WAVE_TS, checkpointer=ckpt, **kwargs)
+    att1 = lg.commit_wave(plan, wr.replay_executor(results.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **kwargs)
     assert att1 is not None
     assert ckpt.already_committed(run_id, f"wave:{run_id}:1")
     first_lines = ledger_path.read_text(encoding="utf-8").strip().splitlines()
@@ -242,7 +242,7 @@ def test_idempotent_resume_no_double_apply_and_ledger_reconciles(tmp_path: Path)
     assert wr.verify_wave_ledger(ledger_path, attest_dir=attest_dir) == []
 
 
-    att2 = lg.commit_wave(plan, results, created_at=_WAVE_TS, checkpointer=ckpt, **kwargs)
+    att2 = lg.commit_wave(plan, wr.replay_executor(results.tickets), created_at=_WAVE_TS, checkpointer=ckpt, **kwargs)
     assert att2 is att1
     resume_lines = ledger_path.read_text(encoding="utf-8").strip().splitlines()
     assert resume_lines == first_lines
@@ -292,7 +292,7 @@ def test_flag_off_substrate_is_inert(tmp_path: Path) -> None:
     ckpt = lg.RunIdCheckpointer()
     kwargs = _run_wave_kwargs(tmp_path)
     att = lg.commit_wave(
-        _plan("01JWSC00000000000000000OFF"), _results(),
+        _plan("01JWSC00000000000000000OFF"), wr.replay_executor(_results().tickets),
         created_at=_WAVE_TS, checkpointer=ckpt, organism_emit=False, **kwargs,
     )
     assert att is None

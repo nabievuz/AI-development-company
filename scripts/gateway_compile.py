@@ -12,13 +12,11 @@ from pathlib import Path
 
 import yaml
 
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import check_approved_goal_queue as approved_queue
-
 
 MANIFEST_NAME = "PROJECT-OS.yaml"
 QUEUE_NAME = "APPROVED-GOAL-QUEUE.md"
@@ -613,7 +611,7 @@ def _as_dict(result: PipelineResult) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="gateway_compile.py — ORGANISM WS7 GATEWAY intake pipeline (O7-T02, P22).\n\nTurns a submitted **PROJECT-OS-PACK** (see ``docs/specs/PROJECT-OS-PACK.md`` /\n``docs/adr/0030-project-os-pack.md`` — FR-001…FR-010 binding) into a set of\nself-contained, stage-gated **STORY TICKETS** on the target project's own board.\nIt is the single deterministic gate every new project enters through: a project\nonly becomes board tickets after it has provably cleared every QONUN gate.\n\nPipeline stages, run in STRICT order — the first failing gate stops the pipeline\nand nothing downstream runs:\n\n1. **validate pack** — placeholder-lint (no unfilled TODO / ``<...>`` slots),\n   link integrity (every referenced relative path resolves), and schema\n   conformance against the manifest (FR-001…FR-005, FR-009). A broken pack is\n   REJECTED with actionable, per-field errors (file + field + why + how-to-fix),\n   never a bare traceback.\n2. **discovery gate** — confirm the Founder Discovery Gate is satisfied: >=10 Q&A\n   present OR an explicit Founder waiver (FR-006). If neither, STOP and GENERATE\n   the missing discovery questions so the operator can take them to the Founder.\n3. **research enrichment** — emit a research-enrichment step whose sourced\n   conclusion (market, competitors, regulatory, technical architecture, pricing,\n   SEO/channel, risks) is stored ONLY in the project folder (D-4, QONUN Placement).\n4. **approved-check** — verify the ``APPROVED:``/``TASDIQLANDI:`` Founder approval\n   signal on ``projects/<name>/APPROVED-GOAL-QUEUE.md`` by WIRING the existing\n   ``scripts/check_approved_goal_queue.py`` (FR-007 — not reimplemented here).\n5. **compile story tickets** — write STORY TICKETS into\n   ``projects/<name>/board-tickets/``. Each ticket is self-contained (embedded\n   context excerpt, acceptance criteria, produces/consumes, AADL stage tag, gate\n   ref) so a fresh agent window needs zero archaeology, and carries\n   ``project: <name>`` (FR-008, QONUN Project Placement Law).\n\nUsage::\n\n    python3 scripts/gateway_compile.py <pack-root> [--projects-dir DIR] [--json]\n    python3 scripts/gateway_compile.py <pack-root> --gate-walk [--emit-cards]\n\n``<pack-root>`` is the project folder ``projects/<name>/``. Exit codes:\n0 = compiled, 1 = rejected / blocked, 2 = usage / IO error.\n\n**Stage-gated delivery (P22, DAS-1494).** The default mode compiles the pack into\nstage-tagged story tickets. ``--gate-walk`` instead walks the AADL gate order over\nthe already-compiled ``<pack-root>/board-tickets/`` and refuses to advance past an\nopen gate (delegates to ``scripts/stage_gate.py``); with ``--emit-cards`` each open\ngate that blocks a downstream stage is surfaced as a DAS-1446 interrupt-card for\nFounder sign-off. GATE-5 (Deployment) is machine-enforced never-auto-approve, so an\nopen GATE-5 provably blocks any production deploy.", formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description='gateway_compile.py — ORGANISM WS7 GATEWAY intake pipeline (O7-T02, P22)', formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pack_root", help="the project folder projects/<name>/ to compile")
     ap.add_argument("--projects-dir", default=None,
                     help="the projects/ root (default: parent of pack_root) — for the approved-queue gate")

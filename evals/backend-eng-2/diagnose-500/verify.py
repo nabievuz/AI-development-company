@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ACCEPTED_FIXES = frozenset(
     {"null_check", "guard_clause", "none_check", "defensive_check"}
 )
+
+
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
 
 
 def _diagnose(text: str) -> str:
@@ -21,7 +27,7 @@ def _diagnose(text: str) -> str:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    text = (fixtures / "incident.md").read_text(encoding="utf-8")
+    text = _document(fixtures / "incident.json")
     expected = _diagnose(text)
     credit = 0.0
     root_cause = str(submission.get("root_cause", "")).strip().lower()

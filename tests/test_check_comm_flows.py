@@ -22,7 +22,6 @@ from check_comm_flows import (
     scan_tickets,
 )
 
-
 _FLOWS_YAML = textwrap.dedent(
     """\
     version: 1
@@ -205,6 +204,22 @@ def _shim_route_pairs() -> set[tuple[str, str]]:
         sender = shim.stem
         for receiver in _ROUTE_LINE_RE.findall(shim.read_text(encoding="utf-8")):
             pairs.add((sender, receiver))
+    if pairs:
+        return pairs
+    return _generated_shim_route_pairs()
+
+
+def _generated_shim_route_pairs() -> set[tuple[str, str]]:
+    import gen_subagents
+    import org_model
+
+    org = org_model.load_org()
+    routes = gen_subagents.load_outbound_routes(_REAL_FLOWS)
+    pairs: set[tuple[str, str]] = set()
+    for role in org.roles:
+        shim = gen_subagents.build_shim(role, org, routes, template_present=False)
+        for receiver in _ROUTE_LINE_RE.findall(shim):
+            pairs.add((role.key, receiver))
     return pairs
 
 

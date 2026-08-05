@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ACCEPTED_FIXES = frozenset({"inject_clock", "freeze_time", "assert_range"})
 
 

@@ -5,7 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:

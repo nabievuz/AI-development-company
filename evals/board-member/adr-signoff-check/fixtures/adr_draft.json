@@ -1,0 +1,3 @@
+{
+  "document": "# ADR-0099: Adopt vendor X for centralized logging\n\n## Context\n\nThe org needs centralized log aggregation across services. This is a\ncompany-wide strategic commitment, not a single dept's call.\n\n## Decision\n\nAdopt vendor X as the centralized logging provider for all departments.\n\n## Signoff\n\n- chairman: approved\n"
+}

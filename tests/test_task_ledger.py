@@ -5,7 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -13,7 +12,6 @@ if str(_SCRIPTS) not in sys.path:
 
 import pulse_checkpoint as pc
 import task_ledger as tl
-
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 REPLAN_TS = "2026-07-03T13:30:00Z"

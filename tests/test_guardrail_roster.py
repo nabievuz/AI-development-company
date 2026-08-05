@@ -8,14 +8,14 @@ import pytest
 
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "governance"))
+sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
+import org_model
 from guardrails import GuardrailContext, runner
-
-_ROUTING = _REPO_ROOT / "board" / "ROUTING.md"
 
 
 def _roles() -> list[str]:
-    return sorted(runner.load_role_table(_ROUTING).keys())
+    return sorted(org_model.known_role_keys())
 
 
 def _ctx(role: str, output: str) -> GuardrailContext:

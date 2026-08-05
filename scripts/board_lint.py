@@ -8,10 +8,10 @@ import re
 import sys
 from pathlib import Path
 
+import org_model
 from _paths import ROOT
 from artifact_schemas import SchemaError, load_schema_file, schema_path
 from merge_reducers import is_valid_policy
-
 
 _RISKY_EFFECTS_RE = re.compile(
     r"\b(merge[sd]?|spend[s]?|spending|charge[sd]?|charging|send[s]?|sending|"
@@ -51,9 +51,19 @@ _REPO_ROOT = ROOT
 _ROLE_ROW_RE = re.compile(r"^\|\s*`([a-z0-9-]+)`\s*\|", re.MULTILINE)
 
 
-def load_known_roles(routing_path: Path) -> frozenset[str]:
-    text = routing_path.read_text(encoding="utf-8")
+def roles_from_legacy_routing_table(routing_path: Path) -> frozenset[str] | None:
+    if not Path(routing_path).is_file():
+        return None
+    text = Path(routing_path).read_text(encoding="utf-8")
     return frozenset(_ROLE_ROW_RE.findall(text))
+
+
+def load_known_roles(routing_path: Path | None = None) -> frozenset[str]:
+    if routing_path is not None:
+        legacy = roles_from_legacy_routing_table(routing_path)
+        if legacy is not None:
+            return legacy
+    return org_model.known_role_keys()
 
 
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -356,7 +366,7 @@ def warn_body_status_lines(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description='board_lint.py — validate every board/tickets/*.md against the DasLab ticket schema.\n\nReads every ``board/tickets/DAS-*.md`` file, parses YAML frontmatter, and\nenforces the rules defined in ``board/README.md``.  Exits non-zero with a\nhuman-readable error list on any violation; exits 0 (silent) when the board is\nclean.\n\nRules enforced\n--------------\n1. Required fields present: id, title, status, assignee, author, dept, priority,\n   created, updated.\n2. ``status`` is one of the allowed enum values.\n3. ``assignee`` is empty OR a known role key from ROUTING.md.\n4. ``author`` is a known role key from ROUTING.md.\n5. ``priority`` is one of p0 / p1 / p2.\n6. Subtasks (``parent`` is non-empty) must also carry ``goal``.\n7. ``parent`` references an ID that exists in the board (no dangling pointers).\n8. ``in_review`` tickets: ``assignee`` must differ from ``author``\n   (no self-review). This rule is scoped to ``status == "in_review"`` only, so\n   an ``interrupted`` ticket is out of its scope — it is never rejected or\n   stranded by R8 (DAS-1446 consumer sweep).\n9. Org board is platform-only: a ticket on ``board/tickets/`` must NOT declare a\n   ``project:`` field — project tickets live in ``projects/<slug>/board-tickets/``\n   (QONUN — Project Placement Law). Project boards (path ``…/board-tickets/``)\n   are exempt; the field is valid there.\n10. ``merge_policy`` (OPTIONAL) is well-formed: when present its value is one of\n   ``append-only`` / ``owner-exclusive`` / ``aggregate:<reducer>`` (grammar owned\n   by ``scripts/merge_reducers.py``); a present-but-empty or unrecognized value\n   is a defect, and a ``merge_policy`` declared WITHOUT a ``zone:`` anchor is a\n   defect. R10 is a per-ticket grammar check only.\n11. ``produces`` / ``consumes`` (OPTIONAL) name artifact-schema contracts\n   (DAS-1467). Each value is a single schema name or a bracketed/comma list of\n   names, read with the tolerant reader ``_schema_names_of`` (mirrors ``_zone_of``\n   / ``check_dependency_graph._fm_field``). Every named schema must exist as a\n   well-formed ``governance/schemas/<name>.yaml`` — a present-but-unknown name is\n   a FAIL, a present-but-malformed schema file is a FAIL, a present-but-empty\n   value is a FAIL. Absent = lints exactly as before (additive). The schema shape\n   is owned by ``scripts/artifact_schemas.py`` (single source of truth, like\n   ``merge_reducers.py`` is for policy grammar).\n12. Stage-gated delivery (P22 / DAS-1494, OPTIONAL/additive). Cross-ticket rule\n   owned by ``scripts/stage_gate.py``: a ``stage: GATE-N`` ticket must not ADVANCE\n   (``in_progress``/``in_review``/``done``) while the same ``goal``\'s GATE-(N-1) is\n   open, and a production-deploy ticket (the ``gate5_deployment`` risk category —\n   reused from ``config/risk_taxonomy.yaml``, not a fork) must not be auto-approved\n   or advance while GATE-5 (Deployment) is open. A ``todo``/``backlog`` stage ticket\n   is the legitimate gate-waiting state and is never flagged; a board with no\n   ``stage:`` tickets lints exactly as before.\n\nWave correctness guard (exported, not a whole-board rule)\n--------------------------------------------------------\nThe "never two tickets in the same repo ``zone:`` in one wave" correctness guard\n(ADR-0016) is a **per-wave** property, not repo state — the board legitimately\nholds many same-zone tickets across different waves. So it is NOT enforced over\nthe whole board here (that would false-positive). Instead this module exports\n``same_zone_pair_allowed`` / ``zone_wave_conflicts`` — pure, fail-closed\ndecision helpers over a *candidate wave* that ``/daslab-cycle`` (and tests) call.\nThe default is unchanged: a same-zone pair is FORBIDDEN unless every member of\nthe same-zone group declares the SAME valid, permitting ``merge_policy``.\n\nUsage::\n\n    python3 scripts/board_lint.py [--board <path>] [--routing <path>]\n\nExit codes: 0 = clean, 1 = violations found, 2 = usage/IO error.',
+        description='board_lint.py — validate every board/tickets/*.md against the DasLab ticket schema',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
@@ -368,8 +378,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--routing",
         type=Path,
-        default=_REPO_ROOT / "board" / "ROUTING.md",
-        help="Path to board/ROUTING.md (default: auto-detected from repo root)",
+        default=None,
+        help=(
+            "Path to a legacy ROUTING.md role table "
+            "(default: the typed org roster in config/org.yaml)"
+        ),
     )
     return p
 
@@ -379,19 +392,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     board_dir: Path = args.board
-    routing_path: Path = args.routing
+    routing_path: Path | None = args.routing
 
     if not board_dir.is_dir():
         print(f"ERROR: board directory not found: {board_dir}", file=sys.stderr)
         return 2
-    if not routing_path.is_file():
-        print(f"ERROR: ROUTING.md not found: {routing_path}", file=sys.stderr)
+    if routing_path is not None and not routing_path.is_file():
+        print(f"ERROR: routing table not found: {routing_path}", file=sys.stderr)
         return 2
 
     try:
         known_roles = load_known_roles(routing_path)
-    except OSError as exc:
-        print(f"ERROR reading ROUTING.md: {exc}", file=sys.stderr)
+    except (OSError, org_model.OrgConfigError) as exc:
+        print(f"ERROR reading the role roster: {exc}", file=sys.stderr)
         return 2
 
     try:

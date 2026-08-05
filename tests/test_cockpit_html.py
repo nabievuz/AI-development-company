@@ -15,7 +15,6 @@ if str(SCRIPTS) not in sys.path:
 import cockpit
 import cockpit_html
 
-
 _NOW = dt.datetime(2026, 7, 3, 12, 0, 0)
 
 

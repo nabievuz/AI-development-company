@@ -16,9 +16,7 @@ def _expected_severities(fixtures: Path) -> dict[str, str]:
         freq = (affected / session_count) if session_count else 0.0
         if blocking and freq >= 0.5:
             severity = "critical"
-        elif blocking and freq < 0.5:
-            severity = "major"
-        elif (not blocking) and freq >= 0.5:
+        elif blocking and freq < 0.5 or (not blocking) and freq >= 0.5:
             severity = "major"
         else:
             severity = "minor"

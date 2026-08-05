@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import shutil
@@ -13,6 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from _paths import ROOT
+
+EXIT_OK = 0
+EXIT_REQUIRED_FAILED = 1
+EXIT_USAGE = 2
 
 
 @dataclass
@@ -53,10 +58,39 @@ def check_git() -> CheckResult:
     return CheckResult("git on PATH", bool(path), True, path or "not found on PATH")
 
 
+@dataclass(frozen=True)
+class RuntimeDependency:
+    distribution: str
+    module: str
+
+
+REQUIRED_RUNTIME_DEPENDENCIES: tuple[RuntimeDependency, ...] = (
+    RuntimeDependency("PyYAML", "yaml"),
+)
+
+
+def check_runtime_dependency(dep: RuntimeDependency) -> CheckResult:
+    name = f"Python dep: {dep.distribution}"
+    try:
+        module = importlib.import_module(dep.module)
+    except ImportError as exc:
+        return CheckResult(name, False, True,
+                           f"import {dep.module} failed ({exc}) — pip install -r requirements.txt")
+    version = getattr(module, "__version__", "")
+    return CheckResult(name, True, True, f"{dep.module} {version}".strip())
+
+
+def check_runtime_dependencies() -> list[CheckResult]:
+    return [check_runtime_dependency(dep) for dep in REQUIRED_RUNTIME_DEPENDENCIES]
+
+
+REPO_ROOT_MARKERS: tuple[str, ...] = ("board", "config", "scripts", ".claude")
+
+
 def check_repo_root() -> CheckResult:
-    markers = [ROOT / "AGENTS.md", ROOT / "board", ROOT / ".claude"]
-    ok = ROOT.is_dir() and all(m.exists() for m in markers)
-    detail = str(ROOT) if ok else f"{ROOT} (missing AGENTS.md/board/.claude)"
+    missing = [m for m in REPO_ROOT_MARKERS if not (ROOT / m).exists()]
+    ok = ROOT.is_dir() and not missing
+    detail = str(ROOT) if ok else f"{ROOT} (missing {'/'.join(missing)})"
     return CheckResult("Repo root resolves (LAW A)", ok, True, detail)
 
 
@@ -135,20 +169,32 @@ def _render_json(results: list[CheckResult]) -> str:
 def run_checks() -> list[CheckResult]:
     return [
         check_claude_code(), check_python_version(), check_git(),
+        *check_runtime_dependencies(),
         check_repo_root(), check_projects_dir(),
         check_arcrift_mcp(), check_ollama_nomic(),
     ]
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="doctor.py", description='DasLab environment preflight doctor.')
+    parser = argparse.ArgumentParser(
+        prog="doctor.py",
+        description="DasLab environment preflight doctor.",
+        epilog=f"exit codes: {EXIT_OK} all REQUIRED checks pass · "
+               f"{EXIT_REQUIRED_FAILED} a REQUIRED check failed · {EXIT_USAGE} usage error",
+    )
     parser.add_argument("--json", dest="json_output", action="store_true",
                         help="emit JSON instead of the table")
     args = parser.parse_args(argv)
     results = run_checks()
     print(_render_json(results) if args.json_output else _render_table(results))
 
-    return 0 if all(r.passed for r in results if r.required) else 1
+    failed = [r for r in results if r.required and not r.passed]
+    if not failed:
+        return EXIT_OK
+    sys.stderr.write("doctor: FAIL — the environment cannot run DasLab:\n")
+    for r in failed:
+        sys.stderr.write(f"  - {r.name}: {r.detail}\n")
+    return EXIT_REQUIRED_FAILED
 
 
 if __name__ == "__main__":

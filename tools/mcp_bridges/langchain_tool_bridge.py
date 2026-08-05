@@ -7,13 +7,14 @@ import os
 import sys
 import urllib.request
 
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from egress_guard import active_profile, check_egress
+from untrusted_input import describe, quarantine, screen
 
 TOOL_NAME = "langchain-tools"
 _UA = "DasLab-WS-A-bridge/0.1"
 _MAX_CHARS = 4000
+_MAX_RESPONSE_BYTES = 200_000
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -35,14 +36,16 @@ def web_fetch(url: str) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     try:
         with _OPENER.open(req, timeout=20) as resp:
-            body = resp.read(200_000).decode("utf-8", "replace")
+            body = resp.read(_MAX_RESPONSE_BYTES).decode("utf-8", "replace")
     except Exception as exc:
         return f"error: {exc}"
     title = ""
     lower = body.lower()
     if "<title>" in lower and "</title>" in lower:
         title = body[lower.index("<title>") + 7 : lower.index("</title>")].strip()
-    return f"title: {title}\n---\n{body[:_MAX_CHARS]}"
+    content = f"title: {title}\n---\n{body[:_MAX_CHARS]}"
+    verdict = screen(content)
+    return f"injection-screen: {describe(verdict)}\n{quarantine(content, url)}"
 
 
 def build_server():

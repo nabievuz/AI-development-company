@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 EXPECTED_ISSUES = frozenset(
     {"breaking_change", "missing_pagination", "missing_versioning"}
 )
+
+
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
 
 
 def _normalize(values: object) -> set[str]:
@@ -16,7 +22,7 @@ def _normalize(values: object) -> set[str]:
 def verify(submission: dict, fixtures: Path) -> float:
 
 
-    _ = (fixtures / "api_proposal.md").read_text(encoding="utf-8")
+    _ = _document(fixtures / "api_proposal.json")
 
     found = _normalize(submission.get("issues"))
     if not found:

@@ -1,25 +1,21 @@
 from __future__ import annotations
 
-import re
-
 from guardrails import (
     GuardrailContext,
     GuardrailResult,
     default_input_guardrail,
-    ok_result,
-    trip,
+    default_output_guardrail,
 )
+from guardrails.honesty import screen_verified_change
 
 ROLE = "backend-eng-1"
 
 
-_TEST_EVIDENCE = re.compile(
-    r"\b(test|tests|pytest|passed|green|coverage|assert)\b", re.IGNORECASE
-)
-
-
-_RED_BUILD = re.compile(
-    r"\b(failed|failing|red|broken|error|traceback|no tests)\b", re.IGNORECASE
+MISSING_EVIDENCE = (
+    "no test evidence: a backend change must ship with tests and a reported "
+    "run — name the command (pytest / the full suite / CI) and give its result "
+    "with counts, or state the regression test that failed before the fix and "
+    "passes with it; the output shows none."
 )
 
 
@@ -28,18 +24,7 @@ def input_guardrail(ctx: GuardrailContext) -> GuardrailResult:
 
 
 def output_guardrail(ctx: GuardrailContext) -> GuardrailResult:
-    output = (ctx.output or "").strip()
-    if not output:
-        return trip("empty output: no backend change was produced; re-run the ticket.")
-    if _RED_BUILD.search(output):
-        return trip(
-            "red build: the output self-reports a failing / broken state "
-            "(failed/red/traceback/no tests); fix it to green before it can be "
-            "accepted (LAW 5 — green CI = done)."
-        )
-    if not _TEST_EVIDENCE.search(output):
-        return trip(
-            "no test evidence: a backend change must ship with tests and a green "
-            "run; the output shows none — add tests and report the passing run."
-        )
-    return ok_result()
+    ok, feedback = default_output_guardrail(ctx)
+    if not ok:
+        return (ok, feedback)
+    return screen_verified_change(ctx.output or "", missing_evidence_reason=MISSING_EVIDENCE)

@@ -9,6 +9,7 @@ import textwrap
 from pathlib import Path
 from unittest import mock
 
+import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPTS = REPO_ROOT / "scripts"
@@ -256,6 +257,45 @@ class TestMissingFile:
         out = buf.getvalue()
         assert "Log not found" in out
         assert "board/.wave-log" in out
+
+
+class TestExitCodes:
+    def test_codes_are_distinct(self):
+        codes = [c.value for c in wave_kpi.CliExit]
+        assert len(set(codes)) == len(codes)
+
+    def test_missing_log_is_no_data(self, tmp_path):
+        assert wave_kpi.main([str(tmp_path / "nope.log")]) == wave_kpi.CliExit.NO_DATA
+
+    def test_empty_log_is_no_data(self, tmp_path):
+        log = tmp_path / ".wave-log"
+        log.write_text("", encoding="utf-8")
+        assert wave_kpi.main([str(log)]) == wave_kpi.CliExit.NO_DATA
+
+    def test_dispatching_wave_is_healthy(self, tmp_path):
+        log = write_log(tmp_path, """\
+            ===== wave 2026-06-19 10:00:00 =====
+            | DAS-1300 ticket-a  todo → in_progress  sre-eng  sonnet |
+            [idle 300s before next wave — 10:10:00]
+        """)
+        assert wave_kpi.main([str(log)]) == wave_kpi.CliExit.HEALTHY
+
+    def test_wave_without_dispatch_is_degraded_not_no_data(self, tmp_path):
+        log = write_log(tmp_path, """\
+            ===== wave 2026-06-19 09:00:00 =====
+            nothing actionable — 2026-06-19 09:00:01
+            [idle 30s before next wave — 09:00:31]
+        """)
+        rc = wave_kpi.main([str(log)])
+        assert rc == wave_kpi.CliExit.DEGRADED
+        assert rc != wave_kpi.CliExit.NO_DATA
+        assert rc != wave_kpi.CliExit.HEALTHY
+
+    def test_help_flag_is_not_read_as_a_filename(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            wave_kpi.main(["--help"])
+        assert exc.value.code == 0
+        assert "usage:" in capsys.readouterr().out
 
 
 class TestConstants:

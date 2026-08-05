@@ -15,12 +15,24 @@ from contract import (
     SandboxScope,
     ScopedSecret,
 )
+from docker_sandbox import (
+    CREDENTIAL_DELIVERY_POSTURE,
+    DEFAULT_RUN_AS,
+    DockerSandbox,
+    ImagePinError,
+    build_run_argv,
+    docker_available,
+    is_digest_pinned,
+    pin_image_reference,
+)
 from flag import flag_on
 from local_stub import LocalStubSandbox
-from docker_sandbox import DockerSandbox, docker_available
 
 __all__ = [
+    "CREDENTIAL_DELIVERY_POSTURE",
+    "DEFAULT_RUN_AS",
     "DockerSandbox",
+    "ImagePinError",
     "ExecResult",
     "LocalStubSandbox",
     "Mount",
@@ -30,6 +42,9 @@ __all__ = [
     "SandboxHandle",
     "SandboxScope",
     "ScopedSecret",
+    "build_run_argv",
     "docker_available",
     "flag_on",
+    "is_digest_pinned",
+    "pin_image_reference",
 ]

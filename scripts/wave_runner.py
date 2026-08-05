@@ -4,10 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -15,6 +15,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import check_ledger as _cl
 import dispatch_emitter as _de
+import filelock as _fl
 import guardrail_dispatch as _gd
 import pulse_checkpoint as _pc
 import snapshot_evidence as _se
@@ -35,6 +36,7 @@ __all__ = [
     "append_wave_ledger_entry",
     "attestation_path",
     "load_attestation",
+    "replay_executor",
     "run_wave",
     "verify_attestation",
     "verify_wave_ledger",
@@ -114,6 +116,19 @@ class TicketResult:
     output: str = ""
 
 
+SUCCESS_OUTCOMES: frozenset[str] = frozenset({"success", "ok", "passed"})
+COMPLETED_STATUSES: frozenset[str] = frozenset({"done", "closed", "merged"})
+
+
+def is_circuit_breaker_tripped(
+    unfinished: Sequence[str],
+    prior_next_tickets: Sequence[str],
+) -> bool:
+    if not unfinished or not prior_next_tickets:
+        return False
+    return set(unfinished) == set(prior_next_tickets)
+
+
 @dataclass(frozen=True)
 class WaveResults:
 
@@ -126,6 +141,45 @@ class WaveResults:
 
     def by_id(self) -> dict[str, TicketResult]:
         return {r.ticket_id: r for r in self.tickets}
+
+    @classmethod
+    def from_ticket_results(
+        cls,
+        results: Sequence[TicketResult],
+        *,
+        prior_next_tickets: Sequence[str] = (),
+    ) -> WaveResults:
+        results = list(results)
+        unfinished = sorted(
+            r.ticket_id
+            for r in results
+            if r.outcome not in SUCCESS_OUTCOMES or r.final_status not in COMPLETED_STATUSES
+        )
+        completed_count = len(results) - len(unfinished)
+        return cls(
+            tickets=results,
+            request_satisfied=bool(results) and not unfinished,
+            in_loop=is_circuit_breaker_tripped(unfinished, prior_next_tickets),
+            progress_being_made=completed_count > 0,
+            next_tickets=unfinished,
+            instruction=(
+                ""
+                if not unfinished
+                else "re-plan: " + ", ".join(sorted(unfinished)) + " did not complete"
+            ),
+        )
+
+
+WaveExecutor = Callable[["WavePlan"], Sequence[TicketResult]]
+
+
+def replay_executor(results: Sequence[TicketResult]) -> WaveExecutor:
+    recorded = list(results)
+
+    def _replay(_plan: WavePlan) -> Sequence[TicketResult]:
+        return recorded
+
+    return _replay
 
 
 @dataclass(frozen=True)
@@ -253,20 +307,20 @@ def append_wave_ledger_entry(
     created_at: str,
 ) -> dict[str, Any]:
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    entry: dict[str, Any] = {
-        "run_id": run_id,
-        "wave": wave,
-        "ticket_ids": sorted(ticket_ids),
-        "attestation_path": _attestation_repo_path(attestation_out_path, ledger_path),
-        "attestation_hash": _sha256_bytes(attestation_bytes),
-        "prev_hash": _ledger_chain_tip(ledger_path),
-        "self_hash": "",
-        "created_at": created_at,
-    }
-    entry["self_hash"] = _ledger_self_hash(entry)
-    line = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
-    with ledger_path.open("a", encoding="utf-8") as fh:
-        fh.write(line)
+    with _fl.exclusive_lock(ledger_path):
+        entry: dict[str, Any] = {
+            "run_id": run_id,
+            "wave": wave,
+            "ticket_ids": sorted(ticket_ids),
+            "attestation_path": _attestation_repo_path(attestation_out_path, ledger_path),
+            "attestation_hash": _sha256_bytes(attestation_bytes),
+            "prev_hash": _ledger_chain_tip(ledger_path),
+            "self_hash": "",
+            "created_at": created_at,
+        }
+        entry["self_hash"] = _ledger_self_hash(entry)
+        line = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+        _fl.append_text_durably(ledger_path, line)
     return entry
 
 
@@ -406,30 +460,39 @@ def _build_records(plan: WavePlan, results: WaveResults) -> list[_de.DispatchRec
     return records
 
 
-def _stamp_run_id_frontmatter(ticket_path: Path, run_id: str) -> bool:
-    text = ticket_path.read_text(encoding="utf-8")
+def _with_run_id_frontmatter(text: str, run_id: str) -> str:
     if not text.startswith("---"):
-        return False
+        return text
     end = text.find("\n---", 3)
     if end == -1:
-        return False
+        return text
     header, rest = text[3:end], text[end:]
     out_lines: list[str] = []
     replaced = False
     for line in header.split("\n"):
         key = line.partition(":")[0].strip()
-        if key == "run_id" and not line.lstrip().startswith("#"):
+        if key == "run_id":
             out_lines.append(f"run_id: {run_id}")
             replaced = True
         else:
             out_lines.append(line)
     if not replaced:
         out_lines.append(f"run_id: {run_id}")
-    new_text = "---" + "\n".join(out_lines) + rest
-    if new_text == text:
-        return False
-    ticket_path.write_text(new_text, encoding="utf-8")
-    return True
+    return "---" + "\n".join(out_lines) + rest
+
+
+def _stamp_run_id_frontmatter(ticket_path: Path, run_id: str) -> bool:
+    ticket_path = Path(ticket_path)
+    changed = False
+
+    def _transform(text: str) -> str:
+        nonlocal changed
+        new_text = _with_run_id_frontmatter(text, run_id)
+        changed = new_text != text
+        return new_text
+
+    _fl.locked_update_text(ticket_path, _transform, missing_ok=False)
+    return changed
 
 
 def _stamp_wave_run_ids(plan: WavePlan, board_dir: Path) -> None:
@@ -487,9 +550,34 @@ def _run_guardrails(
     return verdicts
 
 
+def _collect_results(plan: WavePlan, execute_wave: WaveExecutor) -> WaveResults:
+    if isinstance(execute_wave, WaveResults):
+        raise TypeError(
+            "run_wave no longer accepts pre-computed WaveResults: it must run the wave "
+            "itself. Pass a WaveExecutor — a callable taking the WavePlan and returning "
+            "the TicketResults it produced. A caller that legitimately replays already "
+            "recorded results (a drill or a fixture) must say so explicitly with "
+            "wave_runner.replay_executor(results)."
+        )
+    if not callable(execute_wave):
+        raise TypeError(
+            "run_wave needs a WaveExecutor callable (WavePlan -> Sequence[TicketResult]); "
+            f"got {type(execute_wave).__name__}"
+        )
+    produced = execute_wave(plan)
+    if isinstance(produced, WaveResults):
+        return produced
+    if not isinstance(produced, Sequence):
+        raise TypeError(
+            "the wave executor must return a sequence of TicketResult; "
+            f"got {type(produced).__name__}"
+        )
+    return WaveResults.from_ticket_results(list(produced))
+
+
 def run_wave(
     plan: WavePlan,
-    results: WaveResults,
+    execute_wave: WaveExecutor,
     *,
     created_at: str,
     store_path: Path | str | None = None,
@@ -513,14 +601,8 @@ def run_wave(
     routing_path = routing_path if routing_path is not None else _gd.DEFAULT_ROUTING
     guardrails_dir = guardrails_dir if guardrails_dir is not None else _gr.DEFAULT_GUARDRAILS_DIR
 
-
-    records = _build_records(plan, results)
-
     anchor = plan.anchor()
-    by_id = results.by_id()
     open_states = {tp.ticket_id: tp.from_status for tp in plan.tickets}
-    close_states = {tp.ticket_id: by_id[tp.ticket_id].final_status for tp in plan.tickets}
-
 
     _pc.write_wave_checkpoint(
         run_id=plan.run_id,
@@ -537,6 +619,12 @@ def run_wave(
 
 
     _stamp_wave_run_ids(plan, board_dir)
+
+
+    results = _collect_results(plan, execute_wave)
+    records = _build_records(plan, results)
+    by_id = results.by_id()
+    close_states = {tp.ticket_id: by_id[tp.ticket_id].final_status for tp in plan.tickets}
 
 
     events = _de.emit_wave(records, store_path=store_path)
@@ -645,8 +733,7 @@ def run_wave(
     payload["attest_chain"]["self"] = _attest_self_hash(payload)
 
     out_path = attestation_path(plan.run_id, attest_dir)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _fl.atomic_write_text(out_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
     wave_ledger_path = Path(ledger_path) if ledger_path is not None else LEDGER_PATH

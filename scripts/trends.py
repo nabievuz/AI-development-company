@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import math
+import sys
 from pathlib import Path
 
 import wave_kpi
 from _paths import ROOT
 from dgox.created_at import parse_created_at
+from wave_kpi import CliExit
 
 
 def _parse_iso(ts: str) -> dt.datetime | None:
@@ -72,28 +74,39 @@ def throughput_series(events: list[dict], n_windows: int = 5) -> list[float]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description='trends.py — Historical Trend Views.')
-    ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
-    ap.add_argument("--windows", type=int, default=5)
+    ap = argparse.ArgumentParser(
+        prog="trends.py",
+        description="trends.py — Historical Trend Views.",
+        epilog=f"exit codes: {CliExit.HEALTHY.value} trend flat or improving · "
+               f"{CliExit.DEGRADED.value} throughput degrading · "
+               f"{CliExit.USAGE.value} usage error · "
+               f"{CliExit.NO_DATA.value} not enough history to compute a trend",
+    )
+    ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl",
+                    help="runtime event store (JSONL)")
+    ap.add_argument("--windows", type=int, default=5, help="number of equal-width time windows")
     args = ap.parse_args(argv)
 
     events = wave_kpi.read_events(str(args.events))
     series = throughput_series(events, max(2, args.windows))
     dropped = dropped_undated_run_ends(events)
     trend = classify_trend(series, higher_is_better=True)
-    if trend["direction"] == "insufficient":
-        print(f"Trends: insufficient history ({trend['points']} window(s) of data) — P5 trends are trigger-gated.")
-    else:
-        print(
-            f"Throughput trend: {trend['direction']} (slope {trend['slope']:+.2f}) "
-            f"over {trend['points']} window(s); series {series}."
-        )
     if dropped:
         print(
             f"NOTE: {dropped} run_end event(s) excluded from the series for a "
             f"missing/non-conforming created_at (DAS-1633)."
         )
-    return 0
+    if trend["direction"] == "insufficient":
+        sys.stderr.write(
+            f"NO DATA: insufficient history ({trend['points']} window(s)); "
+            "no throughput trend was computed.\n"
+        )
+        return CliExit.NO_DATA
+    print(
+        f"Throughput trend: {trend['direction']} (slope {trend['slope']:+.2f}) "
+        f"over {trend['points']} window(s); series {series}."
+    )
+    return CliExit.DEGRADED if trend["direction"] == "degrading" else CliExit.HEALTHY
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ import metrics_lib
 import wave_kpi
 from _paths import ROOT
 
-
 EVIDENCE_SCHEMA = "daslab.evidence.v1"
 
 

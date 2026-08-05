@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 EXPECTED = [3, 1, 5, 4]
 
 

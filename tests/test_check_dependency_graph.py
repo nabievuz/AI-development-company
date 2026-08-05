@@ -11,6 +11,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import check_dependency_graph as dg
+import wave_planner as wp
 
 
 def _board(tmp_path: Path, *tickets: tuple[str, str, str]) -> Path:
@@ -152,15 +153,50 @@ def test_board_without_pc_fields_passes(tmp_path):
     assert _run(board) == 0
 
 
-def _cycle_skill_flat() -> str:
-    p = REPO_ROOT / ".claude" / "skills" / "daslab-cycle" / "SKILL.md"
-    return " ".join(p.read_text(encoding="utf-8").lower().split())
+_PLANNER_ORG = wp.OrgModel(role_models={"backend-eng-1": "sonnet", "backend-eng-2": "sonnet"})
 
 
-def test_skill_reads_zone_in_correctness_guard():
-    assert "zone:" in _cycle_skill_flat()
+def _planner_ticket(ticket_id, *, zone, depends_on=(), status="todo", role="backend-eng-1"):
+    return wp.Ticket(
+        ticket_id=ticket_id, role=role, status=status, zone=zone, depends_on=depends_on
+    )
 
 
-def test_skill_keeps_dep_blocked_rule():
-    skill = _cycle_skill_flat()
-    assert "depends_on" in skill and "dep-blocked" in skill
+def test_planner_reads_zone_in_the_correctness_guard():
+    a = _planner_ticket("DAS-1", zone="scripts")
+    b = _planner_ticket("DAS-2", zone="scripts", role="backend-eng-2")
+    plan = wp.plan_wave([a, b], _PLANNER_ORG, [])
+    assert [pt.ticket_id for pt in plan.dispatch] == ["DAS-1"]
+    assert [(r.ticket_id, r.reason) for r in plan.refused] == [
+        ("DAS-2", wp.RefusalReason.ZONE_CONFLICT)
+    ]
+
+
+def test_planner_honours_zones_already_occupied_by_a_running_wave():
+    plan = wp.plan_wave([_planner_ticket("DAS-1", zone="scripts")], _PLANNER_ORG, ["scripts"])
+    assert plan.dispatch == ()
+    assert plan.refused[0].reason is wp.RefusalReason.ZONE_CONFLICT
+
+
+def test_planner_keeps_the_dep_blocked_rule():
+    blocker = _planner_ticket("DAS-1", zone="a")
+    blocked = _planner_ticket("DAS-2", zone="b", depends_on=("DAS-1",), role="backend-eng-2")
+    plan = wp.plan_wave([blocker, blocked], _PLANNER_ORG, [])
+    assert [pt.ticket_id for pt in plan.dispatch] == ["DAS-1"]
+    refusal = next(r for r in plan.refused if r.ticket_id == "DAS-2")
+    assert refusal.reason is wp.RefusalReason.UNMET_DEPENDENCY
+    assert "DAS-1" in refusal.detail
+
+
+def test_planner_dep_guard_is_not_inverted():
+    done_blocker = _planner_ticket("DAS-1", zone="a", status="done")
+    blocked = _planner_ticket("DAS-2", zone="b", depends_on=("DAS-1",), role="backend-eng-2")
+    plan = wp.plan_wave([done_blocker, blocked], _PLANNER_ORG, [])
+    assert [pt.ticket_id for pt in plan.dispatch] == ["DAS-2"]
+
+
+def test_planner_refuses_an_unknown_dependency():
+    blocked = _planner_ticket("DAS-2", zone="b", depends_on=("DAS-404",))
+    plan = wp.plan_wave([blocked], _PLANNER_ORG, [])
+    assert plan.dispatch == ()
+    assert plan.refused[0].reason is wp.RefusalReason.UNMET_DEPENDENCY

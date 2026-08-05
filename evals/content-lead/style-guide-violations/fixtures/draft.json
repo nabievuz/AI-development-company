@@ -1,0 +1,3 @@
+{
+  "document": "# Why Our New Dashboard Ships Faster\n\nOur team wanted to leverage the platform's existing components rather than\nbuild from scratch. To utilize the design system fully, we started with the\nnavigation shell and worked outward.\n\nLet's circle back next week to discuss synergy opportunities between the\ngrowth and product squads — early signals look promising.\n\nThe result: a cleaner dashboard, shipped two weeks ahead of schedule, with\nclear documentation for the next team that picks it up.\n"
+}

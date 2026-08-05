@@ -1,0 +1,3 @@
+{
+  "document": "# ADR 0099 — Adopt a quarterly board-minutes cadence for cross-dept escalations\n\n**Status:** Proposed\n**Date:** 2026-07-04\n**Scope:** Governance / board process\n**Relates:** `governance/policies/raci.md`, `board/README.md`\n\n## Context\n\nCross-department escalations (an issue above one C-suite's charter authority) currently\nhave no fixed cadence for board review — they are handled ad hoc whenever the Chairman\nnotices them in a ticket log. This has caused escalations to sit unacknowledged for\nmultiple waves with no visible SLA.\n\n## Enforcement / acceptance\n\nOnce ratified, `/daslab-cycle` will refuse to leave an `status: blocked` escalation\nticket unresolved past one quarter without a board-minutes entry citing this ADR.\n"
+}

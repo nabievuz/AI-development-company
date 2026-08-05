@@ -10,7 +10,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 import cockpit
 import metrics_lib
 import wave_kpi

@@ -16,7 +16,6 @@ import check_metric_gaming as cmg
 import snapshot_evidence as se
 from dispatch_emitter import DispatchRecord, build_wave_events
 
-
 _FORBIDDEN_KEYS = {
     "context_contract",
     "allowed_tools",

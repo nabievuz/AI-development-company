@@ -10,7 +10,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 SURFACE = (
     "scripts/*.py",
     "scripts/*.sh",

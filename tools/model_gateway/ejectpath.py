@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-
 from tools.model_gateway.flag import openweight_ejectpath_on
 from tools.model_gateway.gateway import (
     ACCEPTED_EXTERNAL_ROLES,

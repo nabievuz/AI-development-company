@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import json
 import re
-import sys
+from enum import IntEnum
 
 from dgox.created_at import parse_created_at
+
+
+class CliExit(IntEnum):
+    HEALTHY = 0
+    DEGRADED = 1
+    USAGE = 2
+    NO_DATA = 3
 
 WAVE = re.compile(r"^===== wave (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) =====")
 IDLE = re.compile(r"^\[idle (\d+)s before next wave — (\d{2}:\d{2}:\d{2})\]")
@@ -139,8 +147,23 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
     return _union_seconds(intervals) / span, stats
 
 
-def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else LIVE_LOG
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="wave_kpi.py",
+        description="wave_kpi.py — wave throughput / model-mix / busy-fraction KPIs from a wave log.",
+        epilog=f"exit codes: {CliExit.HEALTHY.value} waves with dispatch · "
+               f"{CliExit.DEGRADED.value} waves logged but nothing dispatched · "
+               f"{CliExit.USAGE.value} usage error · "
+               f"{CliExit.NO_DATA.value} log missing or contains no waves",
+    )
+    ap.add_argument("log", nargs="?", default=LIVE_LOG,
+                    help=f"wave log to read (default: {LIVE_LOG}; archived: {LEGACY_LOG})")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    path = args.log
     try:
         waves = parse(path)
     except FileNotFoundError:
@@ -152,10 +175,10 @@ def main():
         else:
             print("(Pass an explicit log path, e.g. board/.wave-log or "
                   "board/archive/<name>.log)")
-        return
+        return CliExit.NO_DATA
     if not waves:
         print("No waves found in", path)
-        return
+        return CliExit.NO_DATA
 
     active_secs, dispatched, models = 0, 0, {"opus": 0, "sonnet": 0, "haiku": 0}
     none_waves = 0
@@ -199,7 +222,8 @@ def main():
         print("Throughput (elapsed) .... n/a (single wave / zero elapsed span)")
     if act_waves:
         print(f"Avg active wave ......... {fmt(active_secs/act_waves)}")
+    return CliExit.HEALTHY if dispatched else CliExit.DEGRADED
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

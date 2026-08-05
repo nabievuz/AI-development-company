@@ -11,7 +11,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 ENGINE_PATTERNS = (
     "scripts/*.py",
     "scripts/*.sh",

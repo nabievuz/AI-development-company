@@ -470,17 +470,48 @@ def test_roundtrip_manager_gate_flagged_not_auto_promoted():
     assert ml.needs_manager_gate(native_org) is False
 
 
-def test_backend_eng1_overlay_has_learned_section():
-    overlay = REPO_ROOT / "engineering" / "agents" / "backend-eng-1" / "AGENTS.md"
-    assert overlay.exists(), f"overlay missing: {overlay}"
-    text = overlay.read_text(encoding="utf-8")
-    assert "## Learned" in text, "backend-eng-1 overlay missing ## Learned section"
-    assert "DISTILLATION" in text
+def _assert_learned_landing_surface(role_key: str) -> None:
+    import gen_agent_templates
+    import org_model
+
+    assert role_key in org_model.known_role_keys()
+    seed = gen_agent_templates.build_template_for(role_key)
+    assert "## Learned" in seed, f"{role_key} template has no ## Learned landing section"
+    assert "DISTILLATION" not in seed, f"{role_key} seed template must start undistilled"
+
+    distilled = ml.apply_learned_to_template(
+        seed,
+        [_lr("k1", "run the migration before the backfill", confidence=8.0)],
+        date="2026-07-03",
+    )
+    assert "## Learned" in distilled
+    assert "DISTILLATION" in distilled
+    assert "run the migration before the backfill" in distilled
+    assert distilled.count("## Learned") == 1
+
+    again = ml.apply_learned_to_template(
+        distilled,
+        [_lr("k1", "run the migration before the backfill", confidence=8.0)],
+        date="2026-07-03",
+    )
+    assert again == distilled
 
 
-def test_product_analyst_overlay_has_learned_section():
-    overlay = REPO_ROOT / "product" / "agents" / "product-analyst" / "AGENTS.md"
-    assert overlay.exists(), f"overlay missing: {overlay}"
-    text = overlay.read_text(encoding="utf-8")
-    assert "## Learned" in text, "product-analyst overlay missing ## Learned section"
-    assert "DISTILLATION" in text
+def test_backend_eng1_template_has_learned_landing_surface():
+    _assert_learned_landing_surface("backend-eng-1")
+
+
+def test_product_analyst_template_has_learned_landing_surface():
+    _assert_learned_landing_surface("product-analyst")
+
+
+def test_every_org_role_has_a_learned_landing_surface():
+    import gen_agent_templates
+    import org_model
+
+    missing = [
+        key
+        for key in sorted(org_model.known_role_keys())
+        if "## Learned" not in gen_agent_templates.build_template_for(key)
+    ]
+    assert missing == []

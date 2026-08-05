@@ -17,7 +17,7 @@ import board_lint
 import gateway_compile as gc
 import stage_gate as sg
 
-_KNOWN_ROLES = board_lint.load_known_roles(REPO_ROOT / "board" / "ROUTING.md")
+_KNOWN_ROLES = board_lint.load_known_roles()
 
 
 def fm(**over: str) -> dict[str, str]:
@@ -117,10 +117,24 @@ def test_gate5_open_blocks_production_deploy_action() -> None:
 
 def test_gate5_deploy_action_allowed_once_gate5_done() -> None:
     tickets = [
-        pair(id="DAS-9005", stage="GATE-5", status="done", title="Stage 5 gate"),
+        pair(id="DAS-9005", stage="GATE-5", status="done", approval="human:founder",
+             title="Stage 5 gate"),
         pair(id="DAS-9010", labels="[deploy]", status="in_progress", title="push to prod"),
     ]
     assert sg.production_deploy_violations(tickets) == []
+
+
+def test_gate5_closed_without_a_named_human_approval_fails_closed() -> None:
+    tickets = [pair(id="DAS-9005", stage="GATE-5", status="done", title="Stage 5 gate")]
+    v = sg.production_deploy_violations(tickets)
+    assert any("DAS-9005" in x and "no named human approval" in x for x in v)
+
+
+@pytest.mark.parametrize("placeholder", ["", "pending", "TBD", "n/a", "none"])
+def test_gate5_closed_with_a_placeholder_approval_fails_closed(placeholder: str) -> None:
+    tickets = [pair(id="DAS-9005", stage="GATE-5", status="done", approval=placeholder)]
+    v = sg.production_deploy_violations(tickets)
+    assert any("DAS-9005" in x and "no named human approval" in x for x in v)
 
 
 def test_auto_approved_gate5_deploy_is_blocked() -> None:

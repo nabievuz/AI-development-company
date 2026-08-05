@@ -9,7 +9,6 @@ sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 from check_no_dead_runtime import offenders, surface_files
 
-
 _DEAD = "http://127.0.0.1:" + "3100"
 
 

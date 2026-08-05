@@ -11,18 +11,24 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 app = FastAPI(title="DasLab Control Plane (WS-H)", docs_url=None, redoc_url=None)
 
 STATUSES = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"]
 NODATA = "(no data — cockpit unavailable in this environment; see scripts/cockpit.py)"
 FLAG = "ws_h_control_plane"
+
+DEFAULT_MAX_REQUEST_BYTES = 64 * 1024
+MAX_REQUEST_BYTES_ENV = "DASLAB_CP_MAX_REQUEST_BYTES"
+_BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 _ENGINE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -116,33 +122,179 @@ def audit(
         pass
 
 
+class AuthFailure(Enum):
+    MISSING_HEADER = "no authorization header"
+    MALFORMED_HEADER = "malformed authorization header (expected 'Bearer <token>')"
+    EMPTY_TOKEN = "empty bearer token"
+    UNKNOWN_TOKEN = "unknown bearer token"
+    UNUSABLE_PRINCIPAL = "token maps to an unusable principal"
+
+
+class Identity:
+
+    __slots__ = ("kind", "principal", "user")
+
+    def __init__(self, user: str, principal: str, kind: str) -> None:
+        self.user = user
+        self.principal = principal
+        self.kind = kind
+
+    def as_dict(self) -> dict:
+        return {"user": self.user, "principal": self.principal, "kind": self.kind}
+
+
+def _token_bytes(value: str) -> bytes:
+    return value.encode("utf-8", errors="surrogateescape")
+
+
 def _match_token(tokens: dict, token: str) -> dict | None:
     if not token:
         return None
+    probe = _token_bytes(token)
     found: dict | None = None
     for candidate, entry in tokens.items():
-        if (
-            isinstance(candidate, str)
-            and hmac.compare_digest(token, candidate)
-            and isinstance(entry, dict)
-        ):
+        if not isinstance(candidate, str) or not isinstance(entry, dict):
+            continue
+        if hmac.compare_digest(probe, _token_bytes(candidate)):
             found = entry
     return found
+
+
+def _bearer_token(header: str) -> tuple[str, AuthFailure | None]:
+    if not header:
+        return "", AuthFailure.MISSING_HEADER
+    scheme, _, rest = header.partition(" ")
+    if scheme.lower() != "bearer":
+        return "", AuthFailure.MALFORMED_HEADER
+    token = rest.strip()
+    if not token:
+        return "", AuthFailure.EMPTY_TOKEN
+    return token, None
+
+
+def _resolve_identity(tokens: dict, token: str) -> tuple[Identity | None, AuthFailure | None]:
+    entry = _match_token(tokens, token)
+    if not isinstance(entry, dict):
+        return None, AuthFailure.UNKNOWN_TOKEN
+    principal = entry.get("principal")
+    if not isinstance(principal, str) or not principal:
+        return None, AuthFailure.UNUSABLE_PRINCIPAL
+    kind = _rbac._kind_of(principal)
+    if kind is None:
+        return None, AuthFailure.UNUSABLE_PRINCIPAL
+    user = entry.get("user")
+    return Identity(str(user) if user else "unknown", principal, str(kind)), None
 
 
 def _identify(request: Request) -> dict:
     tokens = load_token_map()
     if tokens is None:
         raise HTTPException(503, "control plane not configured: set DASLAB_CP_RBAC (fail-closed)")
-    header = request.headers.get("authorization", "")
-    token = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else ""
-    entry = _match_token(tokens, token)
-    principal = entry.get("principal") if isinstance(entry, dict) else None
-    kind = _rbac._kind_of(principal) if principal else None
-    if not isinstance(entry, dict) or not principal or kind is None:
-        audit("auth", str(principal or "-"), "-", "deny", "bad or missing token")
+    token, failure = _bearer_token(request.headers.get("authorization", ""))
+    identity: Identity | None = None
+    if failure is None:
+        identity, failure = _resolve_identity(tokens, token)
+    if identity is None:
+        audit("auth", "-", "-", "deny", (failure or AuthFailure.UNKNOWN_TOKEN).value)
         raise HTTPException(401, "invalid token")
-    return {"user": entry.get("user", "unknown"), "principal": str(principal), "kind": kind}
+    audit("auth", identity.principal, identity.kind, "allow", "token accepted")
+    return identity.as_dict()
+
+
+def max_request_bytes() -> int:
+    raw = os.environ.get(MAX_REQUEST_BYTES_ENV, "").strip()
+    if not raw:
+        return DEFAULT_MAX_REQUEST_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_REQUEST_BYTES
+    return value if value > 0 else DEFAULT_MAX_REQUEST_BYTES
+
+
+def _declared_length(scope: Scope) -> int | None:
+    for name, value in scope.get("headers") or []:
+        if name.lower() != b"content-length":
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _replay_body(body: bytes) -> Receive:
+    sent = False
+
+    async def receive() -> dict:
+        nonlocal sent
+        if sent:
+            return {"type": "http.disconnect"}
+        sent = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return receive
+
+
+class RequestSizeLimit:
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        limit = max_request_bytes()
+        declared = _declared_length(scope)
+        if declared is not None and declared > limit:
+            await self._reject(scope, receive, send, limit)
+            return
+        if declared is None and scope.get("method") in _BODY_METHODS:
+            body = b""
+            while True:
+                message = await receive()
+                if message["type"] != "http.request":
+                    break
+                body += message.get("body", b"")
+                if len(body) > limit:
+                    await self._reject(scope, receive, send, limit)
+                    return
+                if not message.get("more_body", False):
+                    break
+            await self.app(scope, _replay_body(body), send)
+            return
+        await self.app(scope, receive, send)
+
+    async def _reject(self, scope: Scope, receive: Receive, send: Send, limit: int) -> None:
+        audit(
+            "request.reject",
+            "-",
+            "-",
+            "deny",
+            f"request body exceeds {limit} bytes",
+            str(scope.get("path", "")),
+        )
+        response = JSONResponse(
+            {"detail": f"request body too large (limit {limit} bytes)"}, status_code=413
+        )
+        await response(scope, receive, send)
+
+
+app.add_middleware(RequestSizeLimit)
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    audit(
+        "request.error",
+        "-",
+        "-",
+        "error",
+        type(exc).__name__,
+        f"{request.method} {request.url.path}: {exc}",
+    )
+    return JSONResponse({"detail": "internal error"}, status_code=500)
 
 
 class RequirePermission:

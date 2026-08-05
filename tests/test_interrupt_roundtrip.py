@@ -6,7 +6,6 @@ import sys
 import textwrap
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
@@ -18,7 +17,6 @@ from interrupt_roundtrip import (
     parse_resume_marker,
     validate_resume_value,
 )
-
 
 _CARD_TEMPLATE = {
     "question": "Which deployment strategy should we use?",

@@ -35,8 +35,8 @@ def test_clean_board_passes(tmp_path):
     assert _run(tmp_path, {"id": "DAS-2000", "approval": "human:founder", "ticket_type": "goal"}) == 0
 
 
-def test_no_approval_field_is_skipped(tmp_path):
-    assert _run(tmp_path, {"id": "DAS-2000", "ticket_type": "goal"}) == 0
+def test_no_approval_field_fails_closed(tmp_path):
+    assert _run(tmp_path, {"id": "DAS-2000", "ticket_type": "goal"}) == 1
 
 
 def test_non_category_auto_is_allowed(tmp_path):

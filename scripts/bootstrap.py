@@ -10,6 +10,10 @@ from pathlib import Path
 
 from _paths import ROOT
 
+EXIT_OK = 0
+EXIT_FAIL = 1
+EXIT_USAGE = 2
+
 
 def _run(label: str, argv: list[str]) -> int:
     print(f"→ {label}")
@@ -37,7 +41,12 @@ def _provision_memory() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(description='bootstrap.py — idempotent first-run setup for a fresh DasLab clone.').parse_args(argv)
+    argparse.ArgumentParser(
+        prog="bootstrap.py",
+        description="bootstrap.py — idempotent first-run setup for a fresh DasLab clone.",
+        epilog=f"exit codes: {EXIT_OK} bootstrapped · {EXIT_FAIL} a bootstrap step failed · "
+               f"{EXIT_USAGE} usage error",
+    ).parse_args(argv)
     print(f"DasLab bootstrap — repository root: {ROOT}")
 
     projects = ROOT / "projects"
@@ -50,15 +59,17 @@ def main(argv: list[str] | None = None) -> int:
     rc = _run("regenerate agent shims", [sys.executable, str(ROOT / "scripts" / "gen_subagents.py")])
     if rc != 0:
         print("bootstrap FAILED: gen_subagents.py errored", file=sys.stderr)
-        return rc
+        return EXIT_FAIL
 
     _provision_memory()
 
-
-    _run("environment preflight (doctor.py)", [sys.executable, str(ROOT / "scripts" / "doctor.py")])
+    doctor_rc = _run("environment preflight (doctor.py)", [sys.executable, str(ROOT / "scripts" / "doctor.py")])
+    if doctor_rc != 0:
+        print("bootstrap: doctor.py reported a failing REQUIRED check — "
+              "the org will not run until it is fixed.", file=sys.stderr)
 
     print("bootstrap complete — open `claude` at the repo root, then /daslab-plan \"<goal>\".")
-    return 0
+    return EXIT_OK
 
 
 if __name__ == "__main__":

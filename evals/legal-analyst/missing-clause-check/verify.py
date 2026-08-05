@@ -1,9 +1,9 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-
 
 _REQUIRED_CLAUSES: dict[str, str] = {
     "confidentiality": r"confidential",
@@ -17,8 +17,13 @@ _REQUIRED_CLAUSES: dict[str, str] = {
 }
 
 
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
+
+
 def _missing_clauses(fixtures: Path) -> set[str]:
-    text = (fixtures / "msa.md").read_text(encoding="utf-8")
+    text = _document(fixtures / "msa.json")
     return {
         clause_id
         for clause_id, pattern in _REQUIRED_CLAUSES.items()
@@ -29,7 +34,10 @@ def _missing_clauses(fixtures: Path) -> set[str]:
 def verify(submission: dict, fixtures: Path) -> float:
     expected = _missing_clauses(fixtures)
     if not expected:
-        return 0.0
+        raise ValueError(
+            "fixture MSA is missing no required clause — "
+            "this task would grade every answer as wrong"
+        )
 
     reported = submission.get("missing_clauses", [])
     if not isinstance(reported, list):

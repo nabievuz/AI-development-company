@@ -52,5 +52,22 @@ def test_real_registry_gates_all_skipped_no_data():
     assert gp.ENFORCE not in st.values()
 
 
-def test_reporter_runs_clean():
-    assert gp.main([]) == 0
+def test_reporter_reports_no_data_when_every_gate_is_skipped(capsys):
+    rc = gp.main([])
+    assert rc == gp.EXIT_NO_DATA
+    assert rc != gp.EXIT_OK
+    err = capsys.readouterr().err
+    assert "NO DATA" in err
+
+
+def test_reporter_exits_ok_once_a_gate_is_actually_measured(monkeypatch):
+    monkeypatch.setattr(
+        gp, "statuses", lambda: {"T1_busy_fraction": gp.ENFORCE, "T7_quality": gp.SKIPPED}
+    )
+    assert gp.main([]) == gp.EXIT_OK
+
+
+def test_reporter_reports_no_data_when_the_registry_is_absent(monkeypatch, capsys):
+    monkeypatch.setattr(gp, "statuses", dict)
+    assert gp.main([]) == gp.EXIT_NO_DATA
+    assert "no metric registry" in capsys.readouterr().err

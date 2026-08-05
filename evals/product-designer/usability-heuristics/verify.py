@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _RULES = (
     ("has_confirmation_on_destructive_action", False, "error_prevention"),
     ("shows_loading_indicator", False, "visibility_of_system_status"),

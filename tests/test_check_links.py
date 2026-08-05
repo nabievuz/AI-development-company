@@ -6,6 +6,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
+import check_links as cl
 from check_links import check, main
 
 
@@ -49,3 +50,26 @@ def test_resolves_relative_to_file_dir(tmp_path: Path) -> None:
 
     (sub / "guide.md").write_text("[sib](sibling.md)\n")
     assert main(["--root", str(tmp_path)]) == 1
+
+
+def test_untracked_trees_are_never_scanned(tmp_path: Path) -> None:
+    for name in sorted(cl.UNTRACKED_DIR_NAMES):
+        d = tmp_path / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "doc.md").write_text("[broken](./nope.md)\n", encoding="utf-8")
+    assert cl.tracked_markdown(tmp_path) == []
+    assert cl.check(tmp_path) == []
+
+
+def test_projects_tree_is_excluded_even_when_deeply_nested(tmp_path: Path) -> None:
+    deep = tmp_path / "projects" / "an-app" / "node_modules" / "pkg"
+    deep.mkdir(parents=True)
+    (deep / "README.md").write_text("[broken](./missing.ts)\n", encoding="utf-8")
+    assert cl.check(tmp_path) == []
+
+
+def test_a_real_broken_link_outside_those_trees_is_still_caught(tmp_path: Path) -> None:
+    (tmp_path / "kept.md").write_text("[broken](./missing.md)\n", encoding="utf-8")
+    failures = cl.check(tmp_path)
+    assert len(failures) == 1
+    assert "kept.md" in failures[0]

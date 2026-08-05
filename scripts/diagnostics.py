@@ -13,7 +13,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 TICKETS_DIR: Path = REPO_ROOT / "board" / "tickets"
 
@@ -226,16 +225,27 @@ def check_docs() -> list[CheckResult]:
         capture_output=True,
         text=True,
     )
-    results.append(
-        CheckResult(
-            "quickstart-order",
-            qs.returncode == 0,
-            "README Quickstart runs bootstrap before doctor"
-            if qs.returncode == 0
-            else "README Quickstart boot order is wrong",
-        )
-    )
+    results.append(_quickstart_result(qs.returncode))
     return results
+
+
+QUICKSTART_NO_DATA_RC = 3
+
+
+def _quickstart_result(returncode: int) -> CheckResult:
+    if returncode == 0:
+        return CheckResult(
+            "quickstart-order", True, "README Quickstart runs bootstrap before doctor"
+        )
+    if returncode == QUICKSTART_NO_DATA_RC:
+        return CheckResult(
+            "quickstart-order",
+            True,
+            "NO DATA — no README Quickstart in tree; boot order was not verified",
+        )
+    return CheckResult(
+        "quickstart-order", False, "README Quickstart boot order is wrong"
+    )
 
 
 def check_architecture() -> list[CheckResult]:

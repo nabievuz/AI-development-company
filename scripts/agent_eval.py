@@ -15,13 +15,36 @@ from pathlib import Path
 from types import ModuleType
 
 import check_t7_quality
+import org_model
 from _paths import ROOT
 from cost.cost_ledger import aggregate_spans
-
 
 DEFAULT_EVALS_ROOT: Path = ROOT / "evals"
 DEFAULT_RUBRIC_PATH: Path = ROOT / "config" / "t7_rubric.yaml"
 DEFAULT_K: int = 3
+
+
+HARNESS_KIND: str = "deterministic_submission_replay"
+
+
+LIVE_MODEL_INVOKED: bool = False
+
+
+HARNESS_SUMMARY: str = (
+    "deterministic golden-task regression harness: it replays the submissions "
+    "already committed under evals/<role>/<task>/submissions/*.json through that "
+    "task's verify.py and scores them. No model is invoked, no agent is run, and "
+    "nothing here measures the live competence of any agent at any tier — it "
+    "measures whether the committed golden tasks still grade their committed "
+    "answers the way they did before."
+)
+
+
+KNOWN_TIERS: tuple[str, ...] = tuple(str(m) for m in org_model.Model)
+
+
+TIER_FROM_ORG: str = "org-allocation"
+TIER_FROM_OVERRIDE: str = "cli-override"
 
 
 PASS_BAR: float = 0.80
@@ -73,6 +96,7 @@ class RoleScorecard:
     tier: str
     tasks: list[TaskResult] = field(default_factory=list)
     cost_usd: float | None = None
+    tier_source: str = TIER_FROM_OVERRIDE
 
     @property
     def accuracy(self) -> float:
@@ -91,6 +115,9 @@ class RoleScorecard:
         return {
             "role": self.role,
             "tier": self.tier,
+            "tier_source": self.tier_source,
+            "harness_kind": HARNESS_KIND,
+            "live_model_invoked": LIVE_MODEL_INVOKED,
             "accuracy": round(self.accuracy, 4),
             "bar": bar,
             "passed": self.meets_bar(bar),
@@ -215,7 +242,7 @@ def gaming_findings(
                 f"empty submission scored {credit:.4f} (> {MAX_DEGENERATE_CREDIT}); "
                 "an empty answer must earn no credit"
             )
-    findings.extend(prompt_leak_findings(evals_root, rubric_path))
+    findings.extend(prompt_leak_scan(evals_root, rubric_path).findings)
     return findings
 
 
@@ -247,6 +274,42 @@ def _json_candidates(text: str) -> list[object]:
                     _try(text[start : i + 1])
                     start = None
     return out
+
+
+@dataclass(frozen=True)
+class PromptLeakScan:
+    tasks_total: int
+    tasks_with_a_prompt: int
+    findings: tuple[str, ...]
+
+    @property
+    def binds_nothing(self) -> bool:
+        return self.tasks_with_a_prompt == 0
+
+    def coverage_line(self) -> str:
+        if self.binds_nothing:
+            return (
+                f"prompt-leak scan: 0 of {self.tasks_total} task(s) carry an "
+                "agent-facing task.md — the prompt-leak defence currently binds "
+                "NOTHING; a clean result here proves nothing was checked."
+            )
+        return (
+            f"prompt-leak scan: {self.tasks_with_a_prompt} of {self.tasks_total} "
+            f"task(s) scanned, {len(self.findings)} finding(s)."
+        )
+
+
+def prompt_leak_scan(
+    evals_root: Path = DEFAULT_EVALS_ROOT,
+    rubric_path: Path = DEFAULT_RUBRIC_PATH,
+) -> PromptLeakScan:
+    tasks = discover_all_tasks(evals_root)
+    with_prompt = [d for d in tasks if (d / "task.md").is_file()]
+    return PromptLeakScan(
+        tasks_total=len(tasks),
+        tasks_with_a_prompt=len(with_prompt),
+        findings=tuple(prompt_leak_findings(evals_root, rubric_path)),
+    )
 
 
 def prompt_leak_findings(
@@ -318,25 +381,56 @@ def role_cost(role: str, store_path: Path | str | None = None) -> float | None:
     return group.estimated_cost_usd if group is not None else 0.0
 
 
+def validate_tier(tier: str) -> str:
+    if tier not in KNOWN_TIERS:
+        raise EvalError(
+            f"unknown model tier {tier!r} — the org model declares only "
+            f"{', '.join(KNOWN_TIERS)} (config/org.yaml)"
+        )
+    return tier
+
+
+def allocated_tier(role: str) -> str:
+    try:
+        return str(org_model.model_for(role))
+    except (KeyError, org_model.OrgConfigError) as exc:
+        raise EvalError(
+            f"role {role!r} has no model allocation in the org model "
+            f"(config/org.yaml): {exc}. Pass an explicit --tier "
+            f"({'/'.join(KNOWN_TIERS)}) to score it anyway."
+        ) from exc
+
+
+def resolve_tier(role: str, requested: str | None = None) -> tuple[str, str]:
+    if requested is not None:
+        return validate_tier(requested), TIER_FROM_OVERRIDE
+    return allocated_tier(role), TIER_FROM_ORG
+
+
 def evaluate_role(
     role: str,
-    tier: str,
+    tier: str | None = None,
     evals_root: Path = DEFAULT_EVALS_ROOT,
     k: int = DEFAULT_K,
     store_path: Path | str | None = None,
     rubric_path: Path = DEFAULT_RUBRIC_PATH,
 ) -> RoleScorecard:
+    resolved, source = resolve_tier(role, tier)
     tasks = [
         score_task(task_dir, k=k, rubric_path=rubric_path)
         for task_dir in discover_tasks(role, evals_root)
     ]
     return RoleScorecard(
-        role=role, tier=tier, tasks=tasks, cost_usd=role_cost(role, store_path)
+        role=role,
+        tier=resolved,
+        tasks=tasks,
+        cost_usd=role_cost(role, store_path),
+        tier_source=source,
     )
 
 
 def evaluate_all(
-    tier: str = "unspecified",
+    tier: str | None = None,
     evals_root: Path = DEFAULT_EVALS_ROOT,
     k: int = DEFAULT_K,
     store_path: Path | str | None = None,
@@ -352,10 +446,19 @@ def _fmt_cost(cost: float | None) -> str:
     return "n/a (inert)" if cost is None else f"${cost:.4f}"
 
 
+SCORECARD_BANNER: str = (
+    "Replay of committed golden-task submissions — no model was invoked. "
+    "'Tier' is the role's model allocation from config/org.yaml, not a tier that "
+    "was actually exercised."
+)
+
+
 def scorecard_markdown(scorecards: list[RoleScorecard], bar: float = PASS_BAR) -> str:
     bar_pct = f"{bar:.0%}"
     lines = [
-        f"| Role | Tier | Tasks | Accuracy | Pass (>={bar_pct}) | Est. cost (USD) |",
+        SCORECARD_BANNER,
+        "",
+        f"| Role | Tier | Tasks | Replay accuracy | Pass (>={bar_pct}) | Est. cost (USD) |",
         "|---|---|---|---|---|---|",
     ]
     for sc in sorted(scorecards, key=lambda s: s.role):
@@ -654,10 +757,24 @@ def delivery_gaming_findings(delivery_dir: Path | str, *, enabled: bool = True) 
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description='agent_eval.py — golden-eval harness runner (ORGANISM WS6 GUILD / P19 / DAS-1487).')
+    p = argparse.ArgumentParser(
+        prog="agent_eval.py",
+        description=f"agent_eval.py — {HARNESS_SUMMARY}",
+        epilog=(
+            "exit codes: 0 = scored (or nothing to score), 1 = a gate this run "
+            "enforces failed, 2 = usage error or an unscoreable request."
+        ),
+    )
     p.add_argument("--evals", type=Path, default=DEFAULT_EVALS_ROOT, help="evals/ root")
     p.add_argument("--role", default=None, help="score a single role")
-    p.add_argument("--tier", default="unspecified", help="model tier being evaluated")
+    p.add_argument(
+        "--tier",
+        default=None,
+        choices=KNOWN_TIERS,
+        help="override the model tier recorded on the scorecard. No model is "
+        "invoked either way — this only labels the record. Default: the role's "
+        "own allocation from config/org.yaml.",
+    )
     p.add_argument("--all", action="store_true", help="score every role with tasks")
     p.add_argument("--k", type=int, default=DEFAULT_K, help="attempts per task (default 3)")
     p.add_argument("--events", type=Path, default=None, help="span store for cost")
@@ -666,11 +783,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--roster", action="store_true", help="print the scorecard markdown table")
     p.add_argument(
         "--bar", type=float, default=PASS_BAR,
-        help=f"release-blocking accuracy bar (default {PASS_BAR:.2f} = 80%%)",
+        help=f"release-blocking replay-accuracy bar (default {PASS_BAR:.2f} = 80%%)",
     )
     p.add_argument(
         "--enforce", action="store_true",
-        help="exit 1 if any evaluated role's accuracy is below --bar (GATE-4 gate)",
+        help="exit 1 if any role's replayed submissions score below --bar (GATE-4 gate)",
     )
     p.add_argument(
         "--check-gaming",
@@ -714,6 +831,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check_gaming:
         findings = gaming_findings(args.evals, args.rubric)
+        sys.stderr.write(prompt_leak_scan(args.evals, args.rubric).coverage_line() + "\n")
         if findings:
             sys.stderr.write("FAIL: gameable golden task(s):\n")
             for f in findings:
@@ -730,14 +848,18 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"  - {f}\n")
         return 1
 
-    if args.role:
-        scorecards = [
-            evaluate_role(args.role, args.tier, args.evals, args.k, args.events, args.rubric)
-        ]
-    elif args.all or args.roster:
-        scorecards = evaluate_all(args.tier, args.evals, args.k, args.events, args.rubric)
-    else:
-        sys.stderr.write("usage: pass --role <role>, --all, or --roster\n")
+    try:
+        if args.role:
+            scorecards = [
+                evaluate_role(args.role, args.tier, args.evals, args.k, args.events, args.rubric)
+            ]
+        elif args.all or args.roster:
+            scorecards = evaluate_all(args.tier, args.evals, args.k, args.events, args.rubric)
+        else:
+            sys.stderr.write("usage: pass --role <role>, --all, or --roster\n")
+            return 2
+    except EvalError as exc:
+        sys.stderr.write(f"FAIL: cannot score — {exc}\n")
         return 2
 
     if not scorecards or all(sc.task_count == 0 for sc in scorecards):
@@ -749,10 +871,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.json:
         print(json.dumps([sc.to_dict(args.bar) for sc in scorecards], indent=2))
     else:
+        print(SCORECARD_BANNER)
         for sc in scorecards:
             verdict = "PASS" if sc.meets_bar(args.bar) else "FAIL"
             print(
-                f"{sc.role} [{sc.tier}]: accuracy={sc.accuracy:.3f} "
+                f"{sc.role} [tier {sc.tier} <- {sc.tier_source}]: "
+                f"replayed accuracy={sc.accuracy:.3f} "
                 f"over {sc.task_count} task(s) [{verdict} @>={args.bar:.2f}], "
                 f"cost={_fmt_cost(sc.cost_usd)}"
             )

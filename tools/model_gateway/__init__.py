@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from tools.model_gateway.ejectpath import (
     DEFAULT_MOCK_URL,
     EJECTPATH_ROUTE_NAME,

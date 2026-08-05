@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -21,11 +22,27 @@ import wave_kpi
 import wave_runner as wr
 from dgox.events import RUN_END_METRICS_FIELDS
 
-_ROUTING = _REPO_ROOT / "board" / "ROUTING.md"
 _GUARDRAILS = _REPO_ROOT / "governance" / "guardrails"
 
 _WAVE_TS = "2026-07-04T12:00:00Z"
 _WAVE_TS2 = "2026-07-04T13:00:00Z"
+
+_ROUTING_TABLE = textwrap.dedent(
+    """\
+    | Role key | Display name | Dept | Reports to (reviewer) |
+    |---|---|---|---|
+    | `backend-eng-1` | Backend Engineer 1 | engineering | Backend EM |
+    | `backend-eng-2` | Backend Engineer 2 | engineering | Backend EM |
+    | `backend-em` | Backend EM | engineering | CTO |
+    | `cto` | CTO | engineering | CEO |
+    """
+)
+
+
+def _routing(tmp: Path) -> Path:
+    path = tmp / "ROUTING.md"
+    path.write_text(_ROUTING_TABLE, encoding="utf-8")
+    return path
 
 
 def _write_ticket(board_dir: Path, ticket_id: str, assignee: str) -> None:
@@ -58,23 +75,24 @@ def _plan(run_id: str) -> wr.WavePlan:
     )
 
 
-def _results() -> wr.WaveResults:
+def _ticket_results() -> list[wr.TicketResult]:
     common = {
         "outcome": "success", "merged_pr": True, "ci_status": "green",
         "t7_pass": True, "t7_score": 0.95, "start": _WAVE_TS, "end": "2026-07-04T12:10:00Z",
-        "final_status": "done", "output": "Implemented the change; all tests green.",
+        "final_status": "done",
+        "output": (
+            "Implemented the change in scripts/wave_runner.py; ran pytest "
+            "tests/test_wave_runner.py and got 23 passed, 0 failed."
+        ),
     }
-    return wr.WaveResults(
-        tickets=[
-            wr.TicketResult(ticket_id="DAS-9001", **common),
-            wr.TicketResult(ticket_id="DAS-9002", **common),
-        ],
-        request_satisfied=True,
-        in_loop=False,
-        progress_being_made=True,
-        next_tickets=[],
-        instruction="",
-    )
+    return [
+        wr.TicketResult(ticket_id="DAS-9001", **common),
+        wr.TicketResult(ticket_id="DAS-9002", **common),
+    ]
+
+
+def _executor() -> wr.WaveExecutor:
+    return wr.replay_executor(_ticket_results())
 
 
 def _drive(tmp: Path, run_id: str, created_at: str) -> wr.WaveAttestation:
@@ -83,7 +101,7 @@ def _drive(tmp: Path, run_id: str, created_at: str) -> wr.WaveAttestation:
     _write_ticket(board, "DAS-9002", "backend-eng-2")
     att = wr.run_wave(
         _plan(run_id),
-        _results(),
+        _executor(),
         created_at=created_at,
         store_path=tmp / "events.jsonl",
         runs_dir=tmp / "runs",
@@ -92,7 +110,7 @@ def _drive(tmp: Path, run_id: str, created_at: str) -> wr.WaveAttestation:
         evidence_dir=tmp / "evidence",
         tickets_dir=board,
         board_dir=board,
-        routing_path=_ROUTING,
+        routing_path=_routing(tmp),
         guardrails_dir=_GUARDRAILS,
     )
     assert att is not None
@@ -105,7 +123,7 @@ def test_run_wave_omitted_guardrails_dir_does_not_crash(tmp_path: Path) -> None:
     _write_ticket(board, "DAS-9002", "backend-eng-2")
     att = wr.run_wave(
         _plan("01KWS8ATTEST00000000000009"),
-        _results(),
+        _executor(),
         created_at=_WAVE_TS,
         store_path=tmp_path / "events.jsonl",
         runs_dir=tmp_path / "runs",
@@ -114,7 +132,7 @@ def test_run_wave_omitted_guardrails_dir_does_not_crash(tmp_path: Path) -> None:
         evidence_dir=tmp_path / "evidence",
         tickets_dir=board,
         board_dir=board,
-        routing_path=_ROUTING,
+        routing_path=_routing(tmp_path),
         run_guardrails=False,
 
     )
@@ -317,7 +335,7 @@ def test_organism_emit_off_is_a_byte_clean_noop(tmp_path: Path) -> None:
     ledger = tmp_path / "board" / "wave-ledger.jsonl"
     result = wr.run_wave(
         _plan("01JWAVE0000000000000000009"),
-        _results(),
+        _executor(),
         created_at=_WAVE_TS,
         store_path=store,
         runs_dir=tmp_path / "runs",
@@ -326,7 +344,7 @@ def test_organism_emit_off_is_a_byte_clean_noop(tmp_path: Path) -> None:
         evidence_dir=tmp_path / "evidence",
         tickets_dir=board,
         board_dir=board,
-        routing_path=_ROUTING,
+        routing_path=_routing(tmp_path),
         guardrails_dir=_GUARDRAILS,
         organism_emit=False,
     )
@@ -381,7 +399,7 @@ def test_run_wave_missing_ticket_file_does_not_crash_the_wave(tmp_path: Path) ->
 
     att = wr.run_wave(
         _plan(run_id),
-        _results(),
+        _executor(),
         created_at=_WAVE_TS,
         store_path=tmp_path / "events.jsonl",
         runs_dir=tmp_path / "runs",
@@ -390,7 +408,7 @@ def test_run_wave_missing_ticket_file_does_not_crash_the_wave(tmp_path: Path) ->
         evidence_dir=tmp_path / "evidence",
         tickets_dir=board,
         board_dir=board,
-        routing_path=_ROUTING,
+        routing_path=_routing(tmp_path),
         guardrails_dir=_GUARDRAILS,
         run_guardrails=False,
     )
@@ -428,13 +446,145 @@ def test_missing_result_for_planned_ticket_raises(tmp_path: Path) -> None:
         tickets=[wr.TicketPlan("DAS-9001", "backend-eng-1", "opus"),
                  wr.TicketPlan("DAS-9099", "backend-eng-2", "sonnet")],
     )
-    results = wr.WaveResults(tickets=[wr.TicketResult(
+    partial = wr.replay_executor([wr.TicketResult(
         "DAS-9001", outcome="success", merged_pr=True, ci_status="green",
         t7_pass=True, t7_score=0.9, start=_WAVE_TS, end="2026-07-04T12:05:00Z",
         output="done")])
     with pytest.raises(ValueError, match="DAS-9099"):
-        wr.run_wave(plan, results, created_at=_WAVE_TS, store_path=tmp_path / "e.jsonl",
+        wr.run_wave(plan, partial, created_at=_WAVE_TS, store_path=tmp_path / "e.jsonl",
                     runs_dir=tmp_path / "runs", attest_dir=tmp_path / "att",
                     ledger_path=tmp_path / "board" / "wave-ledger.jsonl",
                     evidence_dir=tmp_path / "ev", tickets_dir=board, board_dir=board,
-                    routing_path=_ROUTING, guardrails_dir=_GUARDRAILS, run_guardrails=False)
+                    routing_path=_routing(tmp_path), guardrails_dir=_GUARDRAILS, run_guardrails=False)
+
+
+def test_run_wave_refuses_pre_computed_results(tmp_path: Path) -> None:
+    board = tmp_path / "board" / "tickets"
+    _write_ticket(board, "DAS-9001", "backend-eng-1")
+    _write_ticket(board, "DAS-9002", "backend-eng-2")
+    supplied = wr.WaveResults(tickets=_ticket_results())
+    with pytest.raises(TypeError, match="no longer accepts pre-computed WaveResults"):
+        wr.run_wave(
+            _plan("01JWAVE0000000000000000011"),
+            supplied,
+            created_at=_WAVE_TS,
+            store_path=tmp_path / "events.jsonl",
+            runs_dir=tmp_path / "runs",
+            attest_dir=tmp_path / "attest",
+            ledger_path=tmp_path / "board" / "wave-ledger.jsonl",
+            evidence_dir=tmp_path / "evidence",
+            tickets_dir=board,
+            board_dir=board,
+            routing_path=_routing(tmp_path),
+            guardrails_dir=_GUARDRAILS,
+            run_guardrails=False,
+        )
+
+
+def test_run_wave_produces_results_by_running_the_executor(tmp_path: Path) -> None:
+    board = tmp_path / "board" / "tickets"
+    _write_ticket(board, "DAS-9001", "backend-eng-1")
+    _write_ticket(board, "DAS-9002", "backend-eng-2")
+    seen: list[wr.WavePlan] = []
+
+    def execute(plan: wr.WavePlan) -> list[wr.TicketResult]:
+        seen.append(plan)
+        return _ticket_results()
+
+    att = wr.run_wave(
+        _plan("01JWAVE0000000000000000012"),
+        execute,
+        created_at=_WAVE_TS,
+        store_path=tmp_path / "events.jsonl",
+        runs_dir=tmp_path / "runs",
+        attest_dir=tmp_path / "attest",
+        ledger_path=tmp_path / "board" / "wave-ledger.jsonl",
+        evidence_dir=tmp_path / "evidence",
+        tickets_dir=board,
+        board_dir=board,
+        routing_path=_routing(tmp_path),
+        guardrails_dir=_GUARDRAILS,
+        run_guardrails=False,
+    )
+    assert att is not None
+    assert len(seen) == 1
+    assert [tp.ticket_id for tp in seen[0].tickets] == ["DAS-9001", "DAS-9002"]
+
+
+def test_executor_is_not_run_when_organism_emit_is_off(tmp_path: Path) -> None:
+    board = tmp_path / "board" / "tickets"
+    _write_ticket(board, "DAS-9001", "backend-eng-1")
+    _write_ticket(board, "DAS-9002", "backend-eng-2")
+    calls: list[str] = []
+
+    def execute(plan: wr.WavePlan) -> list[wr.TicketResult]:
+        calls.append(plan.run_id)
+        return _ticket_results()
+
+    result = wr.run_wave(
+        _plan("01JWAVE0000000000000000013"),
+        execute,
+        created_at=_WAVE_TS,
+        store_path=tmp_path / "events.jsonl",
+        runs_dir=tmp_path / "runs",
+        attest_dir=tmp_path / "attest",
+        ledger_path=tmp_path / "board" / "wave-ledger.jsonl",
+        evidence_dir=tmp_path / "evidence",
+        tickets_dir=board,
+        board_dir=board,
+        routing_path=_routing(tmp_path),
+        guardrails_dir=_GUARDRAILS,
+        organism_emit=False,
+    )
+    assert result is None
+    assert calls == []
+
+
+def test_wave_results_are_derived_from_what_the_run_produced() -> None:
+    failed = wr.TicketResult(
+        ticket_id="DAS-9002", outcome="failed", merged_pr=False, ci_status="red",
+        t7_pass=False, t7_score=0.0, start=_WAVE_TS, end=_WAVE_TS2,
+        final_status="blocked", output="",
+    )
+    derived = wr.WaveResults.from_ticket_results([_ticket_results()[0], failed])
+    assert derived.request_satisfied is False
+    assert derived.progress_being_made is True
+    assert derived.next_tickets == ["DAS-9002"]
+    assert derived.instruction
+
+    all_green = wr.WaveResults.from_ticket_results(_ticket_results())
+    assert all_green.request_satisfied is True
+    assert all_green.next_tickets == []
+    assert all_green.instruction == ""
+
+
+def test_ledger_chain_survives_concurrent_appends(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    ledger_path = tmp_path / "board" / "wave-ledger.jsonl"
+    attestation = tmp_path / "attest" / "a.json"
+    attestation.parent.mkdir(parents=True, exist_ok=True)
+    attestation.write_text("{}", encoding="utf-8")
+    writers = 8
+
+    def append(index: int) -> None:
+        wr.append_wave_ledger_entry(
+            ledger_path=ledger_path,
+            run_id=f"01JWAVECONCURRENT{index:09d}",
+            wave=index + 1,
+            ticket_ids=[f"DAS-{9000 + index}"],
+            attestation_out_path=attestation,
+            attestation_bytes=b"{}",
+            created_at=_WAVE_TS,
+        )
+
+    with ThreadPoolExecutor(max_workers=writers) as pool:
+        list(pool.map(append, range(writers)))
+
+    entries = _read_ledger(ledger_path)
+    assert len(entries) == writers
+    expected_prev = wr._GENESIS_PREV_HASH
+    for entry in entries:
+        assert entry["prev_hash"] == expected_prev
+        assert entry["self_hash"] == wr._ledger_self_hash(entry)
+        expected_prev = entry["self_hash"]

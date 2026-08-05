@@ -7,18 +7,19 @@ import re
 import sys
 from pathlib import Path
 
+import org_model
 from _paths import ROOT
 
 
-SURFACE: tuple[str, ...] = (
-    "design/CLAUDE.md",
-    "engineering/CLAUDE.md",
-    "marketing/CLAUDE.md",
-    "operations/CLAUDE.md",
-    "product/CLAUDE.md",
-    "governance/CLAUDE.md",
-    ".claude/agents/*.md",
-)
+def surface_patterns(org=None) -> tuple[str, ...]:
+    org = org or org_model.load_org()
+    patterns: list[str] = []
+    for level in org.levels_with_authority(org_model.Authority.ADD_ONLY):
+        for pattern in level.paths:
+            if pattern not in patterns:
+                patterns.append(pattern)
+    patterns.append(".claude/agents/*.md")
+    return tuple(patterns)
 
 
 _VERB = (
@@ -57,15 +58,17 @@ def find_violations(files: list[Path]) -> list[str]:
     return violations
 
 
-def collect_surface(root: Path) -> list[Path]:
+def collect_surface(root: Path, org=None) -> list[Path]:
     files: list[Path] = []
-    for pattern in SURFACE:
-        files.extend(sorted(root.glob(pattern)))
+    for pattern in surface_patterns(org):
+        for path in sorted(root.glob(pattern)):
+            if path.is_file() and path not in files:
+                files.append(path)
     return files
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description='check_precedence.py — enforce the precedence law in code.\n\ngovernance/charter.md §7 and AGENTS.md §2 bind every *lower-precedence* document\n(department charters, role overlays) to ADD constraints only — never to relax,\noverride, waive, or supersede a higher-level board policy / law / gate. The rule\nwas prose-only, so nothing stopped a department charter from quietly redefining\nmodel-allocation or declaring a gate "waived". This validator fails CI when a\nlower-precedence file contains relaxation language aimed at a binding rule.\n\nSurface (lower-precedence files):\n    <dept>/CLAUDE.md  department charters\n    .claude/agents/*.md  role overlays\n\nOut of scope by construction: governance/policies/** and governance/charter.md\n(they *set* constraints), and this scanner itself (it names the patterns as data).\n\nExit codes\n----------\n0  no precedence violation in the lower-precedence surface\n1  at least one lower-precedence file relaxes a binding rule\n2  usage / environment error')
+    parser = argparse.ArgumentParser(description='check_precedence.py — enforce the precedence law in code')
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args()
 

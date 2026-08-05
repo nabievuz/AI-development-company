@@ -7,7 +7,6 @@ import sys
 import time
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -21,7 +20,6 @@ from dgox.events import (
     validate_checkpoint,
     validate_ticket_completion,
 )
-
 
 FIXED_TS = "2026-07-03T12:00:00Z"
 FIXED_TS2 = "2026-07-03T12:41:00Z"

@@ -7,7 +7,7 @@ from pathlib import Path
 def _worst_step(fixtures: Path) -> str:
     steps = json.loads((fixtures / "funnel.json").read_text(encoding="utf-8"))["steps"]
     worst, worst_rel = None, -1.0
-    for prev, cur in zip(steps, steps[1:]):
+    for prev, cur in zip(steps, steps[1:], strict=False):
         prev_c = prev["count"]
         if prev_c <= 0:
             continue

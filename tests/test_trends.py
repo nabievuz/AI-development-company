@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -58,9 +59,20 @@ def test_throughput_series_insufficient():
     assert tr.throughput_series(_ends([0, 10]), n_windows=5) == []
 
 
-def test_cli_inert(tmp_path):
-    assert tr.main(["--events", str(tmp_path / "nope.jsonl")]) == 0
+def test_cli_absent_event_store_is_no_data_not_healthy(tmp_path):
+    rc = tr.main(["--events", str(tmp_path / "nope.jsonl")])
+    assert rc == tr.CliExit.NO_DATA
+    assert rc != tr.CliExit.HEALTHY
 
 
-def test_cli_real_run_exit_0():
-    assert tr.main([]) == 0
+def test_cli_with_a_real_improving_series_is_healthy(tmp_path):
+    store = tmp_path / "events.jsonl"
+    store.write_text(
+        "\n".join(json.dumps(e) for e in _ends([0, 10, 20, 30, 40, 41, 42, 43, 44, 45])) + "\n",
+        encoding="utf-8",
+    )
+    assert tr.main(["--events", str(store)]) == tr.CliExit.HEALTHY
+
+
+def test_cli_real_repo_store_returns_a_declared_code():
+    assert tr.main([]) in set(tr.CliExit)

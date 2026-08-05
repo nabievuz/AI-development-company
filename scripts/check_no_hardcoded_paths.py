@@ -10,7 +10,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 _HOME_PREFIXES = ("/" + "Users" + "/", "/" + "home" + "/")
 _NEEDLE_RE = re.compile(
     "(?:" + "|".join(re.escape(p) for p in _HOME_PREFIXES) + r")[A-Za-z0-9_.\-]+"

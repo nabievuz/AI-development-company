@@ -9,7 +9,6 @@ from pathlib import Path
 import yaml
 from _paths import ROOT
 
-
 ALLOWED_FIELD_TYPES = frozenset(
     {"string", "integer", "number", "boolean", "object", "array"}
 )

@@ -264,10 +264,10 @@ def test_sc001_dispatch_equivalence_flag_on_vs_interactive_equivalent(tmp_path):
     interactive_kw = _hermetic_kwargs(interactive_dir)
     headless_kw = _hermetic_kwargs(headless_dir)
 
-    interactive_att = wr.run_wave(plan, results, created_at=created_at, **interactive_kw)
+    interactive_att = wr.run_wave(plan, wr.replay_executor(results.tickets), created_at=created_at, **interactive_kw)
 
     headless_res = rn.dispatch_wave(
-        plan, results, created_at=created_at,
+        plan, wr.replay_executor(results.tickets), created_at=created_at,
         flag_path=_flag_file(tmp_path, on=True), **headless_kw,
     )
 
@@ -296,11 +296,11 @@ def test_sc001_flag_off_produces_zero_headless_writes_interactive_unaffected(tmp
     interactive_kw = _hermetic_kwargs(interactive_dir)
     headless_kw = _hermetic_kwargs(headless_dir)
 
-    interactive_att = wr.run_wave(plan, results, created_at=created_at, **interactive_kw)
+    interactive_att = wr.run_wave(plan, wr.replay_executor(results.tickets), created_at=created_at, **interactive_kw)
     assert interactive_att is not None
 
     headless_res = rn.dispatch_wave(
-        plan, results, created_at=created_at,
+        plan, wr.replay_executor(results.tickets), created_at=created_at,
         flag_path=_flag_file(tmp_path, on=False), **headless_kw,
     )
     assert headless_res.status is RunnerStatus.INERT_FLAG_OFF

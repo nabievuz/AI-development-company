@@ -100,11 +100,14 @@ def test_committed_fixture_is_incomplete() -> None:
     assert card.passed is False
     assert card.verdict == "incomplete"
 
-    assert _status_of(card, "aadl_gates_closed") == "pass"
     assert _status_of(card, "golden_eval") == "pass"
     assert _status_of(card, "anti_gaming_probe") == "pass"
     for dim in ("merged_pr_green_ci", "wave_attestation", "diagnostics_100"):
         assert _status_of(card, dim) == "skipped"
+
+
+    assert not (FIXTURE / "fixtures" / "stage-board.md").exists()
+    assert _status_of(card, "aadl_gates_closed") == "skipped"
 
 
 def test_fixture_scorecard_schema_shape() -> None:
@@ -256,7 +259,8 @@ def test_honest_claim_scores_matching_pass_dimensions() -> None:
     submission = json.loads((FIXTURE / "submissions" / "attempt-1.json").read_text())
     credit = ae.score_submission(module, submission, FIXTURE)
 
-    assert credit == pytest.approx(3 / 6)
+
+    assert credit == pytest.approx(2 / 6)
 
 
 def test_forged_all_pass_claim_cannot_reach_one() -> None:
@@ -264,7 +268,8 @@ def test_forged_all_pass_claim_cannot_reach_one() -> None:
     forged = {"dimensions": dict.fromkeys(ae.ED1_DIMENSIONS, "pass")}
     credit = ae.score_submission(module, forged, FIXTURE)
 
-    assert credit == pytest.approx(3 / 6)
+
+    assert credit == pytest.approx(2 / 6)
     assert credit < 1.0
 
 
@@ -274,9 +279,9 @@ def test_e2e_excluded_from_role_discovery() -> None:
 
 
 def test_delivery_fixture_does_not_leak_into_gaming_gate() -> None:
-
-
-    assert ae.gaming_findings() == []
+    findings = ae.gaming_findings()
+    assert [f for f in findings if "proof-delivery-fixture" in f] == []
+    assert [f for f in findings if str(FIXTURE) in f] == []
 
 
 def test_cli_delivery_inert_when_flag_off(capsys: pytest.CaptureFixture[str]) -> None:

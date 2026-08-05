@@ -6,13 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import pulse_checkpoint as _pc
-
 
 DEFAULT_RUNS_DIR: Path = _pc.DEFAULT_RUNS_DIR
 generate_ulid = _pc.generate_ulid

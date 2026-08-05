@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -295,7 +294,7 @@ class RunIdCheckpointer:
 
 def commit_wave(
     plan: Any,
-    results: Any,
+    execute_wave: Any,
     *,
     created_at: str,
     checkpointer: RunIdCheckpointer,
@@ -313,7 +312,7 @@ def commit_wave(
 
     attestation = _wr.run_wave(
         plan,
-        results,
+        execute_wave,
         created_at=created_at,
         organism_emit=organism_emit,
         **run_wave_kwargs,

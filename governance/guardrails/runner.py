@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 _GUARDRAILS_DIR = Path(__file__).resolve().parent
 _GOVERNANCE_DIR = _GUARDRAILS_DIR.parent
 if str(_GOVERNANCE_DIR) not in sys.path:
@@ -58,8 +57,14 @@ _ROUTING_ROW_RE = re.compile(
 )
 
 
-def load_role_table(routing_path: Path) -> dict[str, dict[str, str]]:
-    text = Path(routing_path).read_text(encoding="utf-8")
+def load_role_table(routing_path: Path | None = None) -> dict[str, dict[str, str]]:
+    if routing_path is not None and Path(routing_path).is_file():
+        return _parse_legacy_routing_markdown(Path(routing_path))
+    return _role_table_from_org_model()
+
+
+def _parse_legacy_routing_markdown(routing_path: Path) -> dict[str, dict[str, str]]:
+    text = routing_path.read_text(encoding="utf-8")
     table: dict[str, dict[str, str]] = {}
     for key, display, dept, reports_to in _ROUTING_ROW_RE.findall(text):
         table[key] = {
@@ -68,6 +73,22 @@ def load_role_table(routing_path: Path) -> dict[str, dict[str, str]]:
             "reports_to": reports_to.strip(),
         }
     return table
+
+
+def _role_table_from_org_model() -> dict[str, dict[str, str]]:
+    scripts_dir = _GOVERNANCE_DIR.parent / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import org_model
+
+    return {
+        routing.role: {
+            "display": routing.title,
+            "dept": routing.dept,
+            "reports_to": routing.reviewer_title or "",
+        }
+        for routing in org_model.routing_table()
+    }
 
 
 def load_guardrail_module(
@@ -121,7 +142,7 @@ def _dep_statuses(board_dir: Path, dep_ids: list[str]) -> dict[str, str]:
 def build_context(
     ticket_path: Path,
     *,
-    routing_path: Path,
+    routing_path: Path | None = None,
     board_dir: Path,
     role: str | None = None,
     output: str | None = None,

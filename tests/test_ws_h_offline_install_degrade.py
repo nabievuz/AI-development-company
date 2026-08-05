@@ -111,6 +111,9 @@ def test_offline_boot_with_vendored_bundle_blocks_network(monkeypatch):
         try:
             import fastapi
             import uvicorn
+
+            assert fastapi.__name__ == "fastapi"
+            assert uvicorn.__name__ == "uvicorn"
         except ImportError:
             pytest.skip("vendored bundle is not ABI-compatible with this interpreter")
     finally:

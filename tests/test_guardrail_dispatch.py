@@ -9,6 +9,7 @@ sys.path.insert(0, str(_REPO_ROOT / "governance"))
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 import guardrail_dispatch as gd
+from guardrails import runner
 
 GUARDRAILS_DIR = _REPO_ROOT / "governance" / "guardrails"
 
@@ -63,10 +64,11 @@ def _make_env(tmp_path, *, dept="engineering", assignee="security-lead",
     return routing, board, ticket
 
 
-def test_escalation_target_simple():
+def test_escalation_target_simple(tmp_path):
     from guardrails import runner
 
-    routing = _REPO_ROOT / "board" / "ROUTING.md"
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text(_ROUTING, encoding="utf-8")
     role_table = runner.load_role_table(routing)
 
     assert gd.escalation_target("security-lead", "ceo", role_table) == "cto"
@@ -167,3 +169,121 @@ def test_escalation_does_not_self_review(tmp_path):
     text = ticket.read_text(encoding="utf-8")
     assert "assignee: cto" in text
     assert "author: ceo" in text
+
+
+def _log_entry_count(text, marker):
+    return text.count(marker)
+
+
+def test_concurrent_feedback_writes_lose_nothing(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _routing, _board, ticket = _make_env(tmp_path)
+    writers = 8
+
+    def write(index):
+        gd.write_output_guardrail_feedback(
+            ticket,
+            f"feedback-{index}",
+            role="security-lead",
+            attempt=0,
+            max_retries=2,
+            now=_fixed_now,
+        )
+
+    with ThreadPoolExecutor(max_workers=writers) as pool:
+        list(pool.map(write, range(writers)))
+
+    text = ticket.read_text(encoding="utf-8")
+    for index in range(writers):
+        assert f"feedback-{index}" in text
+    assert _log_entry_count(text, f"origin: {gd.OUTPUT_GUARDRAIL_ORIGIN}") == writers
+
+
+def test_concurrent_escalations_lose_no_update(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _routing, _board, ticket = _make_env(tmp_path)
+    writers = 8
+
+    def escalate(index):
+        gd.escalate_in_ticket(
+            ticket,
+            "cto",
+            "security-lead",
+            f"escalation-{index}",
+            max_retries=2,
+            now=_fixed_now,
+        )
+
+    with ThreadPoolExecutor(max_workers=writers) as pool:
+        list(pool.map(escalate, range(writers)))
+
+    text = ticket.read_text(encoding="utf-8")
+    for index in range(writers):
+        assert f"escalation-{index}" in text, f"lost update: escalation-{index}"
+    assert text.count("Guardrail escalation (security-lead → cto)") == writers
+    assert "assignee: cto" in text
+    assert "status: in_review" in text
+
+
+def test_escalation_survives_a_concurrent_unrelated_ticket_write(tmp_path):
+    import threading
+
+    import filelock
+
+    _routing, _board, ticket = _make_env(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_appender(text):
+        started.set()
+        release.wait(timeout=5)
+        return text + "\n### concurrent writer note\n"
+
+    other = threading.Thread(
+        target=filelock.locked_update_text, args=(ticket, slow_appender)
+    )
+    other.start()
+    assert started.wait(timeout=5)
+
+    escalation = threading.Thread(
+        target=gd.escalate_in_ticket,
+        args=(ticket, "cto", "security-lead", "escalation-under-contention"),
+        kwargs={"max_retries": 2, "now": _fixed_now},
+    )
+    escalation.start()
+    release.set()
+    other.join(timeout=5)
+    escalation.join(timeout=5)
+
+    text = ticket.read_text(encoding="utf-8")
+    assert "concurrent writer note" in text
+    assert "escalation-under-contention" in text
+
+
+def test_role_table_falls_back_to_the_org_model_when_no_routing_markdown_exists():
+    import org_model
+
+    table = runner.load_role_table()
+    assert set(table) == set(org_model.known_role_keys())
+    assert table["backend-eng-1"]["dept"] == "engineering"
+    assert table["backend-eng-1"]["display"] == org_model.role("backend-eng-1").title
+
+
+def test_role_table_still_reads_an_explicitly_supplied_legacy_routing_markdown(tmp_path):
+    legacy = tmp_path / "ROUTING.md"
+    legacy.write_text(
+        "| role | name | dept | reviewer |\n"
+        "| --- | --- | --- | --- |\n"
+        "| `only-role` | Only Role | engineering | Nobody |\n",
+        encoding="utf-8",
+    )
+    assert runner.load_role_table(legacy) == {
+        "only-role": {"display": "Only Role", "dept": "engineering", "reports_to": "Nobody"}
+    }
+
+
+def test_dispatch_default_routing_no_longer_points_at_the_deleted_routing_markdown():
+    assert gd.DEFAULT_ROUTING is None
+    assert not gd.LEGACY_ROUTING_MD.exists()

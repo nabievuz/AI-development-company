@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 _LINK_RE = re.compile(r"\[(?P<text>[^\]]*)\]\((?P<target>[^)]+)\)")
 
 _EXTERNAL_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#|mailto:)", re.IGNORECASE)
@@ -25,6 +24,11 @@ def repo_root() -> Path:
         return Path.cwd()
 
 
+UNTRACKED_DIR_NAMES: frozenset[str] = frozenset(
+    {".git", "projects", "node_modules", ".venv", "venv", ".vendor", "__pycache__"}
+)
+
+
 def tracked_markdown(root: Path) -> list[Path]:
     try:
         out = subprocess.run(
@@ -36,7 +40,11 @@ def tracked_markdown(root: Path) -> list[Path]:
             return files
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
-    return [p for p in root.rglob("*.md") if ".git" not in p.parts]
+    return [
+        p
+        for p in root.rglob("*.md")
+        if not UNTRACKED_DIR_NAMES.intersection(p.parts)
+    ]
 
 
 def link_targets(text: str) -> list[tuple[int, str]]:
@@ -103,7 +111,11 @@ def main(argv: list[str] | None = None) -> int:
         for f in failures:
             print(f"  FAIL  {f}", file=sys.stderr)
         return 1
-    print(f"check_links: OK — no broken relative links in tracked Markdown ({root}).")
+    scanned = len(tracked_markdown(root))
+    print(
+        f"check_links: OK — no broken relative links in "
+        f"{scanned} tracked Markdown file(s) ({root})."
+    )
     return 0
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
     (
@@ -37,12 +36,37 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
 
     (
+        re.compile(r"\bsk-or-v1-[A-Za-z0-9]{20,}\b"),
+        "[REDACTED:api_key]",
+    ),
+
+    (
+        re.compile(r"\bsk_live_[A-Za-z0-9]{16,}\b"),
+        "[REDACTED:api_key]",
+    ),
+
+    (
         re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
         "[REDACTED:api_key]",
     ),
 
     (
+        re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+        "[REDACTED:api_key]",
+    ),
+
+    (
         re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+        "[REDACTED:api_key]",
+    ),
+
+    (
+        re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+        "[REDACTED:api_key]",
+    ),
+
+    (
+        re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"),
         "[REDACTED:api_key]",
     ),
 

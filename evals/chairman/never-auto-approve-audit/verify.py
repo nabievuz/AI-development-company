@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 FLOOR = {
     "new_goal", "security_sensitive", "schema_migration", "gate5_deployment",
     "governance_or_policy", "permission_change", "secret_change",

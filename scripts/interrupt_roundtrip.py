@@ -11,7 +11,6 @@ from pathlib import Path
 
 from _paths import ROOT
 
-
 _DEFAULT_BOARD_DIR = ROOT / "board" / "tickets"
 _DEFAULT_INTERRUPTS_DIR = ROOT / "board" / "interrupts"
 

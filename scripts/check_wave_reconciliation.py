@@ -11,7 +11,6 @@ from pathlib import Path
 import wave_runner as wr
 from _paths import ROOT
 
-
 TERMINAL_STATUSES = frozenset({"done", "blocked"})
 
 

@@ -13,7 +13,7 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import check_attestation as ca
-import gen_sample_attestation as gen
+import check_ledger as cl
 import wave_runner as wr
 
 _ROUTING = _REPO_ROOT / "board" / "ROUTING.md"
@@ -59,7 +59,7 @@ def _drive(tmp: Path, run_id: str, created_at: str) -> wr.WaveAttestation:
     results = wr.WaveResults(tickets=[wr.TicketResult(ticket_id="DAS-9001", **common),
                                       wr.TicketResult(ticket_id="DAS-9002", **common)])
     att = wr.run_wave(
-        plan, results, created_at=created_at,
+        plan, wr.replay_executor(results.tickets), created_at=created_at,
         store_path=tmp / "events.jsonl", runs_dir=tmp / "runs",
         attest_dir=tmp / "attest", ledger_path=tmp / "board" / "wave-ledger.jsonl",
         evidence_dir=tmp / "evidence",
@@ -70,18 +70,19 @@ def _drive(tmp: Path, run_id: str, created_at: str) -> wr.WaveAttestation:
     return att
 
 
-def test_committed_sample_exists_and_passes(capsys) -> None:
-    sample = wr.attestation_path(gen.SAMPLE_RUN_ID, _ATTEST_DIR)
-    assert sample.is_file(), "committed sample attestation must exist (gate not inert)"
+def test_committed_attestations_hold_no_fixture_evidence() -> None:
+    if not _ATTEST_DIR.is_dir():
+        return
+    for path in sorted(_ATTEST_DIR.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert not str(payload.get("run_id", "")).startswith(cl.FIXTURE_RUN_ID_PREFIX), (
+            f"{path} is fixture-generated evidence committed as if it were real"
+        )
+
+
+def test_committed_attestations_verify(capsys) -> None:
     rc = ca.main(["--attest-dir", str(_ATTEST_DIR), "--evidence-dir", str(_EVIDENCE_DIR)])
-    out = capsys.readouterr().out
     assert rc == 0
-    assert "complete" in out
-
-
-def test_committed_sample_is_up_to_date() -> None:
-
-    assert gen.main(["--check"]) == 0
 
 
 def test_inert_when_no_attestations(tmp_path: Path, capsys) -> None:

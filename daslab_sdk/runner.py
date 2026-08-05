@@ -233,7 +233,7 @@ def results_from_dispatches(
 
 def dispatch_wave(
     plan: Any,
-    results: Any,
+    execute_wave: Any,
     *,
     created_at: str,
     flag_path: Path | None = None,
@@ -250,5 +250,5 @@ def dispatch_wave(
             status=RunnerStatus.UNAVAILABLE_NO_SEAM,
             reason="wave_runner seam unimportable — runner unavailable",
         )
-    attestation = wr.run_wave(plan, results, created_at=created_at, **run_wave_kwargs)
+    attestation = wr.run_wave(plan, execute_wave, created_at=created_at, **run_wave_kwargs)
     return WaveDispatchResult(status=RunnerStatus.DISPATCHED, attestation=attestation)

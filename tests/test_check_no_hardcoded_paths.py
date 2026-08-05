@@ -9,7 +9,6 @@ sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 from check_no_hardcoded_paths import main, offenders
 
-
 _U = "/" + "Users" + "/" + "someone" + "/proj"
 _H = "/" + "home" + "/" + "someone" + "/proj"
 

@@ -62,20 +62,23 @@ def flag_on(name: str = _FLAG_NAME, features_path: Path | None = None) -> bool:
 
 
 _SUMMARY_RE = re.compile(
-    r"^presidio: \d+ entit(?:y|ies)(?: \[(?P<entities>.*?)\])? \| redacted: (?P<redacted>.*)$",
+    r"^presidio: \d+ entit(?:y|ies)(?: \[(?P<entities>.*?)\])?"
+    r"(?: \| risk: (?P<risk>[a-z_]+))? \| redacted: (?P<redacted>.*)$",
     re.DOTALL,
 )
 
+UNPARSEABLE_RISK = "unscreened"
 
-def _parse_presidio_summary(summary: str) -> tuple[tuple[str, ...], str]:
+
+def _parse_presidio_summary(summary: str) -> tuple[tuple[str, ...], str, str]:
     match = _SUMMARY_RE.match(summary)
     if not match:
 
 
-        return (), "[REDACTED:unclassified]"
+        return (), "[REDACTED:unclassified]", UNPARSEABLE_RISK
     entities_raw = match.group("entities") or ""
     entities = tuple(e.strip() for e in entities_raw.split(",") if e.strip())
-    return entities, match.group("redacted")
+    return entities, match.group("redacted"), match.group("risk") or UNPARSEABLE_RISK
 
 
 def classify_tier(entities: tuple[str, ...]) -> str:
@@ -95,6 +98,7 @@ class GuardResult:
     entities: tuple[str, ...] = field(default_factory=tuple)
     denied: bool = False
     reason: str = ""
+    injection_risk: str = UNPARSEABLE_RISK
 
 
 def guard(
@@ -129,7 +133,7 @@ def guard(
 
     presidio = _presidio_bridge()
     summary = presidio.analyze_text(text)
-    entities, redacted_text = _parse_presidio_summary(summary)
+    entities, redacted_text, injection_risk = _parse_presidio_summary(summary)
     tier = classify_tier(entities)
     action = policy_decide(tier)
     output = redacted_text if action == "redact" else text
@@ -145,4 +149,5 @@ def guard(
         entities=entities,
         denied=False,
         reason=reason,
+        injection_risk=injection_risk,
     )

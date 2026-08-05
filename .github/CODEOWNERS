@@ -9,8 +9,6 @@
 /config/                    @nabievuz
 /daslab_sdk/                @nabievuz
 /design/                    @nabievuz
-/docs/                      @nabievuz
-/engineering/               @nabievuz
 /evals/                     @nabievuz
 /experiments/               @nabievuz
 /governance/                @nabievuz
@@ -21,6 +19,5 @@
 /org/                       @nabievuz
 /product/                   @nabievuz
 /scripts/                   @nabievuz
-/skills/                    @nabievuz
 /tests/                     @nabievuz
 /tools/                     @nabievuz

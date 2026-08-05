@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -13,8 +14,33 @@ from pathlib import Path
 
 from _paths import ROOT
 
+EXIT_OK = 0
+EXIT_FAIL = 1
+EXIT_USAGE = 2
+EXIT_NO_DATA = 3
+
 _QUICKSTART_RE = re.compile(r"##\s+Quickstart.*?```(?:bash)?\n(.*?)\n```", re.S)
-_CMD_RE = re.compile(r"^python3\s+scripts/\S+\.py")
+
+_SCRIPT_NAME = r"[A-Za-z0-9_][A-Za-z0-9_.-]*\.py"
+_FLAG = r"--[A-Za-z0-9][A-Za-z0-9-]*(?:=[A-Za-z0-9_./-]+)?"
+_CMD_RE = re.compile(rf"python3\s+scripts/{_SCRIPT_NAME}(?:\s+{_FLAG})*")
+
+
+class UnsafeQuickstartCommand(ValueError):
+    pass
+
+
+def is_runnable_command(code: str) -> bool:
+    return _CMD_RE.fullmatch(code) is not None
+
+
+def command_argv(code: str) -> list[str]:
+    if not is_runnable_command(code):
+        raise UnsafeQuickstartCommand(code)
+    argv = shlex.split(code)
+    if any(tok in argv for tok in (";", "&&", "||", "|", "&", ">", "<", "`")):
+        raise UnsafeQuickstartCommand(code)
+    return argv
 
 
 def quickstart_commands(readme: Path) -> list[str]:
@@ -27,7 +53,7 @@ def quickstart_commands(readme: Path) -> list[str]:
         if not line or line.startswith("#"):
             continue
         code = line.split("#", 1)[0].strip()
-        if _CMD_RE.match(code):
+        if is_runnable_command(code):
             cmds.append(code)
     return cmds
 
@@ -60,8 +86,12 @@ def run_in_scratch(root: Path, cmds: list[str]) -> str | None:
         shutil.copy2(root / "README.md", scratch / "README.md")
         env = {**os.environ, "CI": "1"}
         for cmd in cmds:
+            try:
+                argv = command_argv(cmd)
+            except UnsafeQuickstartCommand:
+                return f"`{cmd}` is not a plain `python3 scripts/<name>.py` invocation; refusing to run it"
             proc = subprocess.run(
-                cmd, shell=True, cwd=scratch, env=env,
+                argv, cwd=scratch, env=env,
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             )
             if proc.returncode != 0:
@@ -70,31 +100,42 @@ def run_in_scratch(root: Path, cmds: list[str]) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description='check_quickstart.py — the README Quickstart actually works on a fresh clone.')
-    parser.add_argument("--root", type=Path, default=None)
+    parser = argparse.ArgumentParser(
+        prog="check_quickstart.py",
+        description="check_quickstart.py — the README Quickstart actually works on a fresh clone.",
+        epilog=f"exit codes: {EXIT_OK} quickstart works · {EXIT_FAIL} quickstart broken · "
+               f"{EXIT_USAGE} usage error · {EXIT_NO_DATA} no README/Quickstart to check",
+    )
+    parser.add_argument("--root", type=Path, default=None, help="repository root to check")
     parser.add_argument("--no-run", action="store_true", help="order check only (skip running)")
     args = parser.parse_args(argv)
     root = (args.root or ROOT).resolve()
 
-    cmds = quickstart_commands(root / "README.md")
+    readme = root / "README.md"
+    if not readme.is_file():
+        print(f"check_quickstart: NO DATA — {readme} does not exist; nothing was checked",
+              file=sys.stderr)
+        return EXIT_NO_DATA
+
+    cmds = quickstart_commands(readme)
     if not cmds:
-        print("check_quickstart: FATAL — no runnable Quickstart commands found", file=sys.stderr)
-        return 2
+        print("check_quickstart: NO DATA — no runnable Quickstart commands found", file=sys.stderr)
+        return EXIT_NO_DATA
 
     problem = order_problem(cmds)
     if problem:
         print(f"check_quickstart: FAIL — {problem}", file=sys.stderr)
-        return 1
+        return EXIT_FAIL
 
     if not args.no_run:
         err = run_in_scratch(root, cmds)
         if err:
             print(f"check_quickstart: FAIL — {err}", file=sys.stderr)
-            return 1
+            return EXIT_FAIL
         print(f"check_quickstart: OK — bootstrap precedes doctor; {len(cmds)} command(s) exit 0.")
     else:
         print("check_quickstart: OK — bootstrap precedes doctor (order only).")
-    return 0
+    return EXIT_OK
 
 
 if __name__ == "__main__":

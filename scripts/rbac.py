@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_RBAC_CONFIG = ROOT / "config" / "rbac.yaml"

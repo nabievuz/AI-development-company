@@ -9,7 +9,6 @@ from pathlib import Path
 
 import yaml
 
-
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
@@ -21,7 +20,6 @@ from cost.cost_ledger import (
 )
 from dgox.created_at import parse_created_at
 from dgox.events import iter_events
-
 
 _ROOT = _SCRIPTS.parent
 _BUDGETS_PATH = _ROOT / "config" / "budgets.yaml"

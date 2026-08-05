@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _ANSWERS = {
     "M-1": "TPL-REFUND",
     "M-2": "TPL-PWRESET",

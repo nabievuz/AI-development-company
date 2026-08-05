@@ -5,7 +5,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-
 _INPUT_KEYS = ("input_tokens", "prompt_tokens")
 _OUTPUT_KEYS = ("output_tokens", "completion_tokens")
 _CACHE_READ_KEYS = (

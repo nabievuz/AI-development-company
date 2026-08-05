@@ -234,15 +234,22 @@ def test_residual2_egress_profile_deny_all_holds_regardless_of_backend():
         assert "deny-all" in reason or "empty/absent" in reason
 
 
-def test_residual2_all_three_overlay_grants_declare_deny_all_egress_profile():
-    overlays = {
-        "engineering/agents/qa-eng/AGENTS.md": "mcp__promptfoo",
-        "engineering/agents/qa-lead/AGENTS.md": "mcp__promptfoo",
-        "engineering/agents/security-lead/AGENTS.md": "mcp__agentshield",
-    }
-    for rel, server in overlays.items():
-        src = (ROOT / rel).read_text(encoding="utf-8")
-        idx = src.index(f"server: {server}")
+def test_residual2_all_three_role_grants_declare_deny_all_egress_profile():
+    import org_model
 
-        block = src[idx : idx + 400]
-        assert "egress_profile: eval-guardrail-deny-all" in block
+    required = {
+        ("qa-eng", "mcp__promptfoo"),
+        ("qa-lead", "mcp__promptfoo"),
+        ("security-lead", "mcp__agentshield"),
+    }
+    seen: set[tuple[str, str]] = set()
+    for role_key, server in required:
+        grant = next(
+            (g for g in org_model.role(role_key).tool_grants if g.server == server), None
+        )
+        assert grant is not None, f"{role_key} lost its {server} grant"
+        assert grant.egress_profile == "eval-guardrail-deny-all", (
+            f"{role_key}/{server} declares egress_profile {grant.egress_profile!r}"
+        )
+        seen.add((role_key, server))
+    assert seen == required

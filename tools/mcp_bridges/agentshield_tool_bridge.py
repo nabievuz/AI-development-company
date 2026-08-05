@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from redaction import redact_then_truncate
+from untrusted_input import screen, signal_names
 
 TOOL_NAME = "agentshield"
 
@@ -25,6 +26,7 @@ _RED_FLAGS: list[tuple[re.Pattern[str], str]] = [
 def scan_action(action_summary: str) -> str:
     text = action_summary if isinstance(action_summary, str) else str(action_summary)
     hits = [label for pattern, label in _RED_FLAGS if pattern.search(text)]
+    hits.extend(f"injection:{name}" for name in signal_names(screen(text)))
     verdict = "flagged" if hits else "safe"
     summary = f"agentshield: {verdict}"
     if hits:

@@ -69,7 +69,7 @@ def _drive(tmp: Path, run_id: str, created_at: str, wave: int = 1) -> wr.WaveAtt
     results = wr.WaveResults(tickets=[wr.TicketResult(ticket_id="DAS-9001", **common),
                                       wr.TicketResult(ticket_id="DAS-9002", **common)])
     att = wr.run_wave(
-        plan, results, created_at=created_at,
+        plan, wr.replay_executor(results.tickets), created_at=created_at,
         store_path=tmp / "events.jsonl", runs_dir=tmp / "runs",
         attest_dir=p["attest"], ledger_path=p["ledger"], evidence_dir=p["evidence"],
         tickets_dir=p["guard_board"], board_dir=p["guard_board"],
@@ -107,11 +107,16 @@ def _write_ledger(tmp: Path, entries: list[dict]) -> None:
     _paths(tmp)["ledger"].write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def test_committed_sample_reconciles(capsys) -> None:
+def test_committed_tree_reconciles(capsys) -> None:
     rc = cwr.main([])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "reconcile" in out
+    ledger = _REPO_ROOT / "board" / "wave-ledger.jsonl"
+    has_committed_evidence = ledger.is_file() and ledger.read_text(encoding="utf-8").strip()
+    if has_committed_evidence:
+        assert "reconcile" in out
+    else:
+        assert "inert" in out and "no committed ledger" in out
 
 
 def test_inert_when_empty(tmp_path: Path, capsys) -> None:

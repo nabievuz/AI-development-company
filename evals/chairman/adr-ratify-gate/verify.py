@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
-
 MANDATORY_SECTIONS = ("Context", "Decision", "Consequences")
+
+
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
 
 
 def _present_headings(draft_text: str) -> set[str]:
@@ -16,7 +21,7 @@ def _present_headings(draft_text: str) -> set[str]:
 
 
 def verify(submission: dict, fixtures: Path) -> float:
-    draft_text = (fixtures / "adr_draft.md").read_text(encoding="utf-8")
+    draft_text = _document(fixtures / "adr_draft.json")
     present = _present_headings(draft_text)
     required = {s for s in MANDATORY_SECTIONS if s not in present}
     if not required:

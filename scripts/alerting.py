@@ -12,6 +12,7 @@ import break_glass
 import memory_lib
 import wave_kpi
 from _paths import ROOT
+from wave_kpi import CliExit
 
 try:
     import yaml
@@ -192,6 +193,10 @@ def _load_jsonl(path: Path) -> list[dict]:
     return out
 
 
+def observability_data_points(events: Path, memory_store: Path) -> int:
+    return len(wave_kpi.read_events(str(events))) + len(_load_jsonl(memory_store))
+
+
 def gather_readings(
     events: Path,
     memory_store: Path,
@@ -238,11 +243,22 @@ def gather_readings(
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description='alerting.py — Threshold-based proactive alerting + Quiet Mode.')
-    ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl")
-    ap.add_argument("--memory-store", type=Path, default=ROOT / "board" / ".arcrift-outbox.jsonl")
-    ap.add_argument("--memory-config", type=Path, default=ROOT / "config" / "memory_governance.yaml")
-    ap.add_argument("--thresholds", type=Path, default=ROOT / "config" / "alert_thresholds.yaml")
+    ap = argparse.ArgumentParser(
+        prog="alerting.py",
+        description="alerting.py — Threshold-based proactive alerting + Quiet Mode.",
+        epilog=f"exit codes: {CliExit.HEALTHY.value} nominal · "
+               f"{CliExit.DEGRADED.value} warning/critical alert fired · "
+               f"{CliExit.USAGE.value} usage error · "
+               f"{CliExit.NO_DATA.value} no observability data — nothing was evaluated",
+    )
+    ap.add_argument("--events", type=Path, default=ROOT / "board" / ".events.jsonl",
+                    help="runtime event store (JSONL)")
+    ap.add_argument("--memory-store", type=Path, default=ROOT / "board" / ".arcrift-outbox.jsonl",
+                    help="ArcRift outbox used for memory-health readings (JSONL)")
+    ap.add_argument("--memory-config", type=Path, default=ROOT / "config" / "memory_governance.yaml",
+                    help="memory governance config")
+    ap.add_argument("--thresholds", type=Path, default=ROOT / "config" / "alert_thresholds.yaml",
+                    help="alert threshold config")
     ap.add_argument(
         "--budgets",
         type=Path,
@@ -250,8 +266,14 @@ def main(argv: list[str] | None = None) -> int:
         help="path to config/budgets.yaml (cost caps; absent = cost alerting inert)",
     )
     ap.add_argument("--quiet", action="store_true", help="emit anomalies only (suppress routine info)")
-    ap.add_argument("--fail-on-critical", action="store_true", help="exit 1 if a critical alert fires (CI)")
     args = ap.parse_args(argv)
+
+    if observability_data_points(args.events, args.memory_store) == 0:
+        sys.stderr.write(
+            f"NO DATA: {args.events} and {args.memory_store} hold no events; "
+            "no alert was evaluated — this is not a nominal system.\n"
+        )
+        return CliExit.NO_DATA
 
     thresholds = _load_yaml(args.thresholds).get("thresholds", {})
     budgets = _load_yaml(args.budgets)
@@ -261,14 +283,12 @@ def main(argv: list[str] | None = None) -> int:
         alerts = filter_quiet(alerts)
 
     if not alerts:
-        print("Alerts: none — system nominal (or no live data yet; P5 alerting is trigger-gated).")
-        return 0
+        print("Alerts: none — system nominal.")
+        return CliExit.HEALTHY
 
     for a in alerts:
         print(f"[{a['severity'].upper()}] {a['metric']}: {a['message']}")
-    if args.fail_on_critical and any(a["severity"] == "critical" for a in alerts):
-        return 1
-    return 0
+    return CliExit.DEGRADED if any(a["severity"] in ANOMALY for a in alerts) else CliExit.HEALTHY
 
 
 if __name__ == "__main__":

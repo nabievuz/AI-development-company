@@ -13,7 +13,6 @@ if str(SCRIPTS) not in sys.path:
 import board_lint
 import gateway_compile as gc
 
-
 _MANIFEST = """\
 name: {slug}
 mission: >

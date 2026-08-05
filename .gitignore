@@ -10,6 +10,11 @@ node_modules/
 
 # Agent runtime worktrees + workflow scratch (never tracked)
 /.claude/worktrees/
+
+# Generated agent runtime artifacts — built from config/org.yaml by
+# scripts/gen_subagents.py; source of truth is the typed org model, not these files.
+/.claude/agents/
+/governance/agent-templates/
 /.worktrees/
 
 # Per-developer Claude Code settings (machine-specific — never tracked)

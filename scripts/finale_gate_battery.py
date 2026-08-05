@@ -10,7 +10,6 @@ from pathlib import Path
 
 from _paths import ROOT as REPO_ROOT
 
-
 TAIL_LINES = 12
 
 

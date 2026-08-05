@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 try:
@@ -62,11 +63,19 @@ def statuses() -> dict[str, str]:
     return out
 
 
+EXIT_OK = 0
+EXIT_NO_DATA = 3
+
+
 def main(argv: list[str] | None = None) -> int:
     st = statuses()
     if not st:
-        print("gate_promotion: no metric registry found — nothing to classify.")
-        return 0
+        print(
+            "gate_promotion: NO DATA — no metric registry found; zero gates were "
+            "classified and nothing is promoted.",
+            file=sys.stderr,
+        )
+        return EXIT_NO_DATA
     counts = {SKIPPED: 0, WARN: 0, ENFORCE: 0}
     print("Gate promotion status (ADR-0020) — skipped is NOT a pass:")
     for gate, status in st.items():
@@ -74,7 +83,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {status.upper():8} {gate}")
     print(f"\nskipped {counts[SKIPPED]} · warn {counts[WARN]} · enforce {counts[ENFORCE]} "
           f"(criteria: >= {MIN_SAMPLES} samples, fp <= {MAX_FP_RATE:.0%}, override <= {MAX_OVERRIDE_RATE:.0%})")
-    return 0
+    if counts[SKIPPED] == len(st):
+        print(
+            f"gate_promotion: NO DATA — all {len(st)} gate(s) are SKIPPED for want of "
+            "samples; no gate is measured, so none is enforced.",
+            file=sys.stderr,
+        )
+        return EXIT_NO_DATA
+    return EXIT_OK
 
 
 if __name__ == "__main__":

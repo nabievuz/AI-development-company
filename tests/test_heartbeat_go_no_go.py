@@ -43,6 +43,23 @@ def _write_clean_events(path: Path) -> Path:
 
 
 _BUDGETS_WITH_PLAN = """\
+tiers:
+  opus:
+    model_id: claude-opus-4-8
+    input_per_1m: 5.00
+    cached_input_per_1m: 0.50
+    output_per_1m: 25.00
+  sonnet:
+    model_id: claude-sonnet-4-6
+    input_per_1m: 3.00
+    cached_input_per_1m: 0.30
+    output_per_1m: 15.00
+  haiku:
+    model_id: claude-haiku-4-5
+    input_per_1m: 1.00
+    cached_input_per_1m: 0.10
+    output_per_1m: 5.00
+
 mustaqil:
   caps:
     per_run:
@@ -66,6 +83,23 @@ mustaqil:
 
 
 _BUDGETS_STRIPPED = """\
+tiers:
+  opus:
+    model_id: claude-opus-4-8
+    input_per_1m: 5.00
+    cached_input_per_1m: 0.50
+    output_per_1m: 25.00
+  sonnet:
+    model_id: claude-sonnet-4-6
+    input_per_1m: 3.00
+    cached_input_per_1m: 0.30
+    output_per_1m: 15.00
+  haiku:
+    model_id: claude-haiku-4-5
+    input_per_1m: 1.00
+    cached_input_per_1m: 0.10
+    output_per_1m: 5.00
+
 mustaqil:
   caps:
     per_run:

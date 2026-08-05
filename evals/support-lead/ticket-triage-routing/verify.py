@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _ANSWERS = {
     "T-101": {"category": "billing", "route": "billing-team", "priority": "P2"},
     "T-102": {"category": "bug", "route": "eng-oncall", "priority": "P1"},

@@ -134,9 +134,44 @@ def matches_category(fm: dict, matcher: dict) -> bool:
     return False
 
 
+APPROVAL_MISSING = "missing"
+APPROVAL_AUTO = "auto"
+APPROVAL_HUMAN = "human"
+
+
+_NON_APPROVAL_TOKENS = frozenset({
+    "", "-", "?", "n/a", "na", "nil", "no", "none", "null",
+    "false", "pending", "tbd", "todo", "unknown", "unset",
+})
+
+
+def approval_state(fm: dict) -> str:
+    raw = fm.get("approval")
+    if raw is None or isinstance(raw, bool | dict | list):
+        return APPROVAL_MISSING
+    value = str(raw).strip().lower()
+    if value in _NON_APPROVAL_TOKENS:
+        return APPROVAL_MISSING
+    if value.startswith("auto"):
+        return APPROVAL_AUTO
+    return APPROVAL_HUMAN
+
+
 def is_auto_approved(fm: dict) -> bool:
-    approval = str(fm.get("approval", "")).strip().lower()
-    return approval.startswith("auto")
+    return approval_state(fm) == APPROVAL_AUTO
+
+
+def lacks_human_approval(fm: dict) -> bool:
+    return approval_state(fm) != APPROVAL_HUMAN
+
+
+_VIOLATION_REASON = {
+    APPROVAL_AUTO: "auto-approved but category {category!r} requires human approval",
+    APPROVAL_MISSING: (
+        "category {category!r} requires an explicit human approval, but the ticket "
+        "declares no usable 'approval' — absence fails CLOSED, not open"
+    ),
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,23 +201,24 @@ def main(argv: list[str] | None = None) -> int:
         if fm is None:
 
             checked += 1
-            violations.append((md.name, "unparseable-or-smuggled-frontmatter"))
+            violations.append((md.name, "frontmatter is unparseable or carries a smuggled safety fence"))
             continue
         if not fm:
             continue
         checked += 1
-        if not is_auto_approved(fm):
+        state = approval_state(fm)
+        if state == APPROVAL_HUMAN:
             continue
         for category in never:
             matcher = matchers.get(category) or {}
             if matches_category(fm, matcher):
                 tid = str(fm.get("id", md.name))
-                violations.append((tid, category))
+                violations.append((tid, _VIOLATION_REASON[state].format(category=category)))
 
     if violations:
         sys.stderr.write("FAIL: never-auto-approve violations (QONUN-5):\n")
-        for tid, cat in violations:
-            sys.stderr.write(f"  - {tid}: auto-approved but category '{cat}' requires human approval\n")
+        for tid, reason in violations:
+            sys.stderr.write(f"  - {tid}: {reason}\n")
         sys.stderr.write(f"\n{len(violations)} violation(s) across {checked} tickets.\n")
         return 1
 

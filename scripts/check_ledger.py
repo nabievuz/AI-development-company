@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -19,14 +19,115 @@ import pulse_checkpoint as _pc
 import task_ledger as _tl
 from dgox.events import EventStore, build_replanned
 
-
 DEFAULT_RUNS_DIR: Path = _pc.DEFAULT_RUNS_DIR
 DEFAULT_STORE_PATH: Path = _pc.DEFAULT_STORE_PATH
 
 
 DEFAULT_INTERRUPTS_DIR: Path = DEFAULT_RUNS_DIR.parent / "interrupts"
 
+DEFAULT_WAVE_LEDGER_PATH: Path = DEFAULT_RUNS_DIR.parent / "wave-ledger.jsonl"
+
+DEFAULT_TICKETS_DIR: Path = _pc.DEFAULT_TICKETS_DIR
+
 _LEDGER_FILENAME = "progress-ledger.json"
+
+
+FIXTURE_RUN_ID_PREFIX: str = "FIXTURE-"
+
+
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n(?:---|\.\.\.)\s*(?:\n|\Z)", re.DOTALL)
+
+_ID_LINE_RE = re.compile(r"(?m)^id:[ \t]*(\S+)[ \t]*$")
+
+
+def is_fixture_run_id(run_id: str) -> bool:
+    return str(run_id).startswith(FIXTURE_RUN_ID_PREFIX)
+
+
+def board_ticket_ids(tickets_dir: Path | str) -> set[str]:
+    base = Path(tickets_dir)
+    found: set[str] = set()
+    if not base.is_dir():
+        return found
+    for path in sorted(base.rglob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        block = _FRONTMATTER_RE.match(text)
+        if block is None:
+            continue
+        match = _ID_LINE_RE.search(block.group(1))
+        if match:
+            found.add(match.group(1).strip().strip("'\""))
+    return found
+
+
+def read_wave_ledger(ledger_path: Path | str) -> tuple[list[dict[str, Any]], list[str]]:
+    path = Path(ledger_path)
+    entries: list[dict[str, Any]] = []
+    problems: list[str] = []
+    if not path.is_file():
+        return entries, problems
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            problems.append(f"wave-ledger line {lineno}: malformed JSON ({exc})")
+            continue
+        if not isinstance(entry, dict):
+            problems.append(f"wave-ledger line {lineno}: entry is not a JSON object")
+            continue
+        entries.append(entry)
+    return entries, problems
+
+
+def verify_wave_ledger_evidence(
+    ledger_path: Path | str,
+    *,
+    attest_dir: Path | str | None = None,
+    tickets_dir: Path | str | None = None,
+) -> list[str]:
+    import wave_runner
+
+    path = Path(ledger_path)
+    problems: list[str] = list(
+        wave_runner.verify_wave_ledger(path, attest_dir=attest_dir)
+    )
+    entries, parse_problems = read_wave_ledger(path)
+    problems.extend(parse_problems)
+
+    known_tickets = board_ticket_ids(
+        tickets_dir if tickets_dir is not None else DEFAULT_TICKETS_DIR
+    )
+    board_label = str(tickets_dir if tickets_dir is not None else DEFAULT_TICKETS_DIR)
+
+    for entry in entries:
+        run_id = str(entry.get("run_id", ""))
+        if is_fixture_run_id(run_id):
+            problems.append(
+                f"fixture entry in the committed wave-ledger: run_id {run_id!r} lives in "
+                f"the reserved {FIXTURE_RUN_ID_PREFIX!r} namespace — a fixture is never evidence"
+            )
+        ticket_ids = entry.get("ticket_ids")
+        if not isinstance(ticket_ids, list) or not ticket_ids:
+            problems.append(
+                f"wave-ledger entry run_id={run_id!r} carries no ticket_ids — "
+                "an attestation of nothing is not evidence"
+            )
+            continue
+        for ticket_id in ticket_ids:
+            if str(ticket_id) not in known_tickets:
+                problems.append(
+                    f"wave-ledger entry run_id={run_id!r} references ticket "
+                    f"{str(ticket_id)!r}, which does not exist on the board ({board_label}) "
+                    "— an entry attesting a ticket that never existed is fiction"
+                )
+
+    return list(dict.fromkeys(problems))
 
 
 LEDGER_FIELDS: dict[str, type] = {
@@ -354,13 +455,60 @@ def run_inner_loop(
     return decisions
 
 
+def _verify_wave_ledger_cli(args: argparse.Namespace) -> int:
+    path = Path(args.wave_ledger)
+    if not path.is_file():
+        sys.stderr.write(f"ERROR: wave-ledger not found: {path}\n")
+        return 2
+
+    attest_dir = args.attest_dir if args.attest_dir is not None else path.parent.parent / "metrics" / "attestations"
+    tickets_dir = args.tickets_dir if args.tickets_dir is not None else DEFAULT_TICKETS_DIR
+
+    problems = verify_wave_ledger_evidence(
+        path, attest_dir=attest_dir, tickets_dir=tickets_dir
+    )
+    entries, _ = read_wave_ledger(path)
+    if problems:
+        sys.stderr.write(f"FAIL: wave-ledger is not verifiable evidence ({path}):\n")
+        for problem in problems:
+            sys.stderr.write(f"  - {problem}\n")
+        return 1
+
+    if not entries:
+        print(
+            f"OK (EMPTY): {path} holds ZERO attested waves. This repository contains NO "
+            "wave evidence — nothing has been attested, so nothing is proven."
+        )
+        return 0
+
+    print(
+        f"OK: {len(entries)} wave-ledger entr(ies) verified link by link "
+        f"({path}) — hash chain intact, attestations match, every referenced ticket "
+        f"exists under {tickets_dir}."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description='check_ledger.py — progress-ledger validator + inner-loop stall rule (DAS-1470).')
+    ap = argparse.ArgumentParser(description='check_ledger.py — progress-ledger validator + inner-loop stall rule + wave-ledger evidence verifier.')
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--path", type=Path, help="path to a progress-ledger.json file")
     src.add_argument("--run-id", type=str, help="run id (resolves to board/runs/<run_id>/)")
+    src.add_argument(
+        "--wave-ledger",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_WAVE_LEDGER_PATH,
+        help="verify the wave-ledger hash chain, its attestations and its ticket "
+        "references (default path: board/wave-ledger.jsonl)",
+    )
     ap.add_argument("--runs-dir", type=Path, default=None, help="override board/runs/ location")
+    ap.add_argument("--attest-dir", type=Path, default=None, help="metrics/attestations/ override")
+    ap.add_argument("--tickets-dir", type=Path, default=None, help="board/tickets/ override")
     args = ap.parse_args(argv)
+
+    if args.wave_ledger is not None:
+        return _verify_wave_ledger_cli(args)
 
     path = args.path if args.path is not None else progress_ledger_path(args.run_id, args.runs_dir)
 

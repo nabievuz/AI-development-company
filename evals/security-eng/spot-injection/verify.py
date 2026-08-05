@@ -9,9 +9,10 @@ _ACCEPTED_TYPES = frozenset({"sql_injection", "sqli"})
 def _vuln_line(src_lines: list[str]) -> int | None:
     for i, line in enumerate(src_lines, start=1):
         low = line.lower()
-        if 'f"' in low or "f'" in low or " % " in low or '" +' in low:
-            if any(k in low for k in _SQL_KEYWORDS):
-                return i
+        if ('f"' in low or "f'" in low or " % " in low or '" +' in low) and any(
+            k in low for k in _SQL_KEYWORDS
+        ):
+            return i
     return None
 
 

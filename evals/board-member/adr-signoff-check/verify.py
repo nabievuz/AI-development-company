@@ -5,9 +5,14 @@ import re
 from pathlib import Path
 
 
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
+
+
 def _expected(fixtures: Path) -> dict[str, object]:
     rules = json.loads((fixtures / "rules.json").read_text(encoding="utf-8"))
-    draft = (fixtures / "adr_draft.md").read_text(encoding="utf-8")
+    draft = _document(fixtures / "adr_draft.json")
 
     present_sections = set(re.findall(r"^##\s+(.+?)\s*$", draft, flags=re.MULTILINE))
     required_sections = set(rules["required_sections"])

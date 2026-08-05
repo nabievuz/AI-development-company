@@ -11,7 +11,7 @@ def _analyse(fixtures: Path) -> tuple[str, float]:
     worst_stage = None
     worst_gap = -1.0
     worst_lift = 0.0
-    for prev, cur in zip(funnel, funnel[1:]):
+    for prev, cur in zip(funnel, funnel[1:], strict=False):
         prev_visitors = prev["visitors"]
         if prev_visitors <= 0:
             continue

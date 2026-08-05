@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 
-
 DEFAULT_GRANT: frozenset[str] = frozenset({"navigate", "read", "screenshot"})
 
 

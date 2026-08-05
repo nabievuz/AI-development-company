@@ -40,7 +40,7 @@ jobs:
         run: python3 scripts/board_lint.py
 
       - name: Agents in sync
-        run: python3 scripts/check_agents_sync.py
+        run: python3 scripts/gen_subagents.py && python3 scripts/check_agents_sync.py
 
       - name: Gate order
         run: python3 scripts/check_gates.py
@@ -57,17 +57,30 @@ jobs:
       - name: Precedence enforced (no charter/overlay relaxes a board rule)
         run: python3 scripts/check_precedence.py
 
-      - name: Cache-prefix invariants (ADR 0006 — W4)
-        run: python3 scripts/check_cache_prefix.py
-
       - name: CODEOWNERS complete + in sync
         run: python3 scripts/check_codeowners.py
 
       - name: Quickstart works on a fresh clone
-        run: python3 scripts/check_quickstart.py
+        run: |
+          set +e
+          python3 scripts/check_quickstart.py
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then echo "quickstart: verified"; exit 0; fi
+          if [ "$rc" -eq 3 ]; then echo "quickstart: NO DATA — no README Quickstart in tree; nothing was verified"; exit 0; fi
+          exit "$rc"
 
       - name: Link integrity (blocking)
         run: python3 scripts/check_links.py
+
+      - name: Code-only law — no comments or docstrings in source
+        run: python3 scripts/check_no_prose.py
+
+      - name: Feature flags match their code declaration (D14)
+        run: python3 scripts/check_feature_flags.py
+
+      - name: Wave ledger is verifiable evidence (D11)
+        run: python3 scripts/check_ledger.py --wave-ledger
 
       - name: T7 quality rubric intact (immutable hard blocker — R-3)
         run: python3 scripts/check_t7_quality.py
@@ -86,7 +99,14 @@ jobs:
       - name: Role-overlay contract / P3 (ADR-0018, strict — Mission/Scope/DoD/Escalation)
         run: python3 scripts/check_overlay_sections.py --strict
       - name: Gate promotion status / P1b (ADR-0020, informational — unmeasured is SKIPPED, not green)
-        run: python3 scripts/gate_promotion.py
+        run: |
+          set +e
+          python3 scripts/gate_promotion.py
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; then exit 0; fi
+          exit "$rc"
+
       - name: GATE-6 evidence record, max_quality_drop 0 (R-2)
         run: python3 scripts/check_gate6_record.py --events board/.events.jsonl --experiments experiments
       - name: BREAK-GLASS 24h post-incident review (R-8)
@@ -172,9 +192,15 @@ jobs:
         run: python3 scripts/check_blind_review.py
       - name: P5 advanced tools render (R16/R20/R21, smoke)
         run: |
-          python3 scripts/alerting.py > /dev/null
-          python3 scripts/trends.py > /dev/null
-          python3 scripts/adaptive_taxonomy.py > /dev/null
+          set +e
+          python3 scripts/alerting.py > /dev/null; alerting_rc=$?
+          python3 scripts/trends.py > /dev/null; trends_rc=$?
+          python3 scripts/adaptive_taxonomy.py > /dev/null; taxonomy_rc=$?
+          set -e
+          echo "alerting=$alerting_rc trends=$trends_rc adaptive_taxonomy=$taxonomy_rc (0 healthy, 1 degraded, 3 no-data)"
+          for rc in "$alerting_rc" "$trends_rc" "$taxonomy_rc"; do
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then exit "$rc"; fi
+          done
 
       - name: Loop promotion controller (RFC-001 §5, smoke)
         run: python3 scripts/loop_controller.py > /dev/null

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
-
 
 EXPECTED_ACTION = {1: "delegate", 2: "escalate", 3: "delegate"}
 
 VALID_DELEGATE_TARGETS = frozenset({"backend-eng-1", "backend-eng-2"})
 VALID_ESCALATE_TARGETS = frozenset({"cto"})
+
+
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
 
 
 def _normalize(value: object) -> str:
@@ -36,7 +41,7 @@ def _score_one(decision: dict) -> float:
 def verify(submission: dict, fixtures: Path) -> float:
 
 
-    _ = (fixtures / "scenarios.md").read_text(encoding="utf-8")
+    _ = _document(fixtures / "scenarios.json")
 
     decisions = submission.get("decisions")
     if not isinstance(decisions, list) or not decisions:

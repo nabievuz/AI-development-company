@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
@@ -18,7 +17,6 @@ import check_ledger as cl
 import interrupt_roundtrip as ir
 import task_ledger as tl
 from dgox.events import iter_events, validate_replanned
-
 
 _FIXED_TS = "2026-07-04T12:00:00Z"
 

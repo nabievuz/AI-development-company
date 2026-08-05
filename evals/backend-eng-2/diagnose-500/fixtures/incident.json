@@ -1,0 +1,3 @@
+{
+  "document": "## Incident: order-service 500s on `/orders/:id/charge`\n\nStack trace from the error tracker:\n\n```\nTraceback (most recent call last):\n  File \"order_service.py\", line 42, in charge_customer\n    amount = order.total_amount\nAttributeError: 'NoneType' object has no attribute 'total_amount'\n```\n\nFrequency: spikes correlate with the `/orders/:id/charge` endpoint receiving\nrequests for `order_id` values belonging to orders that were deleted moments\nearlier by a nightly cleanup job. `order` is fetched with `Order.get(order_id)`,\nwhich returns `None` when the row no longer exists, and the code proceeds to\nread `order.total_amount` without checking for `None` first.\n"
+}

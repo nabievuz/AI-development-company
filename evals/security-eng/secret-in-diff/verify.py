@@ -9,9 +9,8 @@ _ACCEPTED_KIND = frozenset({"api_key", "secret", "credential", "token"})
 
 def _secret_line(diff_lines: list[str]) -> int | None:
     for i, line in enumerate(diff_lines, start=1):
-        if line.startswith("+") and not line.startswith("+++"):
-            if _SECRET.search(line):
-                return i
+        if line.startswith("+") and not line.startswith("+++") and _SECRET.search(line):
+            return i
     return None
 
 

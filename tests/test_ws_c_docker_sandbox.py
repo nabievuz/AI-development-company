@@ -30,6 +30,12 @@ def _scope(task_id: str, mount_root: Path, **kw) -> SandboxScope:
     return SandboxScope(task_id=task_id, workdir_mounts=[Mount(host_path=str(mount_root))], **kw)
 
 
+def _grant_sandbox_user_access(mount_root: Path) -> Path:
+    mount_root.mkdir(parents=True, exist_ok=True)
+    mount_root.chmod(0o777)
+    return mount_root
+
+
 _NO_PROBE = "NOPROBE"
 
 
@@ -106,7 +112,7 @@ def test_docker_credentials_empty_by_default(tmp_path):
 @requires_docker
 def test_live_own_workdir_reachable_but_host_and_repo_are_not(tmp_path):
     b = DockerSandbox()
-    h = b.open(task_id="live-1", scope=_scope("live-1", tmp_path))
+    h = b.open(task_id="live-1", scope=_scope("live-1", _grant_sandbox_user_access(tmp_path)))
     try:
 
 
@@ -200,10 +206,8 @@ def test_live_unscoped_credential_absent_scoped_present(tmp_path):
 @requires_docker
 def test_live_other_task_workdir_invisible(tmp_path):
     b = DockerSandbox()
-    a = b.open(task_id="live-A", scope=_scope("live-A", tmp_path / "a"))
-    (tmp_path / "a").mkdir(exist_ok=True)
-    bb = b.open(task_id="live-B", scope=_scope("live-B", tmp_path / "b"))
-    (tmp_path / "b").mkdir(exist_ok=True)
+    a = b.open(task_id="live-A", scope=_scope("live-A", _grant_sandbox_user_access(tmp_path / "a")))
+    bb = b.open(task_id="live-B", scope=_scope("live-B", _grant_sandbox_user_access(tmp_path / "b")))
     try:
         b.exec(a, ["write", "secret.txt", "a-only"])
 

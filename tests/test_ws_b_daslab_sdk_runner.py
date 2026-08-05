@@ -87,7 +87,7 @@ def test_dispatch_wave_flag_off_never_calls_run_wave(tmp_path):
     ledger = tmp_path / "wave-ledger.jsonl"
     res = rn.dispatch_wave(
         plan=object(),
-        results=object(),
+        execute_wave=lambda _plan: [],
         created_at="2026-07-24T00:00:00Z",
         ledger_path=ledger,
         flag_path=_flag_file(tmp_path, on=False),
@@ -271,7 +271,7 @@ def _hermetic_wave(tmp_path):
 def test_dispatch_wave_calls_run_wave_and_ledger_reconciles(tmp_path):
     wr, plan, results, kw = _hermetic_wave(tmp_path)
     res = rn.dispatch_wave(
-        plan, results, created_at="2026-07-24T00:00:00Z",
+        plan, wr.replay_executor(results.tickets), created_at="2026-07-24T00:00:00Z",
         flag_path=_flag_file(tmp_path, on=True), **kw,
     )
     assert res.status is RunnerStatus.DISPATCHED
@@ -288,7 +288,7 @@ def test_dispatch_wave_inherits_organism_gate_no_second_toggle(tmp_path):
 
     wr, plan, results, kw = _hermetic_wave(tmp_path)
     res = rn.dispatch_wave(
-        plan, results, created_at="2026-07-24T00:00:00Z",
+        plan, wr.replay_executor(results.tickets), created_at="2026-07-24T00:00:00Z",
         flag_path=_flag_file(tmp_path, on=True), organism_emit=False, **kw,
     )
     assert res.status is RunnerStatus.DISPATCHED

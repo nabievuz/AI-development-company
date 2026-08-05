@@ -2,14 +2,6 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# ===========================================================================
-# Project metadata (PEP 621)
-# ===========================================================================
-# DasLab is primarily a *clone-and-run* system — a fresh `git clone` boots the
-# whole org and work is driven in-place through `/daslab-*` skills. This table
-# nonetheless declares the project's identity and its distributable packages
-# precisely, so tooling, mirrors, and any downstream import see an unambiguous
-# boundary. Version is single-sourced from the top-level `VERSION` file.
 [project]
 name = "daslab"
 dynamic = ["version"]
@@ -34,24 +26,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-# Runtime: the engine's validators/scripts are stdlib-only except PyYAML
-# (~15 validators import it and hard-exit if absent). See `requirements.in`.
 dependencies = [
     "PyYAML>=6.0.2",
 ]
 
 [project.optional-dependencies]
-# WS-H self-hosted control plane (tools/control_plane) — an optional, OFF-by-
-# default FastAPI surface. Its deps are deliberately kept OUT of the hash-pinned
-# core lockfiles; install this extra to run/test the control-plane endpoints.
 control-plane = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "httpx>=0.27",
     "pydantic>=2.7",
 ]
-# Contributor toolchain (lint/format/test). The reproducible, hash-pinned
-# lockfile is `requirements-dev.txt`; this extra is the unpinned convenience set.
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
@@ -68,68 +53,55 @@ Issues = "https://github.com/nabievuz/daslab/issues"
 [tool.setuptools.dynamic]
 version = { file = "VERSION" }
 
-# ---------------------------------------------------------------------------
-# Distributable packages — the first-party importable packages ONLY.
-# EXPLICIT list (unambiguous boundary): every entry is a git-tracked package
-# with an `__init__.py`. Deliberately EXCLUDED:
-#   * the 110 flat `scripts/*.py` — CLI/validator modules run in-place via
-#     `python3 scripts/<name>.py` (imported through sys.path, not as a package);
-#   * `tests/` — the test suite, not shipped;
-#   * `tools/control_plane/.vendor/` — vendored third-party deps (fastapi,
-#     pydantic, uvicorn, …), never first-party;
-#   * `tools/{browser,control_plane,guardrails,mcp_bridges}` — app/namespace
-#     dirs without a package `__init__.py`;
-#   * `projects/` — gitignored, per-project repos.
 [tool.setuptools]
 packages = [
-    "daslab_sdk",            # WS-B headless Agent SDK runner (the one clean reusable library)
-    "governance.guardrails", # per-role input/output guardrail tripwires
-    "scripts.a2a_intake",    # A2A goal-proposal → board intake (WS-I)
-    "scripts.cache",         # result cache + cache-prefix machinery
-    "scripts.cost",          # per-run cost ledger
-    "scripts.dgox",          # DGO-X shadow event store / control-plane primitives
-    "tools.a2a",             # A2A outbound endpoint + publish surface (WS-I)
-    "tools.model_gateway",   # model-allocation gateway
-    "tools.observability",   # OTel-shaped span emission (WS-D)
-    "tools.sandbox",         # per-task sandbox execution adapter (WS-C)
+    "daslab_sdk",
+    "governance.guardrails",
+    "scripts.a2a_intake",
+    "scripts.cache",
+    "scripts.cost",
+    "scripts.dgox",
+    "tools.a2a",
+    "tools.model_gateway",
+    "tools.observability",
+    "tools.sandbox",
 ]
 
-# ---------------------------------------------------------------------------
-# Ruff — fast Python linter (replaces flake8/isort/pyupgrade)
-# ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "SIM", # flake8-simplify
+    "E",
+    "W",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
 ]
 ignore = [
-    "E501",  # line-too-long — enforced by black, not ruff
+    "E501",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"scripts/**/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+"tools/browser/*.py" = ["E402"]
+"governance/guardrails/*.py" = ["E402"]
+"evals/**/fixtures/*.py" = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["scripts"]
 
-# ---------------------------------------------------------------------------
-# Black — opinionated code formatter
-# ---------------------------------------------------------------------------
 [tool.black]
 line-length = 100
 target-version = ["py311"]
 include = '\.pyi?$'
 
-# ---------------------------------------------------------------------------
-# Pytest
-# ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

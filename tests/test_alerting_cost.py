@@ -14,7 +14,6 @@ if str(SCRIPTS) not in sys.path:
 
 import alerting as al
 
-
 BUDGETS = {
     "caps": {
         "per_run": {"max_cost_usd": 50.0},
@@ -221,26 +220,52 @@ def test_regression_no_alerts_when_inert():
     assert al.evaluate_alerts(readings, TH, BUDGETS) == []
 
 
+def _seed_events(tmp_path):
+    import json as _js
+    path = tmp_path / "e.jsonl"
+    path.write_text(
+        _js.dumps({
+            "event_type": "run_end", "run_id": "R1",
+            "created_at": "2026-07-04T10:10:00Z",
+            "model": "sonnet", "outcome": "success",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_cli_with_real_budgets(tmp_path):
     rc = al.main([
-        "--events", str(tmp_path / "e.jsonl"),
+        "--events", str(_seed_events(tmp_path)),
         "--memory-store", str(tmp_path / "m.jsonl"),
         "--memory-config", str(REPO_ROOT / "config" / "memory_governance.yaml"),
         "--thresholds", str(REPO_ROOT / "config" / "alert_thresholds.yaml"),
         "--budgets", str(REPO_ROOT / "config" / "budgets.yaml"),
     ])
-    assert rc == 0
+    assert rc == al.CliExit.HEALTHY
 
 
 def test_cli_with_absent_budgets(tmp_path):
     rc = al.main([
-        "--events", str(tmp_path / "e.jsonl"),
+        "--events", str(_seed_events(tmp_path)),
         "--memory-store", str(tmp_path / "m.jsonl"),
         "--memory-config", str(REPO_ROOT / "config" / "memory_governance.yaml"),
         "--thresholds", str(REPO_ROOT / "config" / "alert_thresholds.yaml"),
         "--budgets", str(tmp_path / "no_budgets.yaml"),
     ])
-    assert rc == 0
+    assert rc == al.CliExit.HEALTHY
+
+
+def test_cli_with_no_events_at_all_is_no_data_not_healthy(tmp_path):
+    rc = al.main([
+        "--events", str(tmp_path / "absent.jsonl"),
+        "--memory-store", str(tmp_path / "m.jsonl"),
+        "--memory-config", str(REPO_ROOT / "config" / "memory_governance.yaml"),
+        "--thresholds", str(REPO_ROOT / "config" / "alert_thresholds.yaml"),
+        "--budgets", str(REPO_ROOT / "config" / "budgets.yaml"),
+    ])
+    assert rc == al.CliExit.NO_DATA
+    assert rc != al.CliExit.HEALTHY
 
 
 import datetime as _dt

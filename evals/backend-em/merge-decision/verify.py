@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 EXPECTED_DECISION = "request_changes"
@@ -16,6 +17,11 @@ ACCEPTED_REASONS = frozenset(
 )
 
 
+def _document(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str(payload["document"])
+
+
 def _normalize(value: object) -> str:
     return str(value).strip().lower().replace(" ", "_").replace("-", "_")
 
@@ -23,7 +29,7 @@ def _normalize(value: object) -> str:
 def verify(submission: dict, fixtures: Path) -> float:
 
 
-    _ = (fixtures / "pr_review.md").read_text(encoding="utf-8")
+    _ = _document(fixtures / "pr_review.json")
 
     credit = 0.0
     if _normalize(submission.get("decision", "")) == EXPECTED_DECISION:

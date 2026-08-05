@@ -10,8 +10,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from _paths import ROOT
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import filelock as _fl
+from _paths import ROOT
 
 _GOVERNANCE_DIR = ROOT / "governance"
 if str(_GOVERNANCE_DIR) not in sys.path:
@@ -20,7 +24,8 @@ if str(_GOVERNANCE_DIR) not in sys.path:
 from guardrails import GuardrailContext
 from guardrails import runner as _runner
 
-DEFAULT_ROUTING = ROOT / "board" / "ROUTING.md"
+DEFAULT_ROUTING: Path | None = None
+LEGACY_ROUTING_MD = ROOT / "board" / "ROUTING.md"
 DEFAULT_BOARD = ROOT / "board" / "tickets"
 DEFAULT_MAX_RETRIES = 2
 
@@ -74,8 +79,7 @@ def write_output_guardrail_feedback(
         f"Retry {retry_no}/{max_retries}: {feedback}\n"
         f"Re-dispatching {role} with this feedback so it can self-correct.\n"
     )
-    with ticket_path.open("a", encoding="utf-8") as fh:
-        fh.write(entry)
+    _fl.locked_append_text(ticket_path, entry)
     return entry
 
 
@@ -100,26 +104,29 @@ def escalate_in_ticket(
     max_retries: int,
     now: Callable[[], str] = _today,
 ) -> None:
-    text = ticket_path.read_text(encoding="utf-8")
-    if target:
-        text = _set_frontmatter_field(text, "assignee", target)
-        text = _set_frontmatter_field(text, "status", "in_review")
-        text = _set_frontmatter_field(text, "updated", now())
     dest = target or "(top of org — no higher reviewer)"
     entry = (
         f"\n### {now()} — Guardrail escalation ({role} → {dest})\n"
         f"origin: {OUTPUT_GUARDRAIL_ORIGIN}\n"
         f"Exhausted {max_retries} retries; OUTPUT guardrail still tripping: {feedback}\n"
-        f"Escalating per board/ROUTING.md to {dest} for review.\n"
+        f"Escalating to {dest} for review.\n"
     )
-    ticket_path.write_text(text + entry, encoding="utf-8")
+
+    def _transform(text: str) -> str:
+        if target:
+            text = _set_frontmatter_field(text, "assignee", target)
+            text = _set_frontmatter_field(text, "status", "in_review")
+            text = _set_frontmatter_field(text, "updated", now())
+        return text + entry
+
+    _fl.locked_update_text(ticket_path, _transform, missing_ok=False)
 
 
 def guardrail_dispatch(
     ticket_path: Path,
     run_agent: Callable[[GuardrailContext, int], str],
     *,
-    routing_path: Path = DEFAULT_ROUTING,
+    routing_path: Path | None = DEFAULT_ROUTING,
     board_dir: Path = DEFAULT_BOARD,
     guardrails_dir: Path = _runner.DEFAULT_GUARDRAILS_DIR,
     max_retries: int = DEFAULT_MAX_RETRIES,
@@ -209,7 +216,7 @@ class WaveScreenResult:
 def screen_wave_inputs(
     ticket_paths: list[Path],
     *,
-    routing_path: Path = DEFAULT_ROUTING,
+    routing_path: Path | None = DEFAULT_ROUTING,
     board_dir: Path = DEFAULT_BOARD,
     guardrails_dir: Path = _runner.DEFAULT_GUARDRAILS_DIR,
     gate_open_ids: set[str] | None = None,
@@ -238,7 +245,7 @@ def screen_wave_inputs(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description='guardrail_dispatch.py — INPUT/OUTPUT guardrail dispatch wrapper (DAS-1471).\n\nThe closed-loop "tripwire" for ORGANISM WS2 LOOM (GATE-3 / P10). Wraps a single\nticket dispatch:\n\n    INPUT screen (pre-accept)  →  accept  →  run agent  →  OUTPUT screen\n        │ trip                                                │ trip\n        └─ refuse (do not accept, re-route)                  ▼\n                                       write feedback into ticket\n                                       (origin: output_guardrail)\n                                       + re-dispatch the SAME agent\n                                       (max 2 retries)\n                                                │ still tripping after 2\n                                                ▼\n                                       escalate per board/ROUTING.md\n                                       (failing role\'s reviewer;\n                                        manager-is-author → one level up)\n\nThe wrapper is deterministic and side-effect-scoped to the ticket file: it never\nspawns a subagent itself. The caller injects ``run_agent`` (the thing that\nproduces the agent\'s output for one attempt) so the loop is fully testable.\n\nReuses:\n* ``guardrails.runner`` — role guardrail loading + context assembly.\n* ``board/ROUTING.md`` role table — the reviewer/escalation chain (the same map\n  ``/daslab-cycle`` step 2 parses; not re-invented here).\n\nCLI (``--ticket``) runs the INPUT scope screen only and reports ok/feedback —\nthe OUTPUT retry loop needs a live agent and is driven via the library API.\n\nExit codes (CLI): 0 = INPUT screen passed, 1 = INPUT screen tripped, 2 = usage.', formatter_class=argparse.RawDescriptionHelpFormatter
+        description='guardrail_dispatch.py — INPUT/OUTPUT guardrail dispatch wrapper (DAS-1471)', formatter_class=argparse.RawDescriptionHelpFormatter
     )
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--ticket", type=Path, help="Path to a DAS-*.md ticket (single INPUT screen)")

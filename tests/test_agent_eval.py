@@ -216,6 +216,47 @@ def test_prompt_leak_findings_clean_on_shipped_tree() -> None:
     assert ae.prompt_leak_findings(EVALS) == []
 
 
+def test_prompt_leak_scan_reports_its_own_coverage_on_the_shipped_tree() -> None:
+    scan = ae.prompt_leak_scan(EVALS)
+    assert scan.tasks_total > 0
+    assert scan.findings == ()
+    if scan.binds_nothing:
+        assert "binds\nNOTHING".replace("\n", " ") in scan.coverage_line()
+        assert "proves nothing was checked" in scan.coverage_line()
+    else:
+        assert f"{scan.tasks_with_a_prompt} of {scan.tasks_total}" in scan.coverage_line()
+
+
+def test_a_corpus_with_no_agent_facing_prompts_reports_that_it_binds_nothing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "evals"
+    _write_task(root, "backend-eng-1", "no-md", _ANSWER_VERIFY)
+    scan = ae.prompt_leak_scan(root)
+    assert scan.tasks_total == 1
+    assert scan.tasks_with_a_prompt == 0
+    assert scan.binds_nothing is True
+    assert "binds NOTHING" in scan.coverage_line()
+
+
+def test_a_corpus_with_prompts_is_not_reported_as_binding_nothing(tmp_path: Path) -> None:
+    root = tmp_path / "evals"
+    _write_task(root, "backend-eng-1", "has-md", _ANSWER_VERIFY)
+    (root / "backend-eng-1" / "has-md" / "task.md").write_text(
+        "Answer with a JSON object; no example is given.\n", encoding="utf-8"
+    )
+    scan = ae.prompt_leak_scan(root)
+    assert scan.binds_nothing is False
+    assert "1 of 1 task(s) scanned" in scan.coverage_line()
+
+
+def test_check_gaming_cli_always_states_the_prompt_leak_coverage(capsys) -> None:
+    rc = ae.main(["--check-gaming"])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "prompt-leak scan:" in err
+
+
 def _span(agent: str, model: str, in_tok: int, out_tok: int) -> dict:
     return {
         "event_type": "span",
@@ -270,7 +311,7 @@ def test_evaluate_role_pairs_accuracy_with_cost(tmp_path: Path) -> None:
 def test_scorecard_markdown_has_rows(inert_store_path: Path) -> None:
     cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
     md = ae.scorecard_markdown(cards)
-    assert "| Role | Tier | Tasks | Accuracy | Pass (>=80%) | Est. cost (USD) |" in md
+    assert "| Role | Tier | Tasks | Replay accuracy | Pass (>=80%) | Est. cost (USD) |" in md
     assert "`qa-eng`" in md
     assert "`tech-writer`" in md
     assert "PASS" in md
@@ -368,7 +409,7 @@ def test_cli_roster(capsys: pytest.CaptureFixture[str]) -> None:
     rc = ae.main(["--roster", "--evals", str(EVALS)])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "| Role | Tier | Tasks | Accuracy | Pass (>=80%) | Est. cost (USD) |" in out
+    assert "| Role | Tier | Tasks | Replay accuracy | Pass (>=80%) | Est. cost (USD) |" in out
 
 
 def test_cli_check_gaming_clean(capsys: pytest.CaptureFixture[str]) -> None:
@@ -411,3 +452,291 @@ def test_cli_json(capsys: pytest.CaptureFixture[str]) -> None:
     payload = json.loads(capsys.readouterr().out)
     roles = {rec["role"] for rec in payload}
     assert {"qa-eng", "tech-writer"} <= roles
+
+
+def test_harness_declares_that_no_model_is_invoked() -> None:
+    assert ae.LIVE_MODEL_INVOKED is False
+    assert ae.HARNESS_KIND == "deterministic_submission_replay"
+    summary = ae.HARNESS_SUMMARY.lower()
+    assert "no model is invoked" in summary
+    assert "no agent is run" in summary
+
+
+def test_harness_imports_no_model_client() -> None:
+    source = (SCRIPTS / "agent_eval.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            imported.add(node.module.split(".")[0])
+    forbidden = {
+        "anthropic", "openai", "httpx", "requests", "urllib", "http",
+        "aiohttp", "socket", "litellm",
+    }
+    assert not (imported & forbidden), (
+        f"agent_eval imports {sorted(imported & forbidden)} — it claims no model "
+        "is invoked, so it must not carry a network or model client"
+    )
+
+
+def test_scorecard_dict_states_the_harness_kind(inert_store_path: Path) -> None:
+    card = ae.evaluate_role("qa-eng", "sonnet", EVALS, store_path=inert_store_path)
+    d = card.to_dict()
+    assert d["live_model_invoked"] is False
+    assert d["harness_kind"] == ae.HARNESS_KIND
+    assert d["tier_source"] == ae.TIER_FROM_OVERRIDE
+
+
+def test_cli_help_states_plainly_that_no_model_is_invoked(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        ae.main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out.lower()
+    assert "no model is invoked" in out
+    assert "replays" in out
+
+
+def test_tier_defaults_to_the_org_allocation_not_free_text(
+    inert_store_path: Path,
+) -> None:
+    import org_model
+
+    for role in ("qa-eng", "tech-writer", "cto"):
+        card = ae.evaluate_role(role, None, EVALS, store_path=inert_store_path)
+        assert card.tier == str(org_model.model_for(role))
+        assert card.tier_source == ae.TIER_FROM_ORG
+        assert card.tier != "unspecified"
+
+
+def test_org_allocation_is_not_uniform_across_roles(inert_store_path: Path) -> None:
+    cards = ae.evaluate_all(None, EVALS, store_path=inert_store_path)
+    tiers = {c.tier for c in cards}
+    assert tiers <= set(ae.KNOWN_TIERS)
+    assert len(tiers) > 1
+
+
+def test_known_tiers_are_exactly_the_org_model_tiers() -> None:
+    import org_model
+
+    assert set(ae.KNOWN_TIERS) == {str(m) for m in org_model.Model}
+    assert "unspecified" not in ae.KNOWN_TIERS
+
+
+@pytest.mark.parametrize("bogus", ["unspecified", "premium", "fable", "SONNET", ""])
+def test_free_text_tier_is_refused(bogus: str) -> None:
+    with pytest.raises(ae.EvalError):
+        ae.validate_tier(bogus)
+    with pytest.raises(ae.EvalError):
+        ae.evaluate_role("qa-eng", bogus, EVALS)
+
+
+def test_role_outside_the_org_model_is_refused_not_labelled_unspecified() -> None:
+    with pytest.raises(ae.EvalError) as excinfo:
+        ae.allocated_tier("not-a-real-role")
+    assert "not-a-real-role" in str(excinfo.value)
+
+
+def test_cli_refuses_an_unknown_tier(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        ae.main(["--role", "qa-eng", "--tier", "unspecified", "--evals", str(EVALS)])
+    assert excinfo.value.code == 2
+    assert "unspecified" in capsys.readouterr().err
+
+
+def test_cli_refuses_a_role_with_no_org_allocation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "evals"
+    _write_task(
+        root, "invented-role", "needs-answer",
+        "def verify(submission, fixtures):\n"
+        "    return 1.0 if submission.get('answer') == 42 else 0.0\n",
+    )
+    rc = ae.main(["--all", "--evals", str(root)])
+    assert rc == 2
+    assert "invented-role" in capsys.readouterr().err
+
+
+def test_cli_plain_output_labels_the_tier_source(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = ae.main(["--role", "qa-eng", "--evals", str(EVALS)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert ae.SCORECARD_BANNER in out
+    assert f"tier sonnet <- {ae.TIER_FROM_ORG}" in out
+    assert "replayed accuracy=0.833" in out
+
+
+def test_scorecard_markdown_carries_the_no_model_banner(
+    inert_store_path: Path,
+) -> None:
+    cards = ae.evaluate_all("sonnet", EVALS, store_path=inert_store_path)
+    md = ae.scorecard_markdown(cards)
+    assert md.splitlines()[0] == ae.SCORECARD_BANNER
+    assert "no model was invoked" in md
+
+
+_RESTORED_TASKS: tuple[tuple[str, str], ...] = (
+    ("backend-em", "api-design-review"),
+    ("backend-em", "escalate-or-delegate"),
+    ("backend-em", "merge-decision"),
+    ("backend-eng-1", "idempotency"),
+    ("backend-eng-2", "diagnose-500"),
+    ("board-member", "adr-signoff-check"),
+    ("chairman", "adr-ratify-gate"),
+    ("content-lead", "consistency-audit"),
+    ("content-lead", "style-guide-violations"),
+    ("legal-analyst", "missing-clause-check"),
+    ("legal-analyst", "regulatory-flag-scan"),
+    ("tech-writer", "doc-link-check"),
+)
+
+
+@pytest.mark.parametrize(("role", "task"), _RESTORED_TASKS)
+def test_restored_task_scores_its_committed_submissions(role: str, task: str) -> None:
+    result = ae.score_task(EVALS / role / task)
+    assert result.k == 3
+    assert result.accuracy > 0.0, f"{role}/{task} grades every committed answer wrong"
+    assert ae.degenerate_credit(EVALS / role / task) == 0.0
+
+
+def test_no_shipped_task_depends_on_a_markdown_fixture() -> None:
+    stragglers = sorted(
+        str(p.relative_to(EVALS))
+        for task_dir in ae.discover_all_tasks(EVALS)
+        for p in (task_dir / "fixtures").rglob("*.md")
+    )
+    assert stragglers == []
+
+
+def test_every_shipped_task_has_a_readable_fixture_set() -> None:
+    broken: list[str] = []
+    for task_dir in ae.discover_all_tasks(EVALS):
+        try:
+            ae.score_task(task_dir)
+        except ae.EvalError as exc:
+            broken.append(f"{task_dir.parent.name}/{task_dir.name}: {exc}")
+    assert broken == []
+
+
+def test_consistency_audit_grades_the_restored_documents() -> None:
+    task = EVALS / "content-lead" / "consistency-audit"
+    module = ae.load_verifier(task)
+    assert ae.score_submission(
+        module, {"inconsistent_docs": ["doc-b.md", "doc-c.md"]}, task
+    ) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"inconsistent_docs": ["doc-a.md", "doc-d.md"]}, task
+    ) == pytest.approx(0.0)
+
+
+def test_doc_link_check_grades_the_restored_document() -> None:
+    task = EVALS / "tech-writer" / "doc-link-check"
+    module = ae.load_verifier(task)
+    assert ae.score_submission(
+        module, {"broken_links": ["docs/legacy.md", "docs/removed.md"]}, task
+    ) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"broken_links": ["docs/setup.md"]}, task
+    ) == pytest.approx(0.0)
+
+
+def test_adr_ratify_gate_grades_the_restored_draft() -> None:
+    task = EVALS / "chairman" / "adr-ratify-gate"
+    module = ae.load_verifier(task)
+    assert ae.score_submission(
+        module, {"missing_sections": ["Decision", "Consequences"]}, task
+    ) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"missing_sections": ["Context"]}, task
+    ) == pytest.approx(0.0)
+
+
+def test_missing_clause_check_grades_the_restored_msa() -> None:
+    task = EVALS / "legal-analyst" / "missing-clause-check"
+    module = ae.load_verifier(task)
+    expected = [
+        "indemnification", "limitation_of_liability", "data_breach_notification",
+        "assignment", "termination",
+    ]
+    assert ae.score_submission(module, {"missing_clauses": expected}, task) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"missing_clauses": ["confidentiality", "governing_law"]}, task
+    ) == pytest.approx(0.0)
+
+
+def test_idempotency_expectation_comes_from_the_restored_endpoint() -> None:
+    task = EVALS / "backend-eng-1" / "idempotency"
+    module = ae.load_verifier(task)
+    assert ae.score_submission(
+        module, {"idempotent": True, "mechanism": "idempotency_key"}, task
+    ) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"idempotent": False, "mechanism": "idempotency_key"}, task
+    ) == pytest.approx(0.5)
+
+
+def test_diagnose_500_expectation_comes_from_the_restored_incident() -> None:
+    task = EVALS / "backend-eng-2" / "diagnose-500"
+    module = ae.load_verifier(task)
+    assert ae.score_submission(
+        module, {"root_cause": "null_reference", "fix": "null_check"}, task
+    ) == pytest.approx(1.0)
+    assert ae.score_submission(
+        module, {"root_cause": "deadlock", "fix": "null_check"}, task
+    ) == pytest.approx(0.5)
+
+
+def _copy_fixture_task(src: Path, dest_root: Path, role: str, task: str) -> Path:
+    import shutil
+
+    dest = dest_root / role / task
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dest)
+    return dest
+
+
+def test_emptied_document_fixture_raises_instead_of_scoring_zero(tmp_path: Path) -> None:
+    task = _copy_fixture_task(
+        EVALS / "content-lead" / "consistency-audit",
+        tmp_path / "evals", "content-lead", "consistency-audit",
+    )
+    (task / "fixtures" / "docs.json").write_text(
+        json.dumps({"documents": {}}), encoding="utf-8"
+    )
+    module = ae.load_verifier(task)
+    with pytest.raises(ae.EvalError):
+        ae.score_submission(module, {"inconsistent_docs": ["doc-b.md"]}, task)
+
+
+def test_a_task_whose_fixture_grades_nothing_is_reported_as_a_finding(
+    tmp_path: Path,
+) -> None:
+    task = _copy_fixture_task(
+        EVALS / "tech-writer" / "doc-link-check",
+        tmp_path / "evals", "tech-writer", "doc-link-check",
+    )
+    (task / "fixtures" / "files.json").write_text(
+        json.dumps({"files": ["docs/setup.md", "docs/api.md",
+                              "docs/legacy.md", "docs/removed.md"]}),
+        encoding="utf-8",
+    )
+    findings = ae.gaming_findings(tmp_path / "evals")
+    assert len(findings) == 1
+    assert "no broken links" in findings[0]
+
+
+def test_deleted_document_fixture_is_reported_not_silently_zero(tmp_path: Path) -> None:
+    task = _copy_fixture_task(
+        EVALS / "legal-analyst" / "missing-clause-check",
+        tmp_path / "evals", "legal-analyst", "missing-clause-check",
+    )
+    (task / "fixtures" / "msa.json").unlink()
+    module = ae.load_verifier(task)
+    with pytest.raises(ae.EvalError):
+        ae.score_submission(module, {"missing_clauses": ["termination"]}, task)

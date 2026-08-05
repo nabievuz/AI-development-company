@@ -6,13 +6,13 @@ import contextlib
 import json
 import os
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -75,17 +75,28 @@ FRONTMATTER_VALUE_FIELDS: frozenset[str] = frozenset(
 )
 
 
-def _redaction_mod() -> Any:
+def _load_sibling(relpath: str, alias: str) -> Any:
     import importlib.util
+    import sys as _sys
 
-    spec = importlib.util.spec_from_file_location(
-        "a2a_intake_redaction", ROOT / "tools" / "mcp_bridges" / "redaction.py"
-    )
+    cached = _sys.modules.get(alias)
+    if cached is not None:
+        return cached
+    spec = importlib.util.spec_from_file_location(alias, ROOT / relpath)
     if spec is None or spec.loader is None:
-        raise ImportError("cannot load tools/mcp_bridges/redaction.py")
+        raise ImportError(f"cannot load {relpath}")
     mod = importlib.util.module_from_spec(spec)
+    _sys.modules[alias] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def _redaction_mod() -> Any:
+    return _load_sibling("tools/mcp_bridges/redaction.py", "a2a_intake_redaction")
+
+
+def _untrusted_mod() -> Any:
+    return _load_sibling("tools/mcp_bridges/untrusted_input.py", "a2a_intake_untrusted_input")
 
 
 def _safe_scrub(value: object) -> str:
@@ -93,6 +104,34 @@ def _safe_scrub(value: object) -> str:
         return _redaction_mod().safe_scrub(value)
     except Exception:
         return "[REDACTED:unclassified]"
+
+
+QUARANTINE_SOURCE_PREFIX = "a2a-goal-proposal"
+
+
+SCREENED_VALUE_FIELDS: frozenset[str] = frozenset(
+    {"proposer", "proposed_at", "against_spec", "caller_ref"}
+)
+
+
+def _forbidden_field_paths(submission: Any) -> list[str]:
+    found: set[str] = set()
+    pending: list[tuple[Any, str]] = [(submission, "")]
+    while pending:
+        node, path = pending.pop()
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                key_text = str(key)
+                child = f"{path}.{key_text}" if path else key_text
+                if _normalize_key(key_text) in FORBIDDEN_FIELDS:
+                    found.add(child)
+                pending.append((value, child))
+        elif isinstance(node, (str, bytes, bytearray)):
+            continue
+        elif isinstance(node, Sequence):
+            for index, value in enumerate(node):
+                pending.append((value, f"{path}[{index}]"))
+    return sorted(found)
 
 
 def is_enabled(features_path: Path | None = None) -> bool:
@@ -154,6 +193,8 @@ class IntakeResult:
     reason: str
     path: Path | None = None
     denied_field: str | None = None
+    screening_risk: str = "none"
+    screening_signals: tuple[str, ...] = ()
 
 
 def _validate(submission: Any, admission_ref: str) -> tuple[str | None, str | None]:
@@ -161,13 +202,23 @@ def _validate(submission: Any, admission_ref: str) -> tuple[str | None, str | No
         return "malformed: submission must be an object/mapping", None
 
 
-    for key in submission:
-        if _normalize_key(key) in FORBIDDEN_FIELDS:
-            return (
-                f"forbidden field {key!r}: a goal proposal may not carry a "
-                "control/gate/routing field (A2-2, C3/C4)",
-                str(key),
-            )
+    limit_violations = _untrusted_mod().payload_limit_violations(submission)
+    if limit_violations:
+        return (
+            "malformed: submission exceeds the accepted size/shape limits — "
+            + "; ".join(limit_violations),
+            None,
+        )
+
+
+    forbidden_paths = _forbidden_field_paths(submission)
+    if forbidden_paths:
+        first = forbidden_paths[0]
+        return (
+            f"forbidden field {first!r}: a goal proposal may not carry a "
+            "control/gate/routing field at any nesting depth (A2-2, C3/C4)",
+            first,
+        )
 
 
     _normalized_frontmatter_fields = {_normalize_key(f) for f in FRONTMATTER_VALUE_FIELDS}
@@ -209,6 +260,30 @@ def _validate(submission: Any, admission_ref: str) -> tuple[str | None, str | No
         if _normalize_key(key) not in {_normalize_key(f) for f in ALLOWED_INPUT_FIELDS}:
             return (
                 f"malformed: field {key!r} is not part of the goal-proposal object shape",
+                str(key),
+            )
+
+
+    for key, value in submission.items():
+        if not isinstance(value, str):
+            return (
+                f"malformed: field {key!r} must be a string — a goal-proposal "
+                "field may not carry a nested object or array",
+                str(key),
+            )
+
+
+    untrusted = _untrusted_mod()
+    _normalized_screened_fields = {_normalize_key(f) for f in SCREENED_VALUE_FIELDS}
+    for key, value in submission.items():
+        if _normalize_key(key) not in _normalized_screened_fields:
+            continue
+        verdict = untrusted.screen(value)
+        if untrusted.is_blocked(verdict):
+            return (
+                f"refused: field {key!r} carries instruction-shaped content "
+                f"({untrusted.describe(verdict)}) and is written into the landed "
+                "artifact as a structured value, not as quarantined prose",
                 str(key),
             )
 
@@ -273,6 +348,9 @@ def intake_goal_proposal(
         path = inbox / f"{stamp}-{_slug(title)}-{counter}.md"
 
 
+    untrusted = _untrusted_mod()
+    prose_verdict = untrusted.screen({"title": title, "summary": summary})
+
     front_matter: dict[str, str] = {
         "status": "proposed",
         "source": "a2a",
@@ -284,16 +362,21 @@ def intake_goal_proposal(
         front_matter["against_spec"] = against_spec.strip()
     if isinstance(caller_ref, str) and caller_ref.strip():
         front_matter["caller_ref"] = caller_ref.strip()
+    if not untrusted.is_clean(prose_verdict):
+        front_matter["screening_risk"] = untrusted.risk_name(prose_verdict)
+        front_matter["screening_signals"] = ",".join(untrusted.signal_names(prose_verdict))
 
     front_text = yaml.safe_dump(
         front_matter, sort_keys=False, default_flow_style=False, allow_unicode=True
     )
 
+    quarantined = untrusted.quarantine(
+        f"{title}\n\n{summary}", f"{QUARANTINE_SOURCE_PREFIX}:{proposer}"
+    )
+
     body = (
-        "\n## Proposed goal\n"
-        f"{title}\n\n"
-        "## Rationale (proposer-supplied, UNTRUSTED — reviewed, not executed)\n"
-        f"{summary}\n"
+        "\n## Proposed goal (proposer-supplied, UNTRUSTED — reviewed, never executed)\n"
+        f"{quarantined}\n"
     )
     path.write_text(f"---\n{front_text}---\n" + body, encoding="utf-8")
 
@@ -305,10 +388,19 @@ def intake_goal_proposal(
         "proposer": _safe_scrub(proposer),
         "admission_ref": _safe_scrub(admission_ref),
         "path": rel,
+        "screening_risk": untrusted.risk_name(prose_verdict),
+        "screening_signals": untrusted.signal_names(prose_verdict),
     }
     _append_audit(record, audit_path)
 
-    return IntakeResult(decision="allow", admitted=True, reason="proposed", path=path)
+    return IntakeResult(
+        decision="allow",
+        admitted=True,
+        reason="proposed",
+        path=path,
+        screening_risk=untrusted.risk_name(prose_verdict),
+        screening_signals=tuple(untrusted.signal_names(prose_verdict)),
+    )
 
 
 def _is_relative_to(path: Path, other: Path) -> bool:
