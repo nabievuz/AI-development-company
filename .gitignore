@@ -70,6 +70,11 @@ board/.tool-audit.jsonl
 board/.rbac-audit.jsonl
 /board/.pytest-report.xml
 
+# The dispatch journal and its lock are runtime state written by
+# orchestrator --dispatch; they are per-machine and must not be committed.
+board/.dispatch-journal.jsonl
+board/.dispatch-journal.jsonl.lock
+
 dashboard/dist/
 dashboard/node_modules/
 dashboard/.vite/

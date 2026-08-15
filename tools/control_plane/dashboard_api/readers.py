@@ -340,6 +340,123 @@ def board_tickets(limit: int = 50) -> dict[str, Any]:
     )
 
 
+GATE_ORDER = ("GATE-1", "GATE-2", "GATE-3", "GATE-4", "GATE-5", "GATE-6")
+
+CLOSED_STATUSES = frozenset({"done"})
+
+
+def _ticket_row(meta: dict[str, str], stem: str) -> dict[str, Any]:
+    return {
+        "id": meta.get("id", stem),
+        "title": engine.scrub(meta.get("title", ""), 200),
+        "status": meta.get("status", "?"),
+        "priority": meta.get("priority", "?"),
+        "assignee": meta.get("assignee", ""),
+        "updated": meta.get("updated", ""),
+        "goal": meta.get("goal", ""),
+        "stage": meta.get("stage", ""),
+        "parent": meta.get("parent", ""),
+        "dept": meta.get("dept", ""),
+    }
+
+
+def _read_ticket_dir(directory: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("*.md")):
+        try:
+            meta = _frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if not meta:
+            continue
+        rows.append(_ticket_row(meta, path.stem))
+    return rows
+
+
+def _tally(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(key) or "")
+        if value:
+            out[value] = out.get(value, 0) + 1
+    return out
+
+
+def _goal_breakdown(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    goals: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        goal = str(row.get("goal") or "")
+        if goal:
+            goals.setdefault(goal, []).append(row)
+    out: list[dict[str, Any]] = []
+    for goal, items in sorted(goals.items()):
+        stages = []
+        for gate in GATE_ORDER:
+            staged = [r for r in items if r.get("stage") == gate]
+            if not staged:
+                continue
+            closed = all(r.get("status") in CLOSED_STATUSES for r in staged)
+            stages.append(
+                {
+                    "gate": gate,
+                    "closed": closed,
+                    "tickets": [r["id"] for r in staged],
+                    "status": staged[0].get("status", "?"),
+                }
+            )
+        out.append(
+            {
+                "goal": goal,
+                "total": len(items),
+                "by_status": _tally(items, "status"),
+                "stages": stages,
+                "open_gates": sum(1 for s in stages if not s["closed"]),
+                "epic": next((r["id"] for r in items if not r.get("stage")), ""),
+            }
+        )
+    return out
+
+
+def project_boards(limit: int = 200) -> dict[str, Any]:
+    directories = engine.project_board_dirs()
+    if not directories:
+        return panel(False, "no project boards — nothing under projects/*/board-tickets/")
+    boards: list[dict[str, Any]] = []
+    grand_total = 0
+    for directory in directories:
+        rows = _read_ticket_dir(directory)
+        if not rows:
+            continue
+        grand_total += len(rows)
+        by_status = _tally(rows, "status")
+        goals = _goal_breakdown(rows)
+        boards.append(
+            {
+                "slug": directory.parent.name,
+                "path": engine.rel(directory),
+                "total": len(rows),
+                "by_status": by_status,
+                "by_priority": _tally(rows, "priority"),
+                "by_assignee": _tally(rows, "assignee"),
+                "goals": goals,
+                "open_gates": sum(g["open_gates"] for g in goals),
+                "blocked": by_status.get("blocked", 0),
+                "in_review": by_status.get("in_review", 0),
+                "done": by_status.get("done", 0),
+                "tickets": rows[:limit],
+            }
+        )
+    if not boards:
+        return panel(False, "project boards exist but carry no readable tickets")
+    return panel(
+        True,
+        "",
+        projects=boards,
+        total=grand_total,
+        project_count=len(boards),
+    )
+
+
 def waves(limit: int = 40) -> dict[str, Any]:
     metrics, error = engine.try_load("metrics_lib")
     if metrics is None:

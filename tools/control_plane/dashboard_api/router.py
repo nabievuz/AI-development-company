@@ -117,6 +117,7 @@ def build_router(deps: ControlPlaneDeps) -> APIRouter:
         panels: dict[str, Any] = {
             "org": _safe(readers.org_overview) if "org.directory" in visible else None,
             "board": _safe(readers.board_tickets) if "product.board" in visible else None,
+            "projects": _safe(readers.project_boards, 1) if "product.board" in visible else None,
             "waves": _safe(readers.waves) if "engineering.waves" in visible else None,
             "interrupts": (
                 _safe(readers.interrupt_cards) if "governance.interrupts" in visible else None
@@ -142,7 +143,8 @@ def build_router(deps: ControlPlaneDeps) -> APIRouter:
         who: dict = dep_board,
         limit: int = QUERY_50,
     ) -> dict[str, Any]:
-        return _safe(readers.board_tickets, _clamp(limit))
+        platform = _safe(readers.board_tickets, _clamp(limit))
+        return {**platform, "projects": _safe(readers.project_boards, MAX_LIMIT)}
 
     @router.get("/waves")
     def wave_timeline(

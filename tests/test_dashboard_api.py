@@ -283,6 +283,75 @@ def test_board_reader_surfaces_real_ticket_state(env):
     assert body["by_priority"]["p0"] == 1
 
 
+def _seed_project_board(root: Path) -> None:
+    board = root / "projects" / "demo-project" / "board-tickets"
+    board.mkdir(parents=True)
+    rows = [
+        ("DAS-2001", "demo epic", "backlog", "cpo", "", "checkout"),
+        ("DAS-2002", "Stage 1", "done", "senior-pm", "GATE-1", "checkout"),
+        ("DAS-2003", "Stage 2", "todo", "backend-em", "GATE-2", "checkout"),
+    ]
+    for ticket_id, title, status, assignee, stage, goal in rows:
+        stage_line = f"stage: {stage}\n" if stage else ""
+        (board / f"{ticket_id}-{goal}.md").write_text(
+            "---\n"
+            f"id: {ticket_id}\n"
+            f"title: {title}\n"
+            f"status: {status}\n"
+            f"assignee: {assignee}\n"
+            "author: ceo\n"
+            "dept: engineering\n"
+            "priority: p1\n"
+            f"goal: {goal}\n"
+            "project: demo-project\n"
+            f"{stage_line}"
+            "created: 2026-08-15\n"
+            "updated: 2026-08-15\n"
+            "---\n",
+            encoding="utf-8",
+        )
+
+
+def test_project_boards_are_surfaced_separately_from_the_org_board(env):
+    _seed_project_board(env)
+    client = _client(_load_app())
+    body = client.get("/api/dashboard/board", headers=_h("tf")).json()
+    assert body["total"] == 1
+    projects = body["projects"]
+    assert projects["available"] is True
+    assert projects["project_count"] == 1
+    board = projects["projects"][0]
+    assert board["slug"] == "demo-project"
+    assert board["total"] == 3
+    assert board["done"] == 1
+
+
+def test_project_goal_breakdown_tracks_gate_closure(env):
+    _seed_project_board(env)
+    client = _client(_load_app())
+    board = client.get("/api/dashboard/board", headers=_h("tf")).json()["projects"]["projects"][0]
+    goal = next(g for g in board["goals"] if g["goal"] == "checkout")
+    assert goal["epic"] == "DAS-2001"
+    assert goal["total"] == 3
+    gates = {stage["gate"]: stage["closed"] for stage in goal["stages"]}
+    assert gates == {"GATE-1": True, "GATE-2": False}
+    assert goal["open_gates"] == 1
+    assert board["open_gates"] == 1
+
+
+def test_project_boards_report_absence_without_inventing_zero(env):
+    client = _client(_load_app())
+    projects = client.get("/api/dashboard/board", headers=_h("tf")).json()["projects"]
+    assert projects["available"] is False
+    assert "projects/" in projects["reason"]
+
+
+def test_project_boards_stay_behind_the_board_permission(env):
+    _seed_project_board(env)
+    client = _client(_load_app())
+    assert client.get("/api/dashboard/board", headers=_h("ta-eng")).status_code == 403
+
+
 def test_summary_payload_excludes_the_full_role_roster(env):
     client = _client(_load_app())
     body = client.get("/api/dashboard/summary", headers=_h("tf")).json()

@@ -113,6 +113,24 @@ def runs_dir() -> Path:
     return board() / "runs"
 
 
+def projects_dir() -> Path:
+    return root() / "projects"
+
+
+PROJECT_BOARD_DIRNAME = "board-tickets"
+
+
+def project_board_dirs() -> list[Path]:
+    base = projects_dir()
+    if not base.is_dir():
+        return []
+    return sorted(
+        entry / PROJECT_BOARD_DIRNAME
+        for entry in base.iterdir()
+        if entry.is_dir() and (entry / PROJECT_BOARD_DIRNAME).is_dir()
+    )
+
+
 def experiments_dir() -> Path:
     return root() / "experiments"
 

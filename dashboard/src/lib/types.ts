@@ -98,6 +98,47 @@ export interface TicketRow {
   priority: string
   assignee: string
   updated: string
+  goal?: string
+  stage?: string
+  parent?: string
+  dept?: string
+}
+
+export interface GateStage {
+  gate: string
+  closed: boolean
+  tickets: string[]
+  status: string
+}
+
+export interface GoalBreakdown {
+  goal: string
+  total: number
+  by_status: Record<string, number>
+  stages: GateStage[]
+  open_gates: number
+  epic: string
+}
+
+export interface ProjectBoard {
+  slug: string
+  path: string
+  total: number
+  by_status: Record<string, number>
+  by_priority: Record<string, number>
+  by_assignee: Record<string, number>
+  goals: GoalBreakdown[]
+  open_gates: number
+  blocked: number
+  in_review: number
+  done: number
+  tickets: TicketRow[]
+}
+
+export interface ProjectsPanel extends Panel {
+  projects?: ProjectBoard[]
+  total?: number
+  project_count?: number
 }
 
 export interface BoardPanel extends Panel {
@@ -107,6 +148,7 @@ export interface BoardPanel extends Panel {
   by_priority: Record<string, number>
   blocked: number
   in_review: number
+  projects?: ProjectsPanel
 }
 
 export interface WaveRow {
