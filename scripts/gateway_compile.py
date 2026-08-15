@@ -17,6 +17,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import check_approved_goal_queue as approved_queue
+from _paths import ROOT
 
 MANIFEST_NAME = "PROJECT-OS.yaml"
 QUEUE_NAME = "APPROVED-GOAL-QUEUE.md"
@@ -416,8 +417,29 @@ def _mission_excerpt(manifest: dict, limit: int = 280) -> str:
     return (mission[:limit] + "…") if len(mission) > limit else mission
 
 
+ORG_PATH = ROOT / "config" / "org.yaml"
+FALLBACK_DEPT = "engineering"
+
+
+def role_departments(org_path: Path | None = None) -> dict[str, str]:
+    path = org_path or ORG_PATH
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    roles = data.get("roles") if isinstance(data, dict) else None
+    if not isinstance(roles, list):
+        return {}
+    return {
+        str(spec["key"]).strip(): str(spec["dept"]).strip()
+        for spec in roles
+        if isinstance(spec, dict) and str(spec.get("key", "")).strip()
+        and str(spec.get("dept", "")).strip()
+    }
+
+
 def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: str,
-                  assignee: str, parent: str, goal: str, stage_tag: str, gate: str,
+                  assignee: str, dept: str, parent: str, goal: str, stage_tag: str, gate: str,
                   body: str) -> Path:
     today = date.today().isoformat()
     fm = [
@@ -427,7 +449,7 @@ def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: s
         f"status: {status}",
         f"assignee: {assignee}",
         "author: ceo",
-        "dept: engineering",
+        f"dept: {dept or FALLBACK_DEPT}",
         "priority: p1",
         f"parent: {parent}" if parent else "parent:",
         f"goal: {goal}",
@@ -460,6 +482,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
 
     board_dir = pack_root / "board-tickets"
     board_dir.mkdir(parents=True, exist_ok=True)
+    depts = role_departments()
     slug = pack_root.name
     mission = _mission_excerpt(manifest)
     written: list[Path] = []
@@ -490,7 +513,8 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
         )
         epic_path = _write_ticket(
             board_dir, epic_id, slug=slug, title=f"{goal_slug} — epic", status="backlog",
-            assignee=owner, parent="", goal=goal_slug, stage_tag="epic", gate="",
+            assignee=owner, dept=depts.get(owner, FALLBACK_DEPT), parent="",
+            goal=goal_slug, stage_tag="epic", gate="",
             body=epic_body,
         )
         written.append(epic_path)
@@ -527,7 +551,8 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
             )
             spath = _write_ticket(
                 board_dir, sid, slug=slug, title=f"{goal_slug} — Stage {stage_no}: {stage_name}",
-                status="todo", assignee=role, parent=f"DAS-{epic_id}", goal=goal_slug,
+                status="todo", assignee=role, dept=depts.get(role, FALLBACK_DEPT),
+                parent=f"DAS-{epic_id}", goal=goal_slug,
                 stage_tag=f"s{stage_no}-{doc_dir}", gate=gate, body=body,
             )
             written.append(spath)

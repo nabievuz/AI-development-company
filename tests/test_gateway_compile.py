@@ -12,6 +12,7 @@ if str(SCRIPTS) not in sys.path:
 
 import board_lint
 import gateway_compile as gc
+import wave_planner as wp
 
 _MANIFEST = """\
 name: {slug}
@@ -272,3 +273,54 @@ def test_cli_returns_0_on_compile(tmp_path, capsys):
     rc = gc.main([str(root)])
     assert rc == 0
     assert "COMPILED" in capsys.readouterr().out
+
+
+def _dept_of(path):
+    return next(
+        ln.split(":", 1)[1].strip()
+        for ln in path.read_text(encoding="utf-8").splitlines()
+        if ln.startswith("dept:")
+    )
+
+
+def _assignee_of(path):
+    return next(
+        ln.split(":", 1)[1].strip()
+        for ln in path.read_text(encoding="utf-8").splitlines()
+        if ln.startswith("assignee:")
+    )
+
+
+def test_role_departments_reads_the_org_model():
+    depts = gc.role_departments()
+    assert depts["cpo"] == "product"
+    assert depts["backend-eng-1"] == "engineering"
+    assert depts["senior-pm"] == "product"
+
+
+def test_role_departments_survives_a_missing_org_file(tmp_path):
+    assert gc.role_departments(tmp_path / "absent.yaml") == {}
+
+
+def test_every_ticket_carries_its_own_assignee_department(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path))
+    depts = gc.role_departments()
+    assert res.ok, [str(e) for e in res.errors]
+    for path in res.tickets:
+        assert _dept_of(path) == depts[_assignee_of(path)]
+
+
+def test_product_roles_are_not_stamped_engineering(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path))
+    stamped = {_assignee_of(p): _dept_of(p) for p in res.tickets}
+    assert stamped["senior-pm"] == "product"
+    assert stamped["product-analyst"] == "product"
+    assert stamped["backend-em"] == "engineering"
+
+
+def test_compiled_tickets_do_not_collapse_into_one_wave_zone(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path))
+    tickets = wp.load_board_tickets(res.tickets[0].parent)
+    zones = {wp.effective_zone(t) for t in tickets}
+    assert len(zones) > 1, f"every ticket landed in one zone: {zones}"
+    assert zones == {"product", "engineering"}
