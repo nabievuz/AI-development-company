@@ -58,6 +58,7 @@ class DispatchRequest:
     run_id: str
     attempt: int
     goal: str = ""
+    board_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -263,14 +264,14 @@ class Orchestrator:
     def run_id_for(self, wave_run_id: str, ticket_id: str) -> str:
         return f"{wave_run_id}-{ticket_id}"
 
-    def dispatch(self, plan: _wp.WavePlan, *, run_id: str) -> WaveRun:
+    def dispatch(self, plan: _wp.WavePlan, *, run_id: str, board_dir: str = "") -> WaveRun:
         units = [
             DispatchUnit(pt.ticket_id, pt.role, pt.model, pt.zone) for pt in plan.dispatch
         ]
-        return self.dispatch_units(units, run_id=run_id, goal=plan.goal)
+        return self.dispatch_units(units, run_id=run_id, goal=plan.goal, board_dir=board_dir)
 
     def dispatch_units(
-        self, units: Sequence[DispatchUnit], *, run_id: str, goal: str = ""
+        self, units: Sequence[DispatchUnit], *, run_id: str, goal: str = "", board_dir: str = ""
     ) -> WaveRun:
         if not run_id:
             raise ValueError("dispatch needs a non-empty wave run_id")
@@ -290,7 +291,7 @@ class Orchestrator:
             workers = min(self.config.max_parallel, len(pending))
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="wave") as pool:
                 futures = [
-                    pool.submit(self._run_unit, unit, run_id, goal) for unit in pending
+                    pool.submit(self._run_unit, unit, run_id, goal, board_dir) for unit in pending
                 ]
                 for future in futures:
                     outcome = future.result()
@@ -299,7 +300,9 @@ class Orchestrator:
         ordered = tuple(outcomes[unit.ticket_id] for unit in units if unit.ticket_id in outcomes)
         return WaveRun(run_id=run_id, outcomes=ordered)
 
-    def _run_unit(self, unit: DispatchUnit, wave_run_id: str, goal: str) -> DispatchOutcome:
+    def _run_unit(
+        self, unit: DispatchUnit, wave_run_id: str, goal: str, board_dir: str = ""
+    ) -> DispatchOutcome:
         ticket_run_id = self.run_id_for(wave_run_id, unit.ticket_id)
         started_at = self._clock()
         status = DispatchStatus.FAILED
@@ -316,6 +319,7 @@ class Orchestrator:
                 run_id=ticket_run_id,
                 attempt=attempt,
                 goal=goal,
+                board_dir=board_dir,
             )
             try:
                 result = coerce_agent_output(self._invoke_with_timeout(request))
@@ -619,7 +623,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     orchestrator = Orchestrator(invoker, config=config, journal_path=args.journal)
-    run = orchestrator.dispatch(plan, run_id=args.run_id)
+    run = orchestrator.dispatch(plan, run_id=args.run_id, board_dir=str(args.board))
     print(json.dumps(_run_as_dict(run), indent=2) if args.json else render_run(run))
     return 0 if run.all_succeeded else 1
 
