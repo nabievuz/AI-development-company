@@ -440,7 +440,7 @@ def role_departments(org_path: Path | None = None) -> dict[str, str]:
 
 def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: str,
                   assignee: str, dept: str, parent: str, goal: str, stage_tag: str, gate: str,
-                  body: str) -> Path:
+                  body: str, zone: str = "") -> Path:
     today = date.today().isoformat()
     fm = [
         "---",
@@ -450,6 +450,7 @@ def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: s
         f"assignee: {assignee}",
         "author: ceo",
         f"dept: {dept or FALLBACK_DEPT}",
+        f"zone: {zone}" if zone else "",
         "priority: p1",
         f"parent: {parent}" if parent else "parent:",
         f"goal: {goal}",
@@ -490,6 +491,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
 
     for goal in goals:
         goal_slug = goal["goal_slug"]
+        zone = goal.get("zone", "").strip()
         outcome = goal.get("outcome", "").strip() or "(outcome not specified in queue)"
         owner = goal.get("owner", "").strip() or "cpo"
         if owner not in {r for _n, _nm, _g, _d, r, _a in AADL_STAGES} | {
@@ -515,7 +517,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
             board_dir, epic_id, slug=slug, title=f"{goal_slug} — epic", status="backlog",
             assignee=owner, dept=depts.get(owner, FALLBACK_DEPT), parent="",
             goal=goal_slug, stage_tag="epic", gate="",
-            body=epic_body,
+            body=epic_body, zone=zone,
         )
         written.append(epic_path)
 
@@ -553,7 +555,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
                 board_dir, sid, slug=slug, title=f"{goal_slug} — Stage {stage_no}: {stage_name}",
                 status="todo", assignee=role, dept=depts.get(role, FALLBACK_DEPT),
                 parent=f"DAS-{epic_id}", goal=goal_slug,
-                stage_tag=f"s{stage_no}-{doc_dir}", gate=gate, body=body,
+                stage_tag=f"s{stage_no}-{doc_dir}", gate=gate, body=body, zone=zone,
             )
             written.append(spath)
             prev_stage_id = sid
