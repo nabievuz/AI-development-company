@@ -20,7 +20,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-app = FastAPI(title="DasLab Control Plane (WS-H)", docs_url=None, redoc_url=None)
+app = FastAPI(
+    title="DasLab Control Plane (WS-H)", docs_url=None, redoc_url=None, openapi_url=None
+)
 
 STATUSES = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"]
 NODATA = "(no data — cockpit unavailable in this environment; see scripts/cockpit.py)"
@@ -42,6 +44,13 @@ def _engine_module(mod_name: str, rel: str) -> Any:
     sys.modules[mod_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _dashboard_package() -> Any:
+    entry = str(Path(__file__).resolve().parent)
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
+    return importlib.import_module("dashboard_api")
 
 
 _rbac = _engine_module("cp_rbac", "scripts/rbac.py")
@@ -132,15 +141,21 @@ class AuthFailure(Enum):
 
 class Identity:
 
-    __slots__ = ("kind", "principal", "user")
+    __slots__ = ("kind", "principal", "role", "user")
 
-    def __init__(self, user: str, principal: str, kind: str) -> None:
+    def __init__(self, user: str, principal: str, kind: str, role: str = "") -> None:
         self.user = user
         self.principal = principal
         self.kind = kind
+        self.role = role
 
     def as_dict(self) -> dict:
-        return {"user": self.user, "principal": self.principal, "kind": self.kind}
+        return {
+            "user": self.user,
+            "principal": self.principal,
+            "kind": self.kind,
+            "role": self.role,
+        }
 
 
 def _token_bytes(value: str) -> bytes:
@@ -183,7 +198,16 @@ def _resolve_identity(tokens: dict, token: str) -> tuple[Identity | None, AuthFa
     if kind is None:
         return None, AuthFailure.UNUSABLE_PRINCIPAL
     user = entry.get("user")
-    return Identity(str(user) if user else "unknown", principal, str(kind)), None
+    role = entry.get("role")
+    return (
+        Identity(
+            str(user) if user else "unknown",
+            principal,
+            str(kind),
+            str(role) if isinstance(role, str) else "",
+        ),
+        None,
+    )
 
 
 def _identify(request: Request) -> dict:
@@ -459,7 +483,12 @@ class GateDecisionIn(BaseModel):
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"ok": True, "flag": flag_on(), "rbac_configured": rbac_configured()}
+    return {
+        "ok": True,
+        "flag": flag_on(),
+        "rbac_configured": rbac_configured(),
+        "dashboard": dict(DASHBOARD_STATUS),
+    }
 
 
 @app.get("/api/board")
@@ -617,6 +646,28 @@ operator surface is the ADR-0028 static read cockpit — run
 an <b>optional</b>, Founder-enabled process; it dispatches nothing on its own.</p>
 <small>No data is served here without the control plane enabled and a token (CP-2).</small>
 </body></html>"""
+
+
+DASHBOARD_STATUS: dict[str, Any] = {"router": False, "spa": False, "error": ""}
+
+
+def _install_dashboard() -> None:
+    try:
+        package = _dashboard_package()
+        deps = package.ControlPlaneDeps(
+            identify=_identify,
+            audit=audit,
+            flag_on=flag_on,
+            load_grants=load_grants,
+        )
+        app.include_router(package.build_router(deps))
+        DASHBOARD_STATUS["router"] = True
+        DASHBOARD_STATUS["spa"] = bool(package.mount_spa(app))
+    except Exception as exc:
+        DASHBOARD_STATUS["error"] = f"{type(exc).__name__}: {exc}"
+
+
+_install_dashboard()
 
 
 @app.get("/", response_class=HTMLResponse)
