@@ -324,3 +324,60 @@ def test_compiled_tickets_do_not_collapse_into_one_wave_zone(tmp_path):
     zones = {wp.effective_zone(t) for t in tickets}
     assert len(zones) > 1, f"every ticket landed in one zone: {zones}"
     assert zones == {"product", "engineering"}
+
+
+_ZONED_QUEUE = """\
+# APPROVED-GOAL-QUEUE — {slug}
+
+TASDIQLANDI 2026-08-15 (Founder approved)
+
+| order | goal_slug | zone | outcome | why_now | research_basis | owner | status | ticket_refs |
+|---|---|---|---|---|---|---|---|---|
+| 1 | billing-agent | content | Deflect tier-1 billing tickets | launch | scan | cpo | founder_approved | - |
+| 2 | header-hardening | infra | Serve the security headers | launch | scan | cto | founder_approved | - |
+"""
+
+
+def _zone_of(path):
+    return next(
+        (
+            ln.split(":", 1)[1].strip()
+            for ln in path.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("zone:")
+        ),
+        "",
+    )
+
+
+def test_queue_zone_column_lands_on_every_ticket_of_that_goal(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path, queue=_ZONED_QUEUE.format(slug="acme-helpdesk")))
+    assert res.ok, [str(e) for e in res.errors]
+    assert len(res.tickets) == 14
+    by_zone = {}
+    for path in res.tickets:
+        by_zone.setdefault(_zone_of(path), []).append(path)
+    assert sorted(by_zone) == ["content", "infra"]
+    assert len(by_zone["content"]) == 7
+    assert len(by_zone["infra"]) == 7
+
+
+def test_declared_zone_beats_the_department_fallback(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path, queue=_ZONED_QUEUE.format(slug="acme-helpdesk")))
+    tickets = wp.load_board_tickets(res.tickets[0].parent)
+    assert {wp.effective_zone(t) for t in tickets} == {"content", "infra"}
+
+
+def test_a_queue_without_a_zone_column_still_falls_back_to_dept(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path))
+    assert all(_zone_of(p) == "" for p in res.tickets)
+    tickets = wp.load_board_tickets(res.tickets[0].parent)
+    assert {wp.effective_zone(t) for t in tickets} == {"product", "engineering"}
+
+
+def test_goals_in_separate_zones_dispatch_in_the_same_wave(tmp_path):
+    res = gc.run_pipeline(build_pack(tmp_path, queue=_ZONED_QUEUE.format(slug="acme-helpdesk")))
+    tickets = wp.load_board_tickets(res.tickets[0].parent)
+    org = wp.load_org_model(REPO_ROOT / "config" / "org.yaml")
+    plan = wp.plan_wave(tickets, org, [], goal="parallel-lanes")
+    assert len(plan.dispatch) == 2
+    assert {pt.zone for pt in plan.dispatch} == {"content", "infra"}
