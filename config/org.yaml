@@ -79,7 +79,7 @@ roles:
       Charter-guided reviews and votes — templated. You work one ticket at a time (WIP = 1) from `board/tickets/`,
       per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the governance tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the governance tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to the Board — see below), work outside governance, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -100,7 +100,7 @@ roles:
       goal decomposition, cross-dept arbitration — low-frequency, down-tiering yields ~0 throughput. You
       work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the governance tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the governance tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Chairman of the Board — see below), work outside governance, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -120,7 +120,7 @@ roles:
       work: Charter/governance rulings, board minutes with binding effect — rare, judgment-dense. You
       work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the governance tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the governance tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to the Board — see below), work outside governance, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -141,7 +141,7 @@ roles:
       Code review, merge decisions, GATE-3 responsible — the net that catches `medium` backend ICs. You
       work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CTO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means each `in_review` ticket you own is either merged (GATE-3, green
       CI) or returned with concrete change requests; you never merge work you authored.'
@@ -161,11 +161,11 @@ roles:
       work: Implementation tickets — Sonnet is the coding workhorse; backend-em (GATE-3) catches. You
       work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Backend EM — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -182,11 +182,11 @@ roles:
       work: Implementation tickets. You work one ticket at a time (WIP = 1) from `board/tickets/`, per
       your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Backend EM — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -207,7 +207,7 @@ roles:
       role default). You work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter
       and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CEO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -227,7 +227,7 @@ roles:
       Code review, merge decisions, GATE-3 responsible — the net for `medium` frontend ICs. You work one
       ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CTO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means each `in_review` ticket you own is either merged (GATE-3, green
       CI) or returned with concrete change requests; you never merge work you authored.'
@@ -247,11 +247,11 @@ roles:
       work: Implementation tickets — frontend-em (GATE-3) catches. You work one ticket at a time (WIP
       = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Frontend EM — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -268,11 +268,11 @@ roles:
       work: Implementation tickets. You work one ticket at a time (WIP = 1) from `board/tickets/`, per
       your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Frontend EM — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -289,11 +289,11 @@ roles:
       Test authoring, eval runs, regression checks; qa-lead (GATE-4) gate. **Rollback-first.**. You work
       one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to QA Lead — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -317,7 +317,7 @@ roles:
       bands. You work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and
       the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CTO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the gate you own (GATE-4 eval / GATE-5 deploy / security sign-off)
       is explicitly passed or blocked, with the evidence and the decision recorded.'
@@ -342,11 +342,11 @@ roles:
       work: Red-team execution, scans (lead reviews on opus). **Rollback-first.**. You work one ticket
       at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Security Lead — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -365,7 +365,7 @@ roles:
       the most expensive failure. `xhigh` per-task for deep red-team review. You work one ticket at a
       time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CTO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the gate you own (GATE-4 eval / GATE-5 deploy / security sign-off)
       is explicitly passed or blocked, with the evidence and the decision recorded.'
@@ -394,11 +394,11 @@ roles:
       Runbooks, deploy mechanics, monitoring wiring; sre-lead (GATE-5). **Rollback-first.**. You work
       one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to SRE / DevOps Lead — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the assigned ticket is delivered as a reviewed PR with **green CI**,
       every acceptance criterion is checked, and the ticket file is updated (status + `## Log`). Never
-      self-review — hand off to your reviewer per `board/ROUTING.md`.'
+      self-review — hand off to your reviewer per the `config/org.yaml` routing table.'
     escalation: |-
       - Decision exceeds your charter authority → escalate to your manager.
       - Cross-dept impact → tag the relevant C-suite in a comment.
@@ -415,7 +415,7 @@ roles:
       work: GATE-5 accountable — production launch, observability sign-off; prod blast radius. You work
       one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the engineering tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the engineering tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CTO — see below), work outside engineering, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the gate you own (GATE-4 eval / GATE-5 deploy / security sign-off)
       is explicitly passed or blocked, with the evidence and the decision recorded.'
@@ -435,7 +435,7 @@ roles:
       — product scope and KPI definitions; ambiguity multiplies downstream. You work one ticket at a time
       (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the product tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the product tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CEO — see below), work outside product, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -457,7 +457,7 @@ roles:
       You work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board
       rules.'
     scope: |-
-      - **Owns:** the product tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the product tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CPO — see below), work outside product, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the analysis is delivered with sourced findings and a clear, actionable
       recommendation; any follow-up work is filed as board tickets.'
@@ -477,7 +477,7 @@ roles:
       PRD authoring (GATE-1 responsible) — ambiguity here multiplies downstream. You work one ticket at
       a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the product tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the product tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CPO — see below), work outside product, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -499,7 +499,7 @@ roles:
       0007 §1 re-tier-eligible class; W3). `effort` unsupported, omitted. You work one ticket at a time
       (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the product tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the product tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CPO — see below), work outside product, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the doc/changelog is written, accurate to the shipped behaviour,
       and the ticket updated.'
@@ -519,7 +519,7 @@ roles:
       docs — checklist-driven. You work one ticket at a time (WIP = 1) from `board/tickets/`, per your
       dept charter and the board rules.'
     scope: |-
-      - **Owns:** the design tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the design tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CEO — see below), work outside design, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -544,7 +544,7 @@ roles:
       review of design artifacts. You work one ticket at a time (WIP = 1) from `board/tickets/`, per your
       dept charter and the board rules.'
     scope: |-
-      - **Owns:** the design tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the design tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CDO — see below), work outside design, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the design artifact is produced, token-compliant, reviewed, and
       handed to engineering with the spec it needs to build.'
@@ -569,7 +569,7 @@ roles:
       components, design tokens — visually checked. You work one ticket at a time (WIP = 1) from `board/tickets/`,
       per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the design tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the design tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Design Lead — see below), work outside design, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the design artifact is produced, token-compliant, reviewed, and
       handed to engineering with the spec it needs to build.'
@@ -594,7 +594,7 @@ roles:
       notes, UX test synthesis — needs reasoning. You work one ticket at a time (WIP = 1) from `board/tickets/`,
       per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the design tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the design tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to Design Lead — see below), work outside design, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the analysis is delivered with sourced findings and a clear, actionable
       recommendation; any follow-up work is filed as board tickets.'
@@ -614,7 +614,7 @@ roles:
       docs — checklist-driven. You work one ticket at a time (WIP = 1) from `board/tickets/`, per your
       dept charter and the board rules.'
     scope: |-
-      - **Owns:** the marketing tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the marketing tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CEO — see below), work outside marketing, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -634,7 +634,7 @@ roles:
       content drafting/editing — iterative, cheaply reviewed, low blast radius. You work one ticket at
       a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the marketing tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the marketing tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CMO — see below), work outside marketing, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the content/campaign is produced, on-brand, reviewed, and the ticket
       updated; external claims are cleared with the CMO.'
@@ -654,7 +654,7 @@ roles:
       Campaigns, growth experiments — cheaply reviewed. You work one ticket at a time (WIP = 1) from `board/tickets/`,
       per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the marketing tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the marketing tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CMO — see below), work outside marketing, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the content/campaign is produced, on-brand, reviewed, and the ticket
       updated; external claims are cleared with the CMO.'
@@ -674,7 +674,7 @@ roles:
       Meta/keyword/structured routine output — `effort` unsupported (400), line omitted. You work one
       ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the marketing tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the marketing tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CMO — see below), work outside marketing, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the content/campaign is produced, on-brand, reviewed, and the ticket
       updated; external claims are cleared with the CMO.'
@@ -695,7 +695,7 @@ roles:
       but checklist-driven cadence work — raise to `medium` first if GATE-6 pass-rate dips. You work one
       ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the operations tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the operations tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to CEO — see below), work outside operations, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the decision, plan, or ADR you own is made and recorded (ADR / board
       minutes / approved queue), with the rationale and a law-check captured.'
@@ -716,7 +716,7 @@ roles:
       You work one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board
       rules.'
     scope: |-
-      - **Owns:** the operations tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the operations tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to COO — see below), work outside operations, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the analysis is delivered with sourced findings and a clear, actionable
       recommendation; any follow-up work is filed as board tickets.'
@@ -736,7 +736,7 @@ roles:
       work: Risk-ethics review drafting; escalates novel calls via ticket. **Rollback-first.**. You work
       one ticket at a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the operations tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the operations tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to COO — see below), work outside operations, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the analysis is delivered with sourced findings and a clear, actionable
       recommendation; any follow-up work is filed as board tickets.'
@@ -756,7 +756,7 @@ roles:
       Triage, SLA tracking, templated responses — `effort` unsupported, omitted. You work one ticket at
       a time (WIP = 1) from `board/tickets/`, per your dept charter and the board rules.'
     scope: |-
-      - **Owns:** the operations tickets routed to this role (per `governance/policies/raci.md`), worked one at a time.
+      - **Owns:** the operations tickets routed to this role (per the `config/org.yaml` role roster), worked one at a time.
       - **Does NOT own:** decisions above your charter authority (escalate to COO — see below), work outside operations, or another role's tickets. Cross-dept impact is flagged, not decided unilaterally.
     definition_of_done: '- Done means the support item is triaged and resolved or routed within SLA, and
       recurring issues are filed back to the owning team as tickets.'

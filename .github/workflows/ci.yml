@@ -49,6 +49,9 @@ jobs:
       - name: Agents in sync
         run: python3 scripts/gen_subagents.py && python3 scripts/check_agents_sync.py
 
+      - name: Charter citations resolve (no compiled agent prompt cites a missing file)
+        run: python3 scripts/check_charter_paths.py
+
       - name: Gate order
         run: python3 scripts/check_gates.py
 
@@ -74,7 +77,10 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then echo "quickstart: verified"; exit 0; fi
-          if [ "$rc" -eq 3 ]; then echo "quickstart: NO DATA — no README Quickstart in tree; nothing was verified"; exit 0; fi
+          if [ "$rc" -eq 3 ]; then
+            echo "::error::quickstart NO DATA — README.md must carry a runnable ## Quickstart; an unverifiable gate is not a green one"
+            exit 1
+          fi
           exit "$rc"
 
       - name: Link integrity (blocking)
