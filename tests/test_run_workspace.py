@@ -312,3 +312,40 @@ class TestGitWorktreeIsolation:
 
         with pytest.raises(rw.WorktreeError, match="not a git repository"):
             rw.create_git_worktree(tmp_path / "nope", tmp_path / "wt", "b")
+
+
+class TestBranchBaseAndReuse:
+    def test_a_new_branch_is_cut_from_main_not_from_whatever_head_is_on(self, tmp_path):
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", "someone-elses-ticket"],
+                       check=True)
+        (repo / "app.txt").write_text("their work\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "commit", "-qam", "their commit"], check=True)
+
+        root = tmp_path / "engine"
+        wt = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b-DAS-1")
+
+        assert (wt / "app.txt").read_text(encoding="utf-8") == "v1\n"
+
+    def test_default_base_prefers_main_then_master(self, tmp_path):
+        repo = _repo(tmp_path)
+        assert rw.default_base(repo) == "main"
+        subprocess.run(["git", "-C", str(repo), "branch", "-m", "main", "master"], check=True)
+        assert rw.default_base(repo) == "master"
+
+    def test_an_existing_ticket_branch_is_reused_not_forked(self, tmp_path):
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "-C", str(repo), "branch", "DAS-9-goal-gate-2-design"], check=True)
+        assert rw.existing_ticket_branch(repo, "DAS-9") == "DAS-9-goal-gate-2-design"
+
+    def test_no_match_and_ambiguous_matches_both_yield_nothing(self, tmp_path):
+        repo = _repo(tmp_path)
+        assert rw.existing_ticket_branch(repo, "DAS-9") == ""
+        subprocess.run(["git", "-C", str(repo), "branch", "DAS-9-one"], check=True)
+        subprocess.run(["git", "-C", str(repo), "branch", "DAS-9-two"], check=True)
+        assert rw.existing_ticket_branch(repo, "DAS-9") == ""
+
+    def test_a_ticket_id_prefix_does_not_match_a_longer_id(self, tmp_path):
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "-C", str(repo), "branch", "DAS-90-other"], check=True)
+        assert rw.existing_ticket_branch(repo, "DAS-9") == ""

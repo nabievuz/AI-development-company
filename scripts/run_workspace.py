@@ -84,7 +84,26 @@ def branch_exists(repo: Path, branch: str) -> bool:
     return _git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0
 
 
-def create_git_worktree(repo: Path, path: Path, branch: str, base: str = "HEAD") -> Path:
+DEFAULT_BASE_CANDIDATES = ("main", "master")
+
+
+def default_base(repo: Path) -> str:
+    for candidate in DEFAULT_BASE_CANDIDATES:
+        if branch_exists(repo, candidate):
+            return candidate
+    return "HEAD"
+
+
+def existing_ticket_branch(repo: Path, ticket_id: str) -> str:
+    proc = _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    if proc.returncode != 0:
+        return ""
+    prefix = f"{ticket_id}-"
+    matches = [b for b in proc.stdout.split() if b == ticket_id or b.startswith(prefix)]
+    return sorted(matches)[0] if len(matches) == 1 else ""
+
+
+def create_git_worktree(repo: Path, path: Path, branch: str, base: str = "") -> Path:
     if not (repo / ".git").exists():
         raise WorktreeError(f"not a git repository: {repo}")
     if path.exists():
@@ -93,7 +112,7 @@ def create_git_worktree(repo: Path, path: Path, branch: str, base: str = "HEAD")
     argv = (
         ["worktree", "add", str(path), branch]
         if branch_exists(repo, branch)
-        else ["worktree", "add", "-b", branch, str(path), base]
+        else ["worktree", "add", "-b", branch, str(path), base or default_base(repo)]
     )
     proc = _git(repo, *argv)
     if proc.returncode != 0:

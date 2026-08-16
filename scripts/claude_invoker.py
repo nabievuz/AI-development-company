@@ -283,7 +283,11 @@ def board_dir_for(request, config: InvokerConfig) -> Path:
     return Path(declared).expanduser().resolve() if declared else config.board_dir
 
 
-def branch_for(ticket_path: Path) -> str:
+def branch_for(ticket_path: Path, repo: Path | None = None, ticket_id: str = "") -> str:
+    if repo is not None and ticket_id:
+        existing = _rw.existing_ticket_branch(repo, ticket_id)
+        if existing:
+            return existing
     return ticket_path.stem
 
 
@@ -322,13 +326,13 @@ def invoke_with_config(request, config: InvokerConfig):
                     "dry_run": True,
                     "argv": build_command(config, request, prompt, planned),
                     "worktree": str(planned) if isolate else "",
-                    "branch": branch_for(ticket_path) if isolate else "",
+                    "branch": branch_for(ticket_path, project_dir, request.ticket_id) if isolate else "",
                 }
             )
         )
 
     workspace, created = acquire_workspace(
-        request, config, project_dir, branch_for(ticket_path)
+        request, config, project_dir, branch_for(ticket_path, project_dir, request.ticket_id)
     )
     prompt = build_prompt(
         request, ticket_path, workspace, config.allowed_tools, isolated=created is not None
