@@ -1,0 +1,18 @@
+{
+  "question": "AADL GATE-1 (Planning) for goal 'regression-net' is open: Stage-1 is not signed off. Approve the gate to authorize Stage-2 (Design)?",
+  "options": [
+    "approve",
+    "changes-requested",
+    "hold"
+  ],
+  "ticket": "DAS-1051",
+  "payload": {
+    "kind": "aadl-gate-signoff",
+    "goal": "regression-net",
+    "gate": "GATE-1",
+    "stage": 1,
+    "blocks_stage": 2,
+    "never_auto_approve": false
+  },
+  "created_by": "cto"
+}

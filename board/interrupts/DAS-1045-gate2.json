@@ -1,0 +1,18 @@
+{
+  "question": "AADL GATE-2 (Design) for goal 'diligence-clean' is open: Stage-2 is not signed off. Approve the gate to authorize Stage-3 (Development)?",
+  "options": [
+    "approve",
+    "changes-requested",
+    "hold"
+  ],
+  "ticket": "DAS-1045",
+  "payload": {
+    "kind": "aadl-gate-signoff",
+    "goal": "diligence-clean",
+    "gate": "GATE-2",
+    "stage": 2,
+    "blocks_stage": 3,
+    "never_auto_approve": false
+  },
+  "created_by": "cto"
+}

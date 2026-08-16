@@ -1,0 +1,18 @@
+{
+  "question": "AADL GATE-5 (Deployment) for goal 'calculator-works' is open: Stage-5 is not signed off. Approve the gate to authorize Stage-6 (Maintenance)?",
+  "options": [
+    "approve",
+    "changes-requested",
+    "hold"
+  ],
+  "ticket": "DAS-1020",
+  "payload": {
+    "kind": "aadl-gate-signoff",
+    "goal": "calculator-works",
+    "gate": "GATE-5",
+    "stage": 5,
+    "blocks_stage": 6,
+    "never_auto_approve": true
+  },
+  "created_by": "cto"
+}
