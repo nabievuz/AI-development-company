@@ -448,12 +448,58 @@ def test_dispatch_resolves_an_injected_invoker(tmp_path: Path, monkeypatch, caps
             "fake_invoker:invoke",
             "--journal",
             str(tmp_path / "journal.jsonl"),
+            "--no-evidence",
         ]
     )
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["all_succeeded"] is True
+    assert payload["attestation"] == ""
     assert [o["ticket_id"] for o in payload["outcomes"]] == ["DAS-1"]
+
+
+def test_dispatch_writes_a_wave_ledger_entry_and_attestation(tmp_path: Path) -> None:
+    board, _org = _write_board(tmp_path)
+
+    def invoke(request: orch.DispatchRequest) -> orch.AgentOutput:
+        return orch.AgentOutput(
+            output=f"did {request.ticket_id}",
+            merged_pr=True,
+            ci_status="green",
+            t7_pass=True,
+            t7_score=0.9,
+        )
+
+    orchestrator = orch.Orchestrator(invoke, journal_path=tmp_path / "journal.jsonl")
+    ledger = tmp_path / "wave-ledger.jsonl"
+    attest = tmp_path / "attest"
+    run, attestation = orch.dispatch_with_evidence(
+        orch.build_plan_from_board(
+            board_dir=board,
+            org_path=_org,
+            goal="ship-it",
+            occupied_zones=(),
+            closed_gates=(),
+            max_wave_size=None,
+        ),
+        orchestrator,
+        run_id=_RUN_ID,
+        wave=1,
+        goal="ship-it",
+        board_dir=board,
+        evidence_paths={
+            "ledger_path": ledger,
+            "attest_dir": attest,
+            "store_path": tmp_path / "events.jsonl",
+            "runs_dir": tmp_path / "runs",
+            "evidence_dir": tmp_path / "evidence",
+        },
+    )
+
+    assert run.all_succeeded
+    assert attestation is not None
+    assert ledger.read_text(encoding="utf-8").strip()
+    assert wr.verify_wave_ledger(ledger, attest_dir=attest) == []
 
 
 def test_resolve_invoker_reports_a_bad_spec() -> None:

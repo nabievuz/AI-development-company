@@ -422,17 +422,79 @@ def ticket_results_from_run(run: WaveRun) -> list[object]:
     return results
 
 
-def wave_executor(orchestrator: Orchestrator, *, goal: str = "") -> Callable[[object], list[object]]:
+def wave_executor(
+    orchestrator: Orchestrator,
+    *,
+    goal: str = "",
+    board_dir: str = "",
+    zones: dict[str, str] | None = None,
+    sink: list[WaveRun] | None = None,
+) -> Callable[[object], list[object]]:
+    zone_of = zones or {}
+
     def _execute(runner_plan) -> list[object]:
         units = [
-            DispatchUnit(tp.ticket_id, tp.role, tp.model) for tp in runner_plan.tickets
+            DispatchUnit(tp.ticket_id, tp.role, tp.model, zone_of.get(tp.ticket_id, ""))
+            for tp in runner_plan.tickets
         ]
         run = orchestrator.dispatch_units(
-            units, run_id=runner_plan.run_id, goal=goal or runner_plan.goal
+            units,
+            run_id=runner_plan.run_id,
+            goal=goal or runner_plan.goal,
+            board_dir=board_dir,
         )
+        if sink is not None:
+            sink.append(run)
         return ticket_results_from_run(run)
 
     return _execute
+
+
+def engine_version(root: Path | None = None) -> str:
+    version_file = (root or ROOT) / "VERSION"
+    try:
+        return version_file.read_text(encoding="utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+def dispatch_with_evidence(
+    plan: _wp.WavePlan,
+    orchestrator: Orchestrator,
+    *,
+    run_id: str,
+    wave: int,
+    goal: str,
+    board_dir: Path,
+    created_at: str = "",
+    evidence_paths: dict[str, Path] | None = None,
+) -> tuple[WaveRun, object]:
+    import wave_runner as _wr
+
+    runs: list[WaveRun] = []
+    execute_wave = wave_executor(
+        orchestrator,
+        goal=goal or plan.goal,
+        board_dir=str(board_dir),
+        zones={pt.ticket_id: pt.zone for pt in plan.dispatch},
+        sink=runs,
+    )
+    attestation = _wr.run_wave(
+        to_runner_plan(
+            plan,
+            run_id=run_id,
+            wave=wave,
+            goal=goal or plan.goal,
+            engine_version=engine_version(),
+        ),
+        execute_wave,
+        created_at=created_at or utc_now(),
+        board_dir=board_dir,
+        tickets_dir=board_dir,
+        **(evidence_paths or {}),
+    )
+    run = runs[-1] if runs else WaveRun(run_id=run_id, outcomes=())
+    return run, attestation
 
 
 def resolve_invoker(spec: str) -> AgentInvoker:
@@ -527,6 +589,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="'module:callable' seam that runs one ticket (required with --dispatch)",
     )
     parser.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL_PATH)
+    parser.add_argument("--wave", type=int, default=1, help="wave number recorded in the ledger")
+    parser.add_argument(
+        "--no-evidence",
+        action="store_true",
+        help="dispatch without writing a wave ledger entry or attestation",
+    )
     parser.add_argument("--occupied-zone", action="append", default=[])
     parser.add_argument("--closed-gate", action="append", default=[])
     parser.add_argument("--max-wave-size", type=int, default=None)
@@ -623,8 +691,45 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     orchestrator = Orchestrator(invoker, config=config, journal_path=args.journal)
-    run = orchestrator.dispatch(plan, run_id=args.run_id, board_dir=str(args.board))
-    print(json.dumps(_run_as_dict(run), indent=2) if args.json else render_run(run))
+
+    import feature_flags as _ff
+
+    attestation = None
+    evidence_on = not args.no_evidence and _ff.enabled("organism_emit")
+    if evidence_on and not (args.goal or plan.goal):
+        print(
+            "orchestrator: --dispatch needs --goal to write wave evidence "
+            "(a ledger entry for goal '' attests nothing); pass --goal or --no-evidence",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not evidence_on:
+        run = orchestrator.dispatch(plan, run_id=args.run_id, board_dir=str(args.board))
+    else:
+        try:
+            run, attestation = dispatch_with_evidence(
+                plan,
+                orchestrator,
+                run_id=args.run_id,
+                wave=args.wave,
+                goal=args.goal,
+                board_dir=args.board,
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"orchestrator: wave evidence failed: {exc}", file=sys.stderr)
+            return 2
+
+    if args.json:
+        payload = _run_as_dict(run)
+        payload["attestation"] = str(attestation.path) if attestation is not None else ""
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_run(run))
+        if attestation is None:
+            print("attestation: none (organism_emit off or --no-evidence)")
+        else:
+            print(f"attestation: {attestation.path}")
     return 0 if run.all_succeeded else 1
 
 
