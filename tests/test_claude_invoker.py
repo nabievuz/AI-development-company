@@ -223,3 +223,47 @@ def test_missing_claude_binary_is_reported(monkeypatch) -> None:
     monkeypatch.setattr(ci.subprocess, "run", _missing)
     with pytest.raises(ci.InvokerError, match="claude CLI not found"):
         ci.run_claude(["claude"], ci.InvokerConfig())
+
+
+def test_dry_run_plans_a_worktree_without_creating_one(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    config = ci.InvokerConfig(
+        board_dir=board, org_root=tmp_path, dry_run=True, worktree_isolation=True
+    )
+    (tmp_path / "projects" / "sale-rentmarket-uz").mkdir(parents=True)
+
+    payload = json.loads(ci.invoke_with_config(_request(), config).output)
+
+    assert payload["dry_run"] is True
+    assert payload["branch"] == "DAS-1001-analyse-platform-g1"
+    assert payload["worktree"].endswith("run-1-DAS-1001/DAS-1001")
+    assert not (tmp_path / ".worktrees").exists()
+
+
+def test_isolation_off_points_the_agent_at_the_shared_tree(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    project = tmp_path / "projects" / "sale-rentmarket-uz"
+    project.mkdir(parents=True)
+    config = ci.InvokerConfig(
+        board_dir=board, org_root=tmp_path, dry_run=True, worktree_isolation=False
+    )
+
+    payload = json.loads(ci.invoke_with_config(_request(), config).output)
+
+    assert payload["worktree"] == ""
+    assert str(project) in payload["argv"]
+
+
+def test_isolation_defaults_on_and_the_env_can_turn_it_off() -> None:
+    assert ci.InvokerConfig.from_env({}).worktree_isolation is True
+    assert ci.InvokerConfig.from_env({"DASLAB_WORKTREE_ISOLATION": "0"}).worktree_isolation is False
+
+
+def test_an_unisolatable_project_is_refused_with_the_escape_hatch_named(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    project = tmp_path / "projects" / "sale-rentmarket-uz"
+    project.mkdir(parents=True)
+    config = ci.InvokerConfig(board_dir=board, org_root=tmp_path, worktree_isolation=True)
+
+    with pytest.raises(ci.InvokerError, match="DASLAB_WORKTREE_ISOLATION=0"):
+        ci.invoke_with_config(_request(), config)

@@ -237,3 +237,78 @@ class TestGitignore:
             "board/runs/*/run-summary.md IS gitignored but should be retained — "
             "check the !board/runs/*/run-summary.md negation in .gitignore"
         )
+
+
+def _repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "product"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "t"], check=True)
+    (repo / "app.txt").write_text("v1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "init"], check=True)
+    return repo
+
+
+class TestGitWorktreeIsolation:
+    def test_two_tickets_get_independent_checkouts(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        a = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b-DAS-1")
+        b = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-2", root), "b-DAS-2")
+        assert a != b
+        (a / "app.txt").write_text("edited by DAS-1\n", encoding="utf-8")
+        assert (b / "app.txt").read_text(encoding="utf-8") == "v1\n"
+        assert (repo / "app.txt").read_text(encoding="utf-8") == "v1\n"
+
+    def test_a_destructive_reset_in_one_worktree_spares_the_others(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        a = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b-DAS-1")
+        b = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-2", root), "b-DAS-2")
+
+        (b / "uncommitted.txt").write_text("a concurrent role's work\n", encoding="utf-8")
+        (repo / "uncommitted.txt").write_text("the shared tree's work\n", encoding="utf-8")
+
+        (a / "app.txt").write_text("about to be discarded\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(a), "reset", "-q", "--hard", "HEAD"], check=True)
+
+        assert (a / "app.txt").read_text(encoding="utf-8") == "v1\n"
+        assert (b / "uncommitted.txt").is_file()
+        assert (repo / "uncommitted.txt").is_file()
+
+    def test_git_itself_refuses_to_share_a_branch_across_worktrees(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        a = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b-DAS-1")
+        proc = subprocess.run(
+            ["git", "-C", str(a), "checkout", "-q", "main"], capture_output=True, text=True
+        )
+        assert proc.returncode != 0
+        assert "already used by worktree" in proc.stderr
+
+    def test_reuse_is_idempotent(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        path = rw.worktree_path(RUN_ID, "DAS-1", root)
+        assert rw.create_git_worktree(repo, path, "b-DAS-1") == path
+        assert rw.create_git_worktree(repo, path, "b-DAS-1") == path
+
+    def test_a_clean_worktree_is_removed_and_a_dirty_one_is_kept(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        clean = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b-DAS-1")
+        assert rw.remove_git_worktree(repo, clean) == "removed"
+        assert not clean.exists()
+
+        dirty = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-2", root), "b-DAS-2")
+        (dirty / "wip.txt").write_text("unfinished\n", encoding="utf-8")
+        assert rw.remove_git_worktree(repo, dirty) == "kept-dirty"
+        assert (dirty / "wip.txt").is_file()
+
+    def test_a_non_repository_is_refused(self, tmp_path):
+        import pytest
+
+        with pytest.raises(rw.WorktreeError, match="not a git repository"):
+            rw.create_git_worktree(tmp_path / "nope", tmp_path / "wt", "b")

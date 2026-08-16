@@ -15,6 +15,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import run_workspace as _rw
 import wave_planner as _wp
 from _paths import ROOT
 
@@ -86,6 +87,7 @@ class InvokerConfig:
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     dry_run: bool = False
     allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
+    worktree_isolation: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InvokerConfig:
@@ -99,6 +101,8 @@ class InvokerConfig:
             timeout_seconds=_env_float(env, "DASLAB_AGENT_TIMEOUT", DEFAULT_TIMEOUT_SECONDS),
             dry_run=_env_flag(env, "DASLAB_INVOKER_DRY_RUN"),
             allowed_tools=_env_tools(env, "DASLAB_ALLOWED_TOOLS", DEFAULT_ALLOWED_TOOLS),
+            worktree_isolation=env.get("DASLAB_WORKTREE_ISOLATION", "1").strip().lower()
+            in TRUE_VALUES,
         )
 
 
@@ -153,7 +157,11 @@ def resolve_role_and_model(ticket_path: Path, role: str, model: str, org_path: P
 
 
 def build_prompt(
-    request, ticket_path: Path, project_dir: Path | None, allowed_tools: tuple[str, ...] = ()
+    request,
+    ticket_path: Path,
+    project_dir: Path | None,
+    allowed_tools: tuple[str, ...] = (),
+    isolated: bool = False,
 ) -> str:
     lines = [
         f"You are {request.role}. Work strictly inside your role charter.",
@@ -161,7 +169,14 @@ def build_prompt(
         f"Wave goal: {request.goal or '(none stated)'}",
         f"Wave run id: {request.run_id}, attempt {request.attempt}.",
     ]
-    if project_dir is not None:
+    if project_dir is not None and isolated:
+        lines.append(
+            f"The product checkout for this run is your own git worktree: {project_dir}. "
+            "It is on this ticket's branch and no other role can see it. Commit there. "
+            "Never run checkout, reset or stash against the shared project tree — that is "
+            "how a concurrent role's uncommitted work gets destroyed."
+        )
+    elif project_dir is not None:
         lines.append(f"The product this ticket is about lives at: {project_dir}")
     if allowed_tools:
         lines.append(
@@ -268,15 +283,62 @@ def board_dir_for(request, config: InvokerConfig) -> Path:
     return Path(declared).expanduser().resolve() if declared else config.board_dir
 
 
+def branch_for(ticket_path: Path) -> str:
+    return ticket_path.stem
+
+
+def acquire_workspace(request, config: InvokerConfig, project_dir: Path | None, branch: str):
+    if project_dir is None or not config.worktree_isolation:
+        return project_dir, None
+    path = _rw.worktree_path(request.run_id, request.ticket_id, config.org_root)
+    try:
+        return _rw.create_git_worktree(project_dir, path, branch), path
+    except (_rw.WorktreeError, OSError, subprocess.SubprocessError) as exc:
+        raise InvokerError(
+            f"cannot isolate {request.ticket_id}: {exc}. Set DASLAB_WORKTREE_ISOLATION=0 to "
+            "dispatch into the shared tree, accepting that a concurrent role's uncommitted "
+            "work can be destroyed by any checkout."
+        ) from exc
+
+
 def invoke_with_config(request, config: InvokerConfig):
     ticket_path = find_ticket(board_dir_for(request, config), request.ticket_id)
     require_agent(request.role)
     project_dir = project_dir_for(ticket_path, config.org_root)
-    prompt = build_prompt(request, ticket_path, project_dir, config.allowed_tools)
-    argv = build_command(config, request, prompt, project_dir)
+    isolate = project_dir is not None and config.worktree_isolation
+
     if config.dry_run:
-        return agent_output_class()(output=json.dumps({"dry_run": True, "argv": argv}))
-    return output_from_payload(run_claude(argv, config))
+        planned = (
+            _rw.worktree_path(request.run_id, request.ticket_id, config.org_root)
+            if isolate
+            else project_dir
+        )
+        prompt = build_prompt(
+            request, ticket_path, planned, config.allowed_tools, isolated=isolate
+        )
+        return agent_output_class()(
+            output=json.dumps(
+                {
+                    "dry_run": True,
+                    "argv": build_command(config, request, prompt, planned),
+                    "worktree": str(planned) if isolate else "",
+                    "branch": branch_for(ticket_path) if isolate else "",
+                }
+            )
+        )
+
+    workspace, created = acquire_workspace(
+        request, config, project_dir, branch_for(ticket_path)
+    )
+    prompt = build_prompt(
+        request, ticket_path, workspace, config.allowed_tools, isolated=created is not None
+    )
+    argv = build_command(config, request, prompt, workspace)
+    try:
+        return output_from_payload(run_claude(argv, config))
+    finally:
+        if created is not None and project_dir is not None:
+            _rw.remove_git_worktree(project_dir, created)
 
 
 def invoke(request):
