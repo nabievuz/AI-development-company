@@ -127,10 +127,24 @@ def worktree_is_dirty(path: Path) -> bool:
     return proc.returncode != 0 or bool(proc.stdout.strip())
 
 
+def ignored_entries(path: Path) -> tuple[str, ...]:
+    proc = _git(path, "status", "--porcelain", "--ignored=matching")
+    if proc.returncode != 0:
+        return ()
+    return tuple(
+        line[3:] for line in proc.stdout.splitlines() if line.startswith("!! ")
+    )
+
+
 def remove_git_worktree(repo: Path, path: Path) -> str:
     if not path.exists():
         return "absent"
     if worktree_is_dirty(path):
         return "kept-dirty"
     proc = _git(repo, "worktree", "remove", str(path))
-    return "removed" if proc.returncode == 0 else "kept-failed"
+    if proc.returncode == 0:
+        return "removed"
+    if not ignored_entries(path):
+        return "kept-failed"
+    forced = _git(repo, "worktree", "remove", "--force", str(path))
+    return "removed-ignored" if forced.returncode == 0 else "kept-failed"

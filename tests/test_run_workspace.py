@@ -349,3 +349,45 @@ class TestBranchBaseAndReuse:
         repo = _repo(tmp_path)
         subprocess.run(["git", "-C", str(repo), "branch", "DAS-90-other"], check=True)
         assert rw.existing_ticket_branch(repo, "DAS-9") == ""
+
+
+class TestTeardownDistinguishesWorkFromBuildOutput:
+    def _ignoring(self, tmp_path):
+        repo = _repo(tmp_path)
+        (repo / ".gitignore").write_text("node_modules/\n.next/\n*.tsbuildinfo\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "ignore build output"], check=True)
+        return repo
+
+    def test_build_output_alone_does_not_count_as_work(self, tmp_path):
+        repo = self._ignoring(tmp_path)
+        wt = rw.create_git_worktree(repo, tmp_path / "wt", "b1")
+        (wt / "node_modules").mkdir()
+        (wt / "node_modules" / "dep.js").write_text("//\n", encoding="utf-8")
+        (wt / "tsconfig.tsbuildinfo").write_text("{}", encoding="utf-8")
+
+        assert rw.worktree_is_dirty(wt) is False
+        assert set(rw.ignored_entries(wt)) == {"node_modules/", "tsconfig.tsbuildinfo"}
+        assert rw.remove_git_worktree(repo, wt) in {"removed", "removed-ignored"}
+        assert not wt.exists()
+
+    def test_uncommitted_work_is_never_discarded(self, tmp_path):
+        repo = self._ignoring(tmp_path)
+        wt = rw.create_git_worktree(repo, tmp_path / "wt", "b1")
+        (wt / "node_modules").mkdir()
+        (wt / "handoff.md").write_text("a role's unfinished work\n", encoding="utf-8")
+
+        assert rw.remove_git_worktree(repo, wt) == "kept-dirty"
+        assert (wt / "handoff.md").read_text(encoding="utf-8") == "a role's unfinished work\n"
+
+    def test_a_modified_tracked_file_is_never_discarded(self, tmp_path):
+        repo = self._ignoring(tmp_path)
+        wt = rw.create_git_worktree(repo, tmp_path / "wt", "b1")
+        (wt / "app.txt").write_text("edited, not committed\n", encoding="utf-8")
+
+        assert rw.remove_git_worktree(repo, wt) == "kept-dirty"
+        assert (wt / "app.txt").read_text(encoding="utf-8") == "edited, not committed\n"
+
+    def test_an_absent_worktree_reports_absent(self, tmp_path):
+        repo = self._ignoring(tmp_path)
+        assert rw.remove_git_worktree(repo, tmp_path / "never-made") == "absent"

@@ -267,3 +267,25 @@ def test_an_unisolatable_project_is_refused_with_the_escape_hatch_named(tmp_path
 
     with pytest.raises(ci.InvokerError, match="DASLAB_WORKTREE_ISOLATION=0"):
         ci.invoke_with_config(_request(), config)
+
+
+def test_a_kept_worktree_is_announced_not_swallowed(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "wt"
+    assert ci.report_teardown("DAS-1", path, "kept-dirty") == "kept-dirty"
+    err = capsys.readouterr().err
+    assert "DAS-1" in err and "uncommitted work" in err and str(path) in err
+
+    assert ci.report_teardown("DAS-1", path, "kept-failed") == "kept-failed"
+    assert "git refused" in capsys.readouterr().err
+
+
+def test_a_removed_worktree_stays_quiet(tmp_path: Path, capsys) -> None:
+    for outcome in ("removed", "removed-ignored", "absent"):
+        ci.report_teardown("DAS-1", tmp_path / "wt", outcome)
+    assert capsys.readouterr().err == ""
+
+
+def test_the_isolated_prompt_warns_about_the_missing_install(tmp_path: Path) -> None:
+    prompt = ci.build_prompt(_request(), tmp_path / "t.md", tmp_path / "wt", (), isolated=True)
+    assert "no installed dependencies" in prompt
+    assert "not a\ncode defect" in prompt or "not a code defect" in prompt.replace("\n", " ")

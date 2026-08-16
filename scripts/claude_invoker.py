@@ -176,6 +176,12 @@ def build_prompt(
             "Never run checkout, reset or stash against the shared project tree — that is "
             "how a concurrent role's uncommitted work gets destroyed."
         )
+        lines.append(
+            "A fresh worktree carries no installed dependencies. Run the project's install "
+            "step there before you read any build or test result, and do not symlink the "
+            "shared one — a red first build is almost always the missing install, not a "
+            "code defect, and reporting it as a defect wastes the next role's wave."
+        )
     elif project_dir is not None:
         lines.append(f"The product this ticket is about lives at: {project_dir}")
     if allowed_tools:
@@ -291,6 +297,22 @@ def branch_for(ticket_path: Path, repo: Path | None = None, ticket_id: str = "")
     return ticket_path.stem
 
 
+KEPT_OUTCOMES = {
+    "kept-dirty": "it holds uncommitted work",
+    "kept-failed": "git refused to remove it",
+}
+
+
+def report_teardown(ticket_id: str, path: Path, outcome: str) -> str:
+    reason = KEPT_OUTCOMES.get(outcome)
+    if reason is not None:
+        print(
+            f"claude_invoker: worktree kept for {ticket_id} — {reason}: {path}",
+            file=sys.stderr,
+        )
+    return outcome
+
+
 def acquire_workspace(request, config: InvokerConfig, project_dir: Path | None, branch: str):
     if project_dir is None or not config.worktree_isolation:
         return project_dir, None
@@ -342,7 +364,9 @@ def invoke_with_config(request, config: InvokerConfig):
         return output_from_payload(run_claude(argv, config))
     finally:
         if created is not None and project_dir is not None:
-            _rw.remove_git_worktree(project_dir, created)
+            report_teardown(
+                request.ticket_id, created, _rw.remove_git_worktree(project_dir, created)
+            )
 
 
 def invoke(request):
