@@ -83,6 +83,14 @@ def write_output_guardrail_feedback(
     return entry
 
 
+HALTED_STATUSES = frozenset({"blocked"})
+
+
+def _frontmatter_field(text: str, key: str) -> str:
+    m = re.search(rf"^{re.escape(key)}:[ \t]*([^\n]*)$", text, re.MULTILINE)
+    return m.group(1).strip().lower() if m else ""
+
+
 def _set_frontmatter_field(text: str, key: str, value: str) -> str:
     pattern = re.compile(rf"^({re.escape(key)}:)[^\n]*$", re.MULTILINE)
     if pattern.search(text):
@@ -115,7 +123,8 @@ def escalate_in_ticket(
     def _transform(text: str) -> str:
         if target:
             text = _set_frontmatter_field(text, "assignee", target)
-            text = _set_frontmatter_field(text, "status", "in_review")
+            if _frontmatter_field(text, "status") not in HALTED_STATUSES:
+                text = _set_frontmatter_field(text, "status", "in_review")
             text = _set_frontmatter_field(text, "updated", now())
         return text + entry
 
