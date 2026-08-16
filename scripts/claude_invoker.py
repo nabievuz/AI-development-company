@@ -320,11 +320,23 @@ def acquire_workspace(request, config: InvokerConfig, project_dir: Path | None, 
     try:
         return _rw.create_git_worktree(project_dir, path, branch), path
     except (_rw.WorktreeError, OSError, subprocess.SubprocessError) as exc:
-        raise InvokerError(
-            f"cannot isolate {request.ticket_id}: {exc}. Set DASLAB_WORKTREE_ISOLATION=0 to "
-            "dispatch into the shared tree, accepting that a concurrent role's uncommitted "
-            "work can be destroyed by any checkout."
-        ) from exc
+        raise InvokerError(isolation_failure(request, project_dir, branch, exc)) from exc
+
+
+def isolation_failure(request, project_dir: Path, branch: str, exc: Exception) -> str:
+    holder = _rw.worktree_holding(project_dir, branch)
+    if holder:
+        return (
+            f"cannot isolate {request.ticket_id}: branch {branch!r} is already checked out at "
+            f"{holder}. Free that worktree (git worktree remove) or wait for the run holding it "
+            "to finish. Turning isolation off does NOT help here — the branch, not the tree, is "
+            "the thing that is taken."
+        )
+    return (
+        f"cannot isolate {request.ticket_id}: {exc}. Set DASLAB_WORKTREE_ISOLATION=0 to "
+        "dispatch into the shared tree, accepting that a concurrent role's uncommitted "
+        "work can be destroyed by any checkout."
+    )
 
 
 def invoke_with_config(request, config: InvokerConfig):

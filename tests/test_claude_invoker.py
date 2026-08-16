@@ -289,3 +289,24 @@ def test_the_isolated_prompt_warns_about_the_missing_install(tmp_path: Path) -> 
     prompt = ci.build_prompt(_request(), tmp_path / "t.md", tmp_path / "wt", (), isolated=True)
     assert "no installed dependencies" in prompt
     assert "not a\ncode defect" in prompt or "not a code defect" in prompt.replace("\n", " ")
+
+
+def test_a_taken_branch_is_diagnosed_as_taken_not_as_an_isolation_problem(tmp_path: Path) -> None:
+    import run_workspace as rw
+
+    def holding(_repo, _branch):
+        return "/somewhere/else/DAS-1"
+
+    original, rw.worktree_holding = rw.worktree_holding, holding
+    try:
+        message = ci.isolation_failure(_request(), tmp_path, "b1", RuntimeError("boom"))
+    finally:
+        rw.worktree_holding = original
+
+    assert "already checked out at /somewhere/else/DAS-1" in message
+    assert "DASLAB_WORKTREE_ISOLATION=0" not in message
+
+
+def test_any_other_isolation_failure_still_names_the_escape_hatch(tmp_path: Path) -> None:
+    message = ci.isolation_failure(_request(), tmp_path / "nope", "b1", RuntimeError("boom"))
+    assert "DASLAB_WORKTREE_ISOLATION=0" in message

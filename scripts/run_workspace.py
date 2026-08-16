@@ -127,6 +127,20 @@ def worktree_is_dirty(path: Path) -> bool:
     return proc.returncode != 0 or bool(proc.stdout.strip())
 
 
+def worktree_holding(repo: Path, branch: str) -> str:
+    proc = _git(repo, "worktree", "list", "--porcelain")
+    if proc.returncode != 0:
+        return ""
+    wanted = f"refs/heads/{branch}"
+    current = ""
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            current = line[len("worktree "):].strip()
+        elif line.startswith("branch ") and line[len("branch "):].strip() == wanted:
+            return current
+    return ""
+
+
 def ignored_entries(path: Path) -> tuple[str, ...]:
     proc = _git(path, "status", "--porcelain", "--ignored=matching")
     if proc.returncode != 0:

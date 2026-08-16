@@ -391,3 +391,23 @@ class TestTeardownDistinguishesWorkFromBuildOutput:
     def test_an_absent_worktree_reports_absent(self, tmp_path):
         repo = self._ignoring(tmp_path)
         assert rw.remove_git_worktree(repo, tmp_path / "never-made") == "absent"
+
+
+class TestWorktreeHolding:
+    def test_it_names_the_worktree_that_holds_a_branch(self, tmp_path):
+        repo = _repo(tmp_path)
+        wt = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", tmp_path / "e"), "b1")
+        assert rw.worktree_holding(repo, "b1") == str(wt)
+        assert rw.worktree_holding(repo, "main") == str(repo)
+
+    def test_a_free_or_unknown_branch_holds_nothing(self, tmp_path):
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "-C", str(repo), "branch", "unused"], check=True)
+        assert rw.worktree_holding(repo, "unused") == ""
+        assert rw.worktree_holding(repo, "no-such-branch") == ""
+
+    def test_a_detached_worktree_holds_no_branch(self, tmp_path):
+        repo = _repo(tmp_path)
+        wt = rw.create_git_worktree(repo, tmp_path / "wt", "b1")
+        subprocess.run(["git", "-C", str(wt), "checkout", "-q", "--detach"], check=True)
+        assert rw.worktree_holding(repo, "b1") == ""
