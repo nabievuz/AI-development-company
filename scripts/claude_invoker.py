@@ -88,6 +88,7 @@ class InvokerConfig:
     dry_run: bool = False
     allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
     worktree_isolation: bool = True
+    verify_command: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InvokerConfig:
@@ -103,6 +104,7 @@ class InvokerConfig:
             allowed_tools=_env_tools(env, "DASLAB_ALLOWED_TOOLS", DEFAULT_ALLOWED_TOOLS),
             worktree_isolation=env.get("DASLAB_WORKTREE_ISOLATION", "1").strip().lower()
             in TRUE_VALUES,
+            verify_command=_env_text(env, "DASLAB_VERIFY_CMD", ""),
         )
 
 
@@ -297,6 +299,34 @@ def branch_for(ticket_path: Path, repo: Path | None = None, ticket_id: str = "")
     return ticket_path.stem
 
 
+CI_UNVERIFIED = "unverified"
+CI_GREEN = "green"
+CI_RED = "red"
+
+
+def run_verify(command: str, cwd: Path, timeout: float) -> str:
+    if not command:
+        return CI_UNVERIFIED
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return CI_RED
+    return CI_GREEN if proc.returncode == 0 else CI_RED
+
+
+def measured_outcome(result, repo: Path | None, branch: str, ci_status: str):
+    merged = bool(repo is not None and _rw.branch_is_merged(repo, branch))
+    return replace(result, merged_pr=merged, ci_status=ci_status)
+
+
 KEPT_OUTCOMES = {
     "kept-dirty": "it holds uncommitted work",
     "kept-failed": "git refused to remove it",
@@ -373,7 +403,13 @@ def invoke_with_config(request, config: InvokerConfig):
     )
     argv = build_command(config, request, prompt, workspace)
     try:
-        return output_from_payload(run_claude(argv, config))
+        result = output_from_payload(run_claude(argv, config))
+        ci_status = (
+            run_verify(config.verify_command, workspace, config.timeout_seconds)
+            if workspace is not None
+            else CI_UNVERIFIED
+        )
+        return measured_outcome(result, project_dir, branch_for(ticket_path, project_dir, request.ticket_id), ci_status)
     finally:
         if created is not None and project_dir is not None:
             report_teardown(

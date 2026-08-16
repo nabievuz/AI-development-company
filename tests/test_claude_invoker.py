@@ -310,3 +310,45 @@ def test_a_taken_branch_is_diagnosed_as_taken_not_as_an_isolation_problem(tmp_pa
 def test_any_other_isolation_failure_still_names_the_escape_hatch(tmp_path: Path) -> None:
     message = ci.isolation_failure(_request(), tmp_path / "nope", "b1", RuntimeError("boom"))
     assert "DASLAB_WORKTREE_ISOLATION=0" in message
+
+
+def test_verify_is_unverified_until_a_command_is_declared(tmp_path: Path) -> None:
+    assert ci.run_verify("", tmp_path, 30) == ci.CI_UNVERIFIED
+
+
+def test_verify_reports_what_the_command_actually_did(tmp_path: Path) -> None:
+    assert ci.run_verify("true", tmp_path, 30) == ci.CI_GREEN
+    assert ci.run_verify("false", tmp_path, 30) == ci.CI_RED
+    assert ci.run_verify("no_such_command_xyz", tmp_path, 30) == ci.CI_RED
+
+
+def test_a_merge_is_measured_from_git_not_claimed_by_the_agent(tmp_path: Path) -> None:
+    import run_workspace as rw
+
+    calls = {}
+
+    def merged(repo, branch):
+        calls["args"] = (repo, branch)
+        return True
+
+    original, rw.branch_is_merged = rw.branch_is_merged, merged
+    try:
+        out = ci.measured_outcome(
+            orch.AgentOutput(output="I merged it, honest"), tmp_path, "b1", ci.CI_GREEN
+        )
+    finally:
+        rw.branch_is_merged = original
+
+    assert out.merged_pr is True
+    assert out.ci_status == ci.CI_GREEN
+    assert calls["args"] == (tmp_path, "b1")
+
+
+def test_an_agent_claim_alone_never_moves_the_quality_fields(tmp_path: Path) -> None:
+    out = ci.measured_outcome(
+        orch.AgentOutput(output="merged, CI green, T7 passed"), None, "b1", ci.CI_UNVERIFIED
+    )
+    assert out.merged_pr is False
+    assert out.ci_status == ci.CI_UNVERIFIED
+    assert out.t7_pass is False
+    assert out.t7_score == 0.0

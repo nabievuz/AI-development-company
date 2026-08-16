@@ -411,3 +411,26 @@ class TestWorktreeHolding:
         wt = rw.create_git_worktree(repo, tmp_path / "wt", "b1")
         subprocess.run(["git", "-C", str(wt), "checkout", "-q", "--detach"], check=True)
         assert rw.worktree_holding(repo, "b1") == ""
+
+
+class TestBranchIsMerged:
+    def test_it_is_false_until_the_branch_lands(self, tmp_path):
+        repo = _repo(tmp_path)
+        wt = rw.create_git_worktree(repo, tmp_path / "wt", "feature")
+        (wt / "app.txt").write_text("work\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(wt), "commit", "-qam", "work"], check=True)
+        assert rw.branch_is_merged(repo, "feature") is False
+
+        subprocess.run(["git", "-C", str(repo), "merge", "-q", "--no-ff", "feature",
+                        "-m", "merge feature"], check=True)
+        assert rw.branch_is_merged(repo, "feature") is True
+
+    def test_an_unknown_branch_is_not_merged(self, tmp_path):
+        repo = _repo(tmp_path)
+        assert rw.branch_is_merged(repo, "no-such-branch") is False
+        assert rw.branch_is_merged(repo, "") is False
+
+    def test_a_branch_with_no_commits_of_its_own_is_already_merged(self, tmp_path):
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "-C", str(repo), "branch", "untouched"], check=True)
+        assert rw.branch_is_merged(repo, "untouched") is True

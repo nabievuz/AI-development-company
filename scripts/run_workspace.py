@@ -127,6 +127,13 @@ def worktree_is_dirty(path: Path) -> bool:
     return proc.returncode != 0 or bool(proc.stdout.strip())
 
 
+def branch_is_merged(repo: Path, branch: str, base: str = "") -> bool:
+    target = base or default_base(repo)
+    if not branch or not branch_exists(repo, branch) or not branch_exists(repo, target):
+        return False
+    return _git(repo, "merge-base", "--is-ancestor", branch, target).returncode == 0
+
+
 def worktree_holding(repo: Path, branch: str) -> str:
     proc = _git(repo, "worktree", "list", "--porcelain")
     if proc.returncode != 0:
