@@ -126,6 +126,41 @@ def test_stage_tags_cover_all_six_aadl_gates(tmp_path):
     assert gates == {f"GATE-{i}" for i in range(1, 7)}
 
 
+def test_stage_tickets_chain_depends_on_their_predecessor(tmp_path):
+    root = build_pack(tmp_path)
+    res = gc.run_pipeline(root)
+
+    stages: dict[int, dict[str, str]] = {}
+    for path in res.tickets:
+        fields = wp.parse_frontmatter(path.read_text(encoding="utf-8"))
+        gate = fields.get("stage", "").strip()
+        if not gate.startswith("GATE-"):
+            continue
+        stages[int(gate.removeprefix("GATE-"))] = fields
+
+    assert sorted(stages) == [1, 2, 3, 4, 5, 6]
+    assert wp.parse_id_list(stages[1].get("depends_on", "")) == ()
+    for stage_no in range(2, 7):
+        predecessor = stages[stage_no - 1]["id"].strip()
+        declared = wp.parse_id_list(stages[stage_no].get("depends_on", ""))
+        assert declared == (predecessor,), f"stage {stage_no} declares {declared}"
+
+
+def test_a_compiled_board_refuses_downstream_stages_until_upstream_is_done(tmp_path):
+    root = build_pack(tmp_path)
+    res = gc.run_pipeline(root)
+    board_dir = res.tickets[0].parent
+
+    tickets = wp.load_board_tickets(board_dir)
+    statuses = {t.ticket_id: t.status for t in tickets}
+    downstream = [t for t in tickets if t.depends_on]
+    assert len(downstream) == 5
+    for ticket in downstream:
+        assert wp.unmet_dependencies(ticket, statuses), (
+            f"{ticket.ticket_id} would dispatch with its predecessor still open"
+        )
+
+
 def test_broken_pack_missing_required_key_rejected(tmp_path):
     bad_manifest = _MANIFEST.format(slug="acme-helpdesk").replace("budget:", "budgetX:")
     root = build_pack(tmp_path, manifest=bad_manifest)

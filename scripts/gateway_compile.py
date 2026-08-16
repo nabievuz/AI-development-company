@@ -440,7 +440,7 @@ def role_departments(org_path: Path | None = None) -> dict[str, str]:
 
 def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: str,
                   assignee: str, dept: str, parent: str, goal: str, stage_tag: str, gate: str,
-                  body: str, zone: str = "") -> Path:
+                  body: str, zone: str = "", depends_on: str = "") -> Path:
     today = date.today().isoformat()
     fm = [
         "---",
@@ -453,6 +453,7 @@ def _write_ticket(board_dir: Path, tid: int, *, slug: str, title: str, status: s
         f"zone: {zone}" if zone else "",
         "priority: p1",
         f"parent: {parent}" if parent else "parent:",
+        f"depends_on: [{depends_on}]" if depends_on else "",
         f"goal: {goal}",
         f"project: {slug}",
         f"stage: {gate}" if gate else "",
@@ -556,6 +557,7 @@ def compile_story_tickets(pack_root: Path, manifest: dict, result: PipelineResul
                 status="todo", assignee=role, dept=depts.get(role, FALLBACK_DEPT),
                 parent=f"DAS-{epic_id}", goal=goal_slug,
                 stage_tag=f"s{stage_no}-{doc_dir}", gate=gate, body=body, zone=zone,
+                depends_on="" if prev_stage_id is None else f"DAS-{prev_stage_id}",
             )
             written.append(spath)
             prev_stage_id = sid
