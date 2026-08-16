@@ -450,6 +450,35 @@ def wave_executor(
     return _execute
 
 
+def recorded_waves(ledger_path: Path) -> list[int]:
+    if not ledger_path.is_file():
+        return []
+    waves: list[int] = []
+    for raw in ledger_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"corrupt wave ledger line in {ledger_path}: {exc}") from exc
+        wave = entry.get("wave")
+        if isinstance(wave, int):
+            waves.append(wave)
+    return waves
+
+
+def next_wave_number(ledger_path: Path) -> int:
+    waves = recorded_waves(ledger_path)
+    return max(waves) + 1 if waves else 1
+
+
+def default_ledger_path() -> Path:
+    import wave_runner as _wr
+
+    return _wr.LEDGER_PATH
+
+
 def engine_version(root: Path | None = None) -> str:
     version_file = (root or ROOT) / "VERSION"
     try:
@@ -589,7 +618,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="'module:callable' seam that runs one ticket (required with --dispatch)",
     )
     parser.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL_PATH)
-    parser.add_argument("--wave", type=int, default=1, help="wave number recorded in the ledger")
+    parser.add_argument(
+        "--wave",
+        type=int,
+        default=None,
+        help="wave number recorded in the ledger (default: derived from the ledger, gap-free)",
+    )
     parser.add_argument(
         "--no-evidence",
         action="store_true",
@@ -708,11 +742,12 @@ def main(argv: list[str] | None = None) -> int:
         run = orchestrator.dispatch(plan, run_id=args.run_id, board_dir=str(args.board))
     else:
         try:
+            wave = args.wave if args.wave is not None else next_wave_number(default_ledger_path())
             run, attestation = dispatch_with_evidence(
                 plan,
                 orchestrator,
                 run_id=args.run_id,
-                wave=args.wave,
+                wave=wave,
                 goal=args.goal,
                 board_dir=args.board,
             )

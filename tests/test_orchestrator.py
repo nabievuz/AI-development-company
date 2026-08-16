@@ -502,6 +502,29 @@ def test_dispatch_writes_a_wave_ledger_entry_and_attestation(tmp_path: Path) -> 
     assert wr.verify_wave_ledger(ledger, attest_dir=attest) == []
 
 
+def test_next_wave_number_is_gap_free_from_the_ledger(tmp_path: Path) -> None:
+    ledger = tmp_path / "wave-ledger.jsonl"
+    assert orch.next_wave_number(ledger) == 1
+
+    ledger.write_text(
+        json.dumps({"run_id": "a", "wave": 1, "ticket_ids": []}) + "\n",
+        encoding="utf-8",
+    )
+    assert orch.next_wave_number(ledger) == 2
+
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"run_id": "b", "wave": 2, "ticket_ids": []}) + "\n")
+    assert orch.next_wave_number(ledger) == 3
+    assert orch.recorded_waves(ledger) == [1, 2]
+
+
+def test_next_wave_number_rejects_a_corrupt_ledger(tmp_path: Path) -> None:
+    ledger = tmp_path / "wave-ledger.jsonl"
+    ledger.write_text("{not json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="corrupt wave ledger"):
+        orch.next_wave_number(ledger)
+
+
 def test_resolve_invoker_reports_a_bad_spec() -> None:
     with pytest.raises(orch.AgentInvokerUnavailable, match="module:callable"):
         orch.resolve_invoker("nocolon")

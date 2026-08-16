@@ -30,6 +30,15 @@ DEFAULT_PERMISSION_MODE = "acceptEdits"
 DEFAULT_TIMEOUT_SECONDS = 1800.0
 TRUE_VALUES = {"1", "true", "yes", "on"}
 
+DEFAULT_ALLOWED_TOOLS: tuple[str, ...] = (
+    "Bash(git:*)",
+    "Bash(npm:*)",
+    "Bash(npx:*)",
+    "Bash(node:*)",
+    "Bash(python3:*)",
+    "Bash(pytest:*)",
+)
+
 
 class InvokerError(RuntimeError):
     pass
@@ -58,6 +67,15 @@ def _env_flag(env: Mapping[str, str], key: str) -> bool:
     return env.get(key, "").strip().lower() in TRUE_VALUES
 
 
+def _env_tools(env: Mapping[str, str], key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    if key not in env:
+        return default
+    raw = env.get(key, "").strip()
+    if not raw:
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(frozen=True)
 class InvokerConfig:
     board_dir: Path = DEFAULT_BOARD_DIR
@@ -67,6 +85,7 @@ class InvokerConfig:
     permission_mode: str = DEFAULT_PERMISSION_MODE
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     dry_run: bool = False
+    allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InvokerConfig:
@@ -79,6 +98,7 @@ class InvokerConfig:
             permission_mode=_env_text(env, "DASLAB_PERMISSION_MODE", DEFAULT_PERMISSION_MODE),
             timeout_seconds=_env_float(env, "DASLAB_AGENT_TIMEOUT", DEFAULT_TIMEOUT_SECONDS),
             dry_run=_env_flag(env, "DASLAB_INVOKER_DRY_RUN"),
+            allowed_tools=_env_tools(env, "DASLAB_ALLOWED_TOOLS", DEFAULT_ALLOWED_TOOLS),
         )
 
 
@@ -132,7 +152,9 @@ def resolve_role_and_model(ticket_path: Path, role: str, model: str, org_path: P
     return resolved_role, resolved_model
 
 
-def build_prompt(request, ticket_path: Path, project_dir: Path | None) -> str:
+def build_prompt(
+    request, ticket_path: Path, project_dir: Path | None, allowed_tools: tuple[str, ...] = ()
+) -> str:
     lines = [
         f"You are {request.role}. Work strictly inside your role charter.",
         f"Execute exactly one ticket: {ticket_path}",
@@ -141,6 +163,12 @@ def build_prompt(request, ticket_path: Path, project_dir: Path | None) -> str:
     ]
     if project_dir is not None:
         lines.append(f"The product this ticket is about lives at: {project_dir}")
+    if allowed_tools:
+        lines.append(
+            "Shell commands granted for this run: "
+            + ", ".join(allowed_tools)
+            + ". Anything outside that list is denied — do not block on it, log it and route it."
+        )
     lines.extend(
         [
             "Read the ticket first, then do what it asks. Do not pick up any other ticket.",
@@ -170,6 +198,8 @@ def build_command(config: InvokerConfig, request, prompt: str, project_dir: Path
         argv.extend(["--model", request.model])
     if project_dir is not None:
         argv.extend(["--add-dir", str(project_dir)])
+    if config.allowed_tools:
+        argv.extend(["--allowedTools", ",".join(config.allowed_tools)])
     return argv
 
 
@@ -242,7 +272,7 @@ def invoke_with_config(request, config: InvokerConfig):
     ticket_path = find_ticket(board_dir_for(request, config), request.ticket_id)
     require_agent(request.role)
     project_dir = project_dir_for(ticket_path, config.org_root)
-    prompt = build_prompt(request, ticket_path, project_dir)
+    prompt = build_prompt(request, ticket_path, project_dir, config.allowed_tools)
     argv = build_command(config, request, prompt, project_dir)
     if config.dry_run:
         return agent_output_class()(output=json.dumps({"dry_run": True, "argv": argv}))
@@ -273,6 +303,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal", default="", help="wave goal handed to the agent")
     parser.add_argument("--run-id", default="manual", help="run id recorded in the prompt")
     parser.add_argument("--permission-mode", default="", help="claude --permission-mode value")
+    parser.add_argument(
+        "--allowed-tools",
+        default=None,
+        help="comma-separated claude --allowedTools grant; empty string grants no shell",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the command, run nothing")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
@@ -292,6 +327,11 @@ def main(argv: list[str] | None = None) -> int:
         config = replace(config, board_dir=args.board.expanduser().resolve())
     if args.permission_mode:
         config = replace(config, permission_mode=args.permission_mode)
+    if args.allowed_tools is not None:
+        config = replace(
+            config,
+            allowed_tools=tuple(t.strip() for t in args.allowed_tools.split(",") if t.strip()),
+        )
     if args.dry_run:
         config = replace(config, dry_run=True)
 
