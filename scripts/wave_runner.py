@@ -455,6 +455,7 @@ def _build_records(plan: WavePlan, results: WaveResults) -> list[_de.DispatchRec
                 output_tokens=r.output_tokens,
                 cached_input_tokens=r.cached_input_tokens,
                 span_status=r.span_status,
+                final_status=r.final_status,
             )
         )
     return records

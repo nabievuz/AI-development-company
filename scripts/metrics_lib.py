@@ -108,8 +108,16 @@ def haiku_eligible(task_type: str | None = None, labels: list | None = None) -> 
 SUCCESS_OUTCOMES = {"success", "ok", "passed", "done"}
 
 
+COMPLETED_STATUSES = {"done", "closed", "merged", "shipped"}
+
+
 def _is_completion_event(ev: dict) -> bool:
-    return ev.get("event_type") == "run_end" or ev.get("to_status") == "done"
+    if ev.get("to_status") == "done":
+        return True
+    if ev.get("event_type") != "run_end":
+        return False
+    declared = str(ev.get("final_status", "")).strip().lower()
+    return declared in COMPLETED_STATUSES if declared else True
 
 
 def _is_successful_completion(ev: dict) -> bool:

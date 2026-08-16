@@ -71,6 +71,7 @@ class AgentOutput:
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
+    final_status: str = ""
 
 
 AgentInvoker = Callable[[DispatchRequest], "AgentOutput | str"]
@@ -410,7 +411,8 @@ def ticket_results_from_run(run: WaveRun) -> list[object]:
                 t7_score=outcome.result.t7_score,
                 start=outcome.started_at,
                 end=outcome.ended_at,
-                final_status="done" if outcome.succeeded else "blocked",
+                final_status=outcome.result.final_status
+                or ("done" if outcome.succeeded else "blocked"),
                 run_id=outcome.run_id,
                 input_tokens=outcome.result.input_tokens,
                 output_tokens=outcome.result.output_tokens,

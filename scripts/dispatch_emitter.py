@@ -53,6 +53,7 @@ class DispatchRecord:
     output_tokens: int = 0
     cached_input_tokens: int = 0
     span_status: str = "ok"
+    final_status: str = ""
     run_start_at: str | None = None
     run_end_at: str | None = None
 
@@ -75,6 +76,7 @@ def build_dispatch_events(record: DispatchRecord) -> list[dict[str, Any]]:
         created_at=run_start_at,
     )
     run_end = build_run_end(
+        final_status=record.final_status,
         ticket_id=record.ticket_id,
         run_id=record.run_id,
         outcome=record.outcome,

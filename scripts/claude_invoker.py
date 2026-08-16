@@ -322,9 +322,18 @@ def run_verify(command: str, cwd: Path, timeout: float) -> str:
     return CI_GREEN if proc.returncode == 0 else CI_RED
 
 
-def measured_outcome(result, repo: Path | None, branch: str, ci_status: str):
+def ticket_status_now(ticket_path: Path) -> str:
+    try:
+        return ticket_fields(ticket_path).get("status", "").strip()
+    except OSError:
+        return ""
+
+
+def measured_outcome(result, repo: Path | None, branch: str, ci_status: str, final_status: str = ""):
     merged = bool(repo is not None and _rw.branch_is_merged(repo, branch))
-    return replace(result, merged_pr=merged, ci_status=ci_status)
+    return replace(
+        result, merged_pr=merged, ci_status=ci_status, final_status=final_status
+    )
 
 
 KEPT_OUTCOMES = {
@@ -409,7 +418,13 @@ def invoke_with_config(request, config: InvokerConfig):
             if workspace is not None
             else CI_UNVERIFIED
         )
-        return measured_outcome(result, project_dir, branch_for(ticket_path, project_dir, request.ticket_id), ci_status)
+        return measured_outcome(
+            result,
+            project_dir,
+            branch_for(ticket_path, project_dir, request.ticket_id),
+            ci_status,
+            ticket_status_now(ticket_path),
+        )
     finally:
         if created is not None and project_dir is not None:
             report_teardown(
