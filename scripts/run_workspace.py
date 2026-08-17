@@ -157,15 +157,44 @@ def ignored_entries(path: Path) -> tuple[str, ...]:
     )
 
 
-def remove_git_worktree(repo: Path, path: Path) -> str:
+def prune_empty_parents(path: Path, stop: Path) -> int:
+    try:
+        boundary = stop.resolve()
+    except OSError:
+        return 0
+    removed = 0
+    for current in [path.parent, *path.parent.parents]:
+        try:
+            resolved = current.resolve()
+        except OSError:
+            return removed
+        if resolved != boundary and boundary not in resolved.parents:
+            return removed
+        try:
+            current.rmdir()
+        except OSError:
+            return removed
+        removed += 1
+        if resolved == boundary:
+            return removed
+    return removed
+
+
+def remove_git_worktree(repo: Path, path: Path, prune_root: Path | None = None) -> str:
     if not path.exists():
         return "absent"
     if worktree_is_dirty(path):
         return "kept-dirty"
+    outcome = ""
     proc = _git(repo, "worktree", "remove", str(path))
     if proc.returncode == 0:
-        return "removed"
-    if not ignored_entries(path):
+        outcome = "removed"
+    elif not ignored_entries(path):
         return "kept-failed"
-    forced = _git(repo, "worktree", "remove", "--force", str(path))
-    return "removed-ignored" if forced.returncode == 0 else "kept-failed"
+    else:
+        forced = _git(repo, "worktree", "remove", "--force", str(path))
+        if forced.returncode != 0:
+            return "kept-failed"
+        outcome = "removed-ignored"
+    prune_empty_parents(path, prune_root if prune_root is not None else worktree_root())
+    return outcome

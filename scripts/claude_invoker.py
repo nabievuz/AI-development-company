@@ -428,7 +428,11 @@ def invoke_with_config(request, config: InvokerConfig):
     finally:
         if created is not None and project_dir is not None:
             report_teardown(
-                request.ticket_id, created, _rw.remove_git_worktree(project_dir, created)
+                request.ticket_id,
+                created,
+                _rw.remove_git_worktree(
+                    project_dir, created, _rw.worktree_root(config.org_root)
+                ),
             )
 
 

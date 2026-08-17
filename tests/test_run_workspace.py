@@ -434,3 +434,55 @@ class TestBranchIsMerged:
         repo = _repo(tmp_path)
         subprocess.run(["git", "-C", str(repo), "branch", "untouched"], check=True)
         assert rw.branch_is_merged(repo, "untouched") is True
+
+
+class TestTeardownLeavesNoEmptyScaffolding:
+    def test_the_run_directory_goes_with_the_last_worktree_in_it(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        wtroot = rw.worktree_root(root)
+        a = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b1")
+        b = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-2", root), "b2")
+
+        rw.remove_git_worktree(repo, a, wtroot)
+        assert (wtroot / RUN_ID).is_dir()
+
+        rw.remove_git_worktree(repo, b, wtroot)
+        assert not (wtroot / RUN_ID).exists()
+        assert not wtroot.exists()
+
+    def test_a_sibling_still_working_keeps_the_run_directory(self, tmp_path):
+        repo = _repo(tmp_path)
+        root = tmp_path / "engine"
+        wtroot = rw.worktree_root(root)
+        a = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-1", root), "b1")
+        b = rw.create_git_worktree(repo, rw.worktree_path(RUN_ID, "DAS-2", root), "b2")
+        (b / "wip.txt").write_text("still going\n", encoding="utf-8")
+
+        assert rw.remove_git_worktree(repo, a, wtroot) == "removed"
+        assert rw.remove_git_worktree(repo, b, wtroot) == "kept-dirty"
+        assert (wtroot / RUN_ID).is_dir()
+        assert (b / "wip.txt").is_file()
+
+    def test_pruning_never_climbs_above_the_root_it_was_given(self, tmp_path):
+        outside = tmp_path / "precious"
+        outside.mkdir()
+        boundary = outside / "scratch"
+        boundary.mkdir()
+        leaf = boundary / "run" / "ticket"
+        leaf.mkdir(parents=True)
+
+        removed = rw.prune_empty_parents(leaf / "gone", boundary)
+
+        assert removed >= 1
+        assert not boundary.exists()
+        assert outside.is_dir()
+
+    def test_pruning_a_path_outside_the_root_does_nothing(self, tmp_path):
+        elsewhere = tmp_path / "elsewhere" / "deep"
+        elsewhere.mkdir(parents=True)
+        boundary = tmp_path / "scratch"
+        boundary.mkdir()
+
+        assert rw.prune_empty_parents(elsewhere / "x", boundary) == 0
+        assert elsewhere.is_dir()
