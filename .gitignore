@@ -27,6 +27,7 @@ dokploy-mcp.env
 
 # Python build/install artifacts + local virtualenvs (machine-specific)
 *.egg-info/
+/build/
 .venv/
 venv/
 /.claude/workflows/
