@@ -56,6 +56,28 @@ def entry_board(entry: dict, fallback: Path) -> Path:
     return candidate if candidate.is_dir() else fallback
 
 
+def known_boards(fallback: Path) -> list[Path]:
+    boards = [fallback]
+    projects = REPO_ROOT / "projects"
+    if projects.is_dir():
+        boards.extend(
+            sorted(p / "board-tickets" for p in projects.iterdir() if (p / "board-tickets").is_dir())
+        )
+    return boards
+
+
+def resolvable_tickets(entry: dict, fallback: Path) -> tuple[set[str], str]:
+    if str(entry.get("board", "")).strip():
+        board = entry_board(entry, fallback)
+        return board_ticket_ids(board), str(board)
+    boards = known_boards(fallback)
+    ids: set[str] = set()
+    for board in boards:
+        ids |= board_ticket_ids(board)
+    label = str(boards[0]) if len(boards) == 1 else f"{len(boards)} known board(s)"
+    return ids, label
+
+
 def board_ticket_ids(tickets_dir: Path | str) -> set[str]:
     base = Path(tickets_dir)
     found: set[str] = set()
@@ -116,9 +138,10 @@ def verify_wave_ledger_evidence(
     fallback_board = Path(tickets_dir) if override else DEFAULT_TICKETS_DIR
 
     for entry in entries:
-        board = fallback_board if override else entry_board(entry, fallback_board)
-        known_tickets = board_ticket_ids(board)
-        board_label = str(board)
+        if override:
+            known_tickets, board_label = board_ticket_ids(fallback_board), str(fallback_board)
+        else:
+            known_tickets, board_label = resolvable_tickets(entry, fallback_board)
         run_id = str(entry.get("run_id", ""))
         if is_fixture_run_id(run_id):
             problems.append(
@@ -475,7 +498,7 @@ def _verify_wave_ledger_cli(args: argparse.Namespace) -> int:
         return 2
 
     attest_dir = args.attest_dir if args.attest_dir is not None else path.parent.parent / "metrics" / "attestations"
-    tickets_dir = args.tickets_dir if args.tickets_dir is not None else DEFAULT_TICKETS_DIR
+    tickets_dir = args.tickets_dir
 
     problems = verify_wave_ledger_evidence(
         path, attest_dir=attest_dir, tickets_dir=tickets_dir
@@ -497,7 +520,7 @@ def _verify_wave_ledger_cli(args: argparse.Namespace) -> int:
     print(
         f"OK: {len(entries)} wave-ledger entr(ies) verified link by link "
         f"({path}) — hash chain intact, attestations match, every referenced ticket "
-        f"exists under {tickets_dir}."
+        f"exists on {tickets_dir or 'the boards this repo knows'}."
     )
     return 0
 

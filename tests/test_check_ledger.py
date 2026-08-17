@@ -328,3 +328,32 @@ class TestALedgerEntryCarriesItsOwnBoard:
         fallback = tmp_path / "fallback"
         assert cl.entry_board({"board": "no/such/board"}, fallback) == fallback
         assert cl.entry_board({}, fallback) == fallback
+
+
+class TestAnOlderEntryWithoutABoardStillResolves:
+    def test_the_known_boards_include_project_boards(self):
+        boards = cl.known_boards(cl.DEFAULT_TICKETS_DIR)
+        assert boards[0] == cl.DEFAULT_TICKETS_DIR
+
+    def test_an_entry_with_no_board_searches_every_known_board(self, monkeypatch, tmp_path):
+        platform = tmp_path / "board" / "tickets"
+        project = tmp_path / "projects" / "demo" / "board-tickets"
+        for d, tid in ((platform, "DAS-1"), (project, "DAS-2")):
+            d.mkdir(parents=True)
+            (d / f"{tid}-x.md").write_text(f"---\nid: {tid}\n---\nb\n", encoding="utf-8")
+        monkeypatch.setattr(cl, "REPO_ROOT", tmp_path)
+
+        ids, label = cl.resolvable_tickets({}, platform)
+
+        assert ids == {"DAS-1", "DAS-2"}
+        assert "known board" in label
+
+    def test_a_declared_board_is_used_alone(self, monkeypatch, tmp_path):
+        project = tmp_path / "projects" / "demo" / "board-tickets"
+        project.mkdir(parents=True)
+        (project / "DAS-2-x.md").write_text("---\nid: DAS-2\n---\nb\n", encoding="utf-8")
+        monkeypatch.setattr(cl, "REPO_ROOT", tmp_path)
+
+        ids, _label = cl.resolvable_tickets({"board": "projects/demo/board-tickets"}, tmp_path)
+
+        assert ids == {"DAS-2"}

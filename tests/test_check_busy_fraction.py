@@ -104,3 +104,24 @@ def test_cli_below_target_exit_1(tmp_path):
     ]
     p = _write(tmp_path, evs)
     assert cbf.main(["--events", str(p), "--target", "0.60"]) == 1
+
+
+def test_an_event_outside_the_run_lifecycle_does_not_stretch_the_window(tmp_path):
+    paired = [_ev("run_start", "r1", T % 0), _ev("run_end", "r1", T % 10)]
+    alone = dict(paired[0])
+    alone.update(event_type="agent_invocation", run_id="r1", created_at=T % 3600)
+
+    before, _ = wave_kpi.busy_fraction_from_events(paired)
+    after, _ = wave_kpi.busy_fraction_from_events([*paired, alone])
+
+    assert before == after == 1.0
+
+
+def test_an_unfinished_run_still_counts_as_elapsed_time(tmp_path):
+    evs = [
+        _ev("run_start", "r1", T % 0),
+        _ev("run_end", "r1", T % 2),
+        _ev("run_start", "r2", T % 10),
+    ]
+    fraction, _ = wave_kpi.busy_fraction_from_events(evs)
+    assert fraction == 0.2

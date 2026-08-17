@@ -109,19 +109,17 @@ def _union_seconds(intervals: list[tuple[dt.datetime, dt.datetime]]) -> float:
 def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
     starts: dict[str, dt.datetime] = {}
     ends: dict[str, dt.datetime] = {}
-    all_ts: list[dt.datetime] = []
+    lifecycle_ts: list[dt.datetime] = []
     model_mix = {"opus": 0, "sonnet": 0, "haiku": 0}
     dropped_undated = 0
     for ev in events:
         ts = _parse_iso(str(ev.get("created_at", "")))
-        if ts is not None:
-            all_ts.append(ts)
-        else:
-
-
+        if ts is None:
             dropped_undated += 1
         rid = ev.get("run_id")
         et = ev.get("event_type")
+        if et in ("run_start", "run_end") and ts is not None:
+            lifecycle_ts.append(ts)
         if et == "run_start" and rid and ts is not None:
             starts[str(rid)] = ts
         elif et == "run_end" and rid and ts is not None:
@@ -138,10 +136,11 @@ def busy_fraction_from_events(events: list[dict]) -> tuple[float | None, dict]:
         "runs_completed": len(intervals),
         "model_mix": model_mix,
         "dropped_undated": dropped_undated,
+        "window_from_run_lifecycle": True,
     }
-    if not intervals or len(all_ts) < 2:
+    if not intervals or len(lifecycle_ts) < 2:
         return None, stats
-    span = (max(all_ts) - min(all_ts)).total_seconds()
+    span = (max(lifecycle_ts) - min(lifecycle_ts)).total_seconds()
     if span <= 0:
         return None, stats
     return _union_seconds(intervals) / span, stats
