@@ -41,7 +41,7 @@ def test_actionable_tickets_are_dispatched() -> None:
 
 
 def test_non_actionable_status_is_refused() -> None:
-    for status in ("in_progress", "in_review", "done", "blocked", ""):
+    for status in ("in_review", "done", "blocked", ""):
         plan = wp.plan_wave([_ticket("DAS-1", status=status)], _ORG, [])
         assert plan.ticket_ids == ()
         refusal = plan.refusal_for("DAS-1")
@@ -60,7 +60,7 @@ def test_dependency_guard_refuses_a_ticket_with_an_open_dependency() -> None:
         _ticket("DAS-2", depends_on=("DAS-1",), zone="b"),
     ]
     plan = wp.plan_wave(tickets, _ORG, [])
-    assert plan.ticket_ids == ()
+    assert "DAS-2" not in plan.ticket_ids
     refusal = plan.refusal_for("DAS-2")
     assert refusal is not None
     assert refusal.reason is wp.RefusalReason.UNMET_DEPENDENCY
@@ -342,3 +342,46 @@ class TestOpenPredecessorGatesActuallyRefuses:
         )
         assert not plan.dispatch
         assert plan.refused[0].detail.endswith("GATE-2")
+
+
+def _t(tid, status="in_progress", parent="", zone="z", stage=""):
+    return wp.Ticket(
+        ticket_id=tid, role="backend-eng-1", status=status, zone=zone,
+        dept="engineering", parent=parent, gate=stage,
+    )
+
+
+class TestWorkReturnedByReviewCanBePickedUpAgain:
+    def test_in_progress_is_actionable(self):
+        assert wp.is_actionable_status("in_progress") is True
+        assert wp.is_actionable_status("todo") is True
+        assert wp.is_actionable_status("blocked") is False
+        assert wp.is_actionable_status("in_review") is False
+
+    def test_a_reviewed_ticket_returned_to_its_author_is_dispatchable(self):
+        org = wp.load_org_model(ORG_PATH)
+        plan = wp.plan_wave([_t("DAS-2", parent="DAS-1")], org, goal="g", occupied_zones=())
+        assert [p.ticket_id for p in plan.dispatch] == ["DAS-2"]
+
+
+class TestContainersAreNotWork:
+    def test_a_ticket_other_tickets_call_parent_is_refused(self):
+        org = wp.load_org_model(ORG_PATH)
+        tickets = [_t("DAS-1", zone="a"), _t("DAS-2", parent="DAS-1", zone="b")]
+        plan = wp.plan_wave(tickets, org, goal="g", occupied_zones=())
+
+        assert [p.ticket_id for p in plan.dispatch] == ["DAS-2"]
+        refusal = plan.refusal_for("DAS-1")
+        assert refusal.reason is wp.RefusalReason.NOT_ACTIONABLE
+        assert "container ticket" in refusal.detail
+
+    def test_a_leaf_that_merely_has_a_parent_is_still_work(self):
+        assert wp.parent_ticket_ids([_t("DAS-2", parent="DAS-1")]) == frozenset()
+
+    def test_a_parent_pointing_off_board_makes_nothing_a_container(self):
+        tickets = [_t("DAS-2", parent="DAS-999"), _t("DAS-3", parent="DAS-999")]
+        assert wp.parent_ticket_ids(tickets) == frozenset()
+
+    def test_every_epic_on_a_compiled_board_is_recognised(self):
+        tickets = [_t("DAS-1"), *[_t(f"DAS-{n}", parent="DAS-1") for n in range(2, 8)]]
+        assert wp.parent_ticket_ids(tickets) == frozenset({"DAS-1"})

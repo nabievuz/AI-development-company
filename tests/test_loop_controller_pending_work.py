@@ -50,15 +50,21 @@ def test_a_todo_ticket_is_actionable_work(tmp_path: Path) -> None:
     assert lc.actionable_work_exists(board, _org(tmp_path)) is True
 
 
-def test_an_in_progress_ticket_is_not_pending_work(tmp_path: Path) -> None:
+def test_an_in_progress_ticket_is_pending_work(tmp_path: Path) -> None:
     board = _board(tmp_path)
     _write(board, "DAS-1", status="in_progress", zone="scripts")
+    assert lc.actionable_work_exists(board, _org(tmp_path)) is True
+
+
+def test_a_blocked_ticket_is_not_pending_work(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    _write(board, "DAS-1", status="blocked", zone="scripts")
     assert lc.actionable_work_exists(board, _org(tmp_path)) is False
 
 
 def test_a_dependency_blocked_ticket_is_not_pending_work(tmp_path: Path) -> None:
     board = _board(tmp_path)
-    _write(board, "DAS-1", status="in_progress", zone="a")
+    _write(board, "DAS-1", status="blocked", zone="a")
     _write(board, "DAS-2", status="todo", zone="b", depends_on="[DAS-1]")
     assert lc.actionable_work_exists(board, _org(tmp_path)) is False
 

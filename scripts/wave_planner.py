@@ -8,7 +8,7 @@ from pathlib import Path
 
 import check_clarifications as _cc
 
-ACTIONABLE_TICKET_STATUSES = frozenset({"todo", "backlog"})
+ACTIONABLE_TICKET_STATUSES = frozenset({"todo", "backlog", "in_progress"})
 SATISFIED_DEPENDENCY_STATUSES = frozenset({"done", "closed", "merged", "shipped"})
 
 DEFAULT_PRIORITY = "p3"
@@ -58,6 +58,7 @@ class Ticket:
     deferred: bool = False
     clarification_markers: int = 0
     author: str = ""
+    parent: str = ""
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,13 @@ def ordering_key(ticket: Ticket) -> tuple[int, str]:
     return (priority_rank(ticket.priority), ticket.ticket_id)
 
 
+def parent_ticket_ids(tickets: Sequence[Ticket]) -> frozenset[str]:
+    known = {t.ticket_id for t in tickets}
+    return frozenset(
+        t.parent.strip() for t in tickets if t.parent.strip() in known
+    )
+
+
 def _status_index(tickets: Sequence[Ticket]) -> dict[str, str]:
     index: dict[str, str] = {}
     for ticket in tickets:
@@ -203,6 +211,7 @@ def plan_wave(
         raise ValueError(f"max_wave_size must be non-negative; got {max_wave_size!r}")
 
     statuses = _status_index(tickets)
+    containers = parent_ticket_ids(tickets)
     occupied = frozenset(str(z).strip() for z in occupied_zones if str(z).strip())
     closed = frozenset(str(g).strip() for g in closed_gates if str(g).strip())
 
@@ -211,6 +220,18 @@ def plan_wave(
     refused: list[RefusedTicket] = []
 
     for ticket in sorted(tickets, key=ordering_key):
+        if ticket.ticket_id in containers:
+            refused.append(
+                RefusedTicket(
+                    ticket.ticket_id,
+                    RefusalReason.NOT_ACTIONABLE,
+                    "container ticket — other tickets name it as parent, so the work "
+                    "lives in its children and dispatching it would spend a model call "
+                    "on an epic",
+                )
+            )
+            continue
+
         if not is_actionable_status(ticket.status):
             refused.append(
                 RefusedTicket(
@@ -380,6 +401,7 @@ def ticket_from_frontmatter(
         deferred=is_deferred(fields.get("defer", "")),
         clarification_markers=count_clarification_markers(body),
         author=fields.get("author", "").strip(),
+        parent=fields.get("parent", "").strip(),
     )
 
 
