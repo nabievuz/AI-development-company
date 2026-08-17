@@ -223,3 +223,189 @@ def test_missing_claude_binary_is_reported(monkeypatch) -> None:
     monkeypatch.setattr(ci.subprocess, "run", _missing)
     with pytest.raises(ci.InvokerError, match="claude CLI not found"):
         ci.run_claude(["claude"], ci.InvokerConfig())
+
+
+def test_dry_run_plans_a_worktree_without_creating_one(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    config = ci.InvokerConfig(
+        board_dir=board, org_root=tmp_path, dry_run=True, worktree_isolation=True
+    )
+    (tmp_path / "projects" / "sale-rentmarket-uz").mkdir(parents=True)
+
+    payload = json.loads(ci.invoke_with_config(_request(), config).output)
+
+    assert payload["dry_run"] is True
+    assert payload["branch"] == "DAS-1001-analyse-platform-g1"
+    assert payload["worktree"].endswith("run-1-DAS-1001/DAS-1001")
+    assert not (tmp_path / ".worktrees").exists()
+
+
+def test_isolation_off_points_the_agent_at_the_shared_tree(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    project = tmp_path / "projects" / "sale-rentmarket-uz"
+    project.mkdir(parents=True)
+    config = ci.InvokerConfig(
+        board_dir=board, org_root=tmp_path, dry_run=True, worktree_isolation=False
+    )
+
+    payload = json.loads(ci.invoke_with_config(_request(), config).output)
+
+    assert payload["worktree"] == ""
+    assert str(project) in payload["argv"]
+
+
+def test_isolation_defaults_on_and_the_env_can_turn_it_off() -> None:
+    assert ci.InvokerConfig.from_env({}).worktree_isolation is True
+    assert ci.InvokerConfig.from_env({"DASLAB_WORKTREE_ISOLATION": "0"}).worktree_isolation is False
+
+
+def test_an_unisolatable_project_is_refused_with_the_escape_hatch_named(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    project = tmp_path / "projects" / "sale-rentmarket-uz"
+    project.mkdir(parents=True)
+    config = ci.InvokerConfig(board_dir=board, org_root=tmp_path, worktree_isolation=True)
+
+    with pytest.raises(ci.InvokerError, match="DASLAB_WORKTREE_ISOLATION=0"):
+        ci.invoke_with_config(_request(), config)
+
+
+def test_a_kept_worktree_is_announced_not_swallowed(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "wt"
+    assert ci.report_teardown("DAS-1", path, "kept-dirty") == "kept-dirty"
+    err = capsys.readouterr().err
+    assert "DAS-1" in err and "uncommitted work" in err and str(path) in err
+
+    assert ci.report_teardown("DAS-1", path, "kept-failed") == "kept-failed"
+    assert "git refused" in capsys.readouterr().err
+
+
+def test_a_removed_worktree_stays_quiet(tmp_path: Path, capsys) -> None:
+    for outcome in ("removed", "removed-ignored", "absent"):
+        ci.report_teardown("DAS-1", tmp_path / "wt", outcome)
+    assert capsys.readouterr().err == ""
+
+
+def test_the_isolated_prompt_warns_about_the_missing_install(tmp_path: Path) -> None:
+    prompt = ci.build_prompt(_request(), tmp_path / "t.md", tmp_path / "wt", (), isolated=True)
+    assert "no installed dependencies" in prompt
+    assert "not a\ncode defect" in prompt or "not a code defect" in prompt.replace("\n", " ")
+
+
+def test_a_taken_branch_is_diagnosed_as_taken_not_as_an_isolation_problem(tmp_path: Path) -> None:
+    import run_workspace as rw
+
+    def holding(_repo, _branch):
+        return "/somewhere/else/DAS-1"
+
+    original, rw.worktree_holding = rw.worktree_holding, holding
+    try:
+        message = ci.isolation_failure(_request(), tmp_path, "b1", RuntimeError("boom"))
+    finally:
+        rw.worktree_holding = original
+
+    assert "already checked out at /somewhere/else/DAS-1" in message
+    assert "DASLAB_WORKTREE_ISOLATION=0" not in message
+
+
+def test_any_other_isolation_failure_still_names_the_escape_hatch(tmp_path: Path) -> None:
+    message = ci.isolation_failure(_request(), tmp_path / "nope", "b1", RuntimeError("boom"))
+    assert "DASLAB_WORKTREE_ISOLATION=0" in message
+
+
+def test_verify_is_unverified_until_a_command_is_declared(tmp_path: Path) -> None:
+    assert ci.run_verify("", tmp_path, 30) == ci.CI_UNVERIFIED
+
+
+def test_verify_reports_what_the_command_actually_did(tmp_path: Path) -> None:
+    assert ci.run_verify("true", tmp_path, 30) == ci.CI_GREEN
+    assert ci.run_verify("false", tmp_path, 30) == ci.CI_RED
+    assert ci.run_verify("no_such_command_xyz", tmp_path, 30) == ci.CI_RED
+
+
+def test_a_merge_is_measured_from_git_not_claimed_by_the_agent(tmp_path: Path) -> None:
+    import run_workspace as rw
+
+    calls = {}
+
+    def merged(repo, branch):
+        calls["args"] = (repo, branch)
+        return True
+
+    original, rw.branch_is_merged = rw.branch_is_merged, merged
+    try:
+        out = ci.measured_outcome(
+            orch.AgentOutput(output="I merged it, honest"), tmp_path, "b1", ci.CI_GREEN
+        )
+    finally:
+        rw.branch_is_merged = original
+
+    assert out.merged_pr is True
+    assert out.ci_status == ci.CI_GREEN
+    assert calls["args"] == (tmp_path, "b1")
+
+
+def test_an_agent_claim_alone_never_moves_the_quality_fields(tmp_path: Path) -> None:
+    out = ci.measured_outcome(
+        orch.AgentOutput(output="merged, CI green, T7 passed"), None, "b1", ci.CI_UNVERIFIED
+    )
+    assert out.merged_pr is False
+    assert out.ci_status == ci.CI_UNVERIFIED
+    assert out.t7_pass is False
+    assert out.t7_score == 0.0
+
+
+def _invocation_env(tmp_path: Path):
+    board = _board(tmp_path)
+    (tmp_path / "projects" / "sale-rentmarket-uz").mkdir(parents=True)
+    return board, ci.InvokerConfig(board_dir=board, org_root=tmp_path)
+
+
+def _emit(config, workspace, isolated):
+    return ci.emit_agent_invocation(
+        _request(), config, config.board_dir / "DAS-1001-analyse-platform-g1.md",
+        workspace, isolated,
+    )
+
+
+def test_an_agent_invocation_is_recorded_for_the_permissions_gate(tmp_path: Path) -> None:
+    from dgox.events import validate_agent_invocation
+
+    _board_dir, config = _invocation_env(tmp_path)
+    event = _emit(config, tmp_path / "wt", True)
+
+    assert validate_agent_invocation(event) == []
+    assert event["allowed_tools"] == list(ci.DEFAULT_ALLOWED_TOOLS)
+    assert event["workspace_id"] == str(tmp_path / "wt")
+    assert event["secrets_policy"] == ci.SECRETS_POLICY
+    assert (tmp_path / "board" / ".events.jsonl").is_file()
+
+
+def test_the_recorded_grant_is_the_one_actually_handed_to_the_agent(tmp_path: Path) -> None:
+    import dataclasses
+
+    _board_dir, config = _invocation_env(tmp_path)
+    config = dataclasses.replace(config, allowed_tools=("Bash(git status)",))
+
+    assert _emit(config, tmp_path / "wt", True)["allowed_tools"] == ["Bash(git status)"]
+
+
+def test_a_shared_tree_run_records_no_workspace_id(tmp_path: Path) -> None:
+    _board_dir, config = _invocation_env(tmp_path)
+    assert _emit(config, None, False)["workspace_id"] == ""
+
+
+def test_the_permissions_gate_reads_what_the_invoker_writes(tmp_path: Path) -> None:
+    import check_permissions
+
+    _board_dir, config = _invocation_env(tmp_path)
+    _emit(config, tmp_path / "wt", True)
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "board" / ".events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    problems = check_permissions.violations(events)
+
+    assert any("wildcard/family" in p for p in problems)
+    assert not any("workspace_id" in p for p in problems)
+    assert not any("secrets_policy" in p for p in problems)

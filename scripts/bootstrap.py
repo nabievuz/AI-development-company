@@ -36,7 +36,7 @@ def _provision_memory() -> None:
     if not ollama:
         print("    embeddings:  install Ollama, then `ollama pull nomic-embed-text`")
     if not arcrift:
-        print("    persistent:  set up ~/ArcRift (see governance/policies/memory-modes.md)")
+        print("    persistent:  set up ~/ArcRift (see README.md — Memory layer)")
     print("    the org boots + runs now; recall/store are best-effort until provisioned.")
 
 

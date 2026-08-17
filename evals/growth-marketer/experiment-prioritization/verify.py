@@ -29,6 +29,6 @@ def verify(submission: dict, fixtures: Path) -> float:
     if str(submission.get("top_experiment", "")).strip() == expected_name:
         credit += 0.5
     score = submission.get("rice_score")
-    if isinstance(score, (int, float)) and abs(float(score) - expected_score) <= _SCORE_TOLERANCE:
+    if isinstance(score, int | float) and abs(float(score) - expected_score) <= _SCORE_TOLERANCE:
         credit += 0.5
     return credit

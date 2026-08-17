@@ -126,7 +126,7 @@ def _forbidden_field_paths(submission: Any) -> list[str]:
                 if _normalize_key(key_text) in FORBIDDEN_FIELDS:
                     found.add(child)
                 pending.append((value, child))
-        elif isinstance(node, (str, bytes, bytearray)):
+        elif isinstance(node, str | bytes | bytearray):
             continue
         elif isinstance(node, Sequence):
             for index, value in enumerate(node):

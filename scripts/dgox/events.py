@@ -323,6 +323,7 @@ def build_run_end(
     t7_score: float,
     created_at: str,
     token_total: int | None = None,
+    final_status: str = "",
 ) -> dict[str, Any]:
     event: dict[str, Any] = {
         "event_type": "run_end",
@@ -338,6 +339,8 @@ def build_run_end(
     }
 
 
+    if final_status:
+        event["final_status"] = final_status
     if token_total is not None:
         event["token_total"] = token_total
     return event

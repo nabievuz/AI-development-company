@@ -101,7 +101,7 @@ def _load_state(raw: str) -> dict[str, list[float]]:
     for principal, stamps in calls.items():
         if not isinstance(stamps, list):
             continue
-        numeric = [float(s) for s in stamps if isinstance(s, (int, float))]
+        numeric = [float(s) for s in stamps if isinstance(s, int | float)]
         state[str(principal)] = numeric
     return state
 

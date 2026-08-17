@@ -501,6 +501,7 @@ def test_dispatch_mode_writes_the_journal_that_dry_run_leaves_untouched(
             "release-gate-probe",
             "--invoker",
             "probe_invoker:invoke",
+            "--no-evidence",
         ],
         capture_output=True,
         text=True,

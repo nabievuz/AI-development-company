@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -51,3 +52,149 @@ def gc_workspace(run_id: str, runs_dir: Path | None = None) -> bool:
         return False
     shutil.rmtree(ws)
     return True
+
+
+WORKTREES_DIRNAME = ".worktrees"
+_GIT_TIMEOUT = 120
+
+
+class WorktreeError(RuntimeError):
+    pass
+
+
+def worktree_root(root: Path | None = None) -> Path:
+    return (root if root is not None else _ROOT) / WORKTREES_DIRNAME
+
+
+def worktree_path(run_id: str, ticket_id: str, root: Path | None = None) -> Path:
+    return worktree_root(root) / run_id / ticket_id
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT,
+        check=False,
+    )
+
+
+def branch_exists(repo: Path, branch: str) -> bool:
+    return _git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0
+
+
+DEFAULT_BASE_CANDIDATES = ("main", "master")
+
+
+def default_base(repo: Path) -> str:
+    for candidate in DEFAULT_BASE_CANDIDATES:
+        if branch_exists(repo, candidate):
+            return candidate
+    return "HEAD"
+
+
+def existing_ticket_branch(repo: Path, ticket_id: str) -> str:
+    proc = _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    if proc.returncode != 0:
+        return ""
+    prefix = f"{ticket_id}-"
+    matches = [b for b in proc.stdout.split() if b == ticket_id or b.startswith(prefix)]
+    return sorted(matches)[0] if len(matches) == 1 else ""
+
+
+def create_git_worktree(repo: Path, path: Path, branch: str, base: str = "") -> Path:
+    if not (repo / ".git").exists():
+        raise WorktreeError(f"not a git repository: {repo}")
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    argv = (
+        ["worktree", "add", str(path), branch]
+        if branch_exists(repo, branch)
+        else ["worktree", "add", "-b", branch, str(path), base or default_base(repo)]
+    )
+    proc = _git(repo, *argv)
+    if proc.returncode != 0:
+        raise WorktreeError(
+            f"git worktree add failed for {branch} at {path}: {proc.stderr.strip()[:300]}"
+        )
+    return path
+
+
+def worktree_is_dirty(path: Path) -> bool:
+    proc = _git(path, "status", "--porcelain")
+    return proc.returncode != 0 or bool(proc.stdout.strip())
+
+
+def branch_is_merged(repo: Path, branch: str, base: str = "") -> bool:
+    target = base or default_base(repo)
+    if not branch or not branch_exists(repo, branch) or not branch_exists(repo, target):
+        return False
+    return _git(repo, "merge-base", "--is-ancestor", branch, target).returncode == 0
+
+
+def worktree_holding(repo: Path, branch: str) -> str:
+    proc = _git(repo, "worktree", "list", "--porcelain")
+    if proc.returncode != 0:
+        return ""
+    wanted = f"refs/heads/{branch}"
+    current = ""
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            current = line[len("worktree "):].strip()
+        elif line.startswith("branch ") and line[len("branch "):].strip() == wanted:
+            return current
+    return ""
+
+
+def ignored_entries(path: Path) -> tuple[str, ...]:
+    proc = _git(path, "status", "--porcelain", "--ignored=matching")
+    if proc.returncode != 0:
+        return ()
+    return tuple(
+        line[3:] for line in proc.stdout.splitlines() if line.startswith("!! ")
+    )
+
+
+def prune_empty_parents(path: Path, stop: Path) -> int:
+    try:
+        boundary = stop.resolve()
+    except OSError:
+        return 0
+    removed = 0
+    for current in [path.parent, *path.parent.parents]:
+        try:
+            resolved = current.resolve()
+        except OSError:
+            return removed
+        if resolved != boundary and boundary not in resolved.parents:
+            return removed
+        try:
+            current.rmdir()
+        except OSError:
+            return removed
+        removed += 1
+        if resolved == boundary:
+            return removed
+    return removed
+
+
+def remove_git_worktree(repo: Path, path: Path, prune_root: Path | None = None) -> str:
+    if not path.exists():
+        return "absent"
+    if worktree_is_dirty(path):
+        return "kept-dirty"
+    outcome = ""
+    proc = _git(repo, "worktree", "remove", str(path))
+    if proc.returncode == 0:
+        outcome = "removed"
+    elif not ignored_entries(path):
+        return "kept-failed"
+    else:
+        forced = _git(repo, "worktree", "remove", "--force", str(path))
+        if forced.returncode != 0:
+            return "kept-failed"
+        outcome = "removed-ignored"
+    prune_empty_parents(path, prune_root if prune_root is not None else worktree_root())
+    return outcome

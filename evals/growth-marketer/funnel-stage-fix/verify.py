@@ -31,6 +31,6 @@ def verify(submission: dict, fixtures: Path) -> float:
     if str(submission.get("priority_stage", "")).strip() == expected_stage:
         credit += 0.5
     lift = submission.get("expected_lift")
-    if isinstance(lift, (int, float)) and abs(float(lift) - expected_lift) <= _LIFT_TOLERANCE:
+    if isinstance(lift, int | float) and abs(float(lift) - expected_lift) <= _LIFT_TOLERANCE:
         credit += 0.5
     return credit

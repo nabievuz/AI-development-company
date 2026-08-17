@@ -41,7 +41,7 @@ def test_actionable_tickets_are_dispatched() -> None:
 
 
 def test_non_actionable_status_is_refused() -> None:
-    for status in ("in_progress", "in_review", "done", "blocked", ""):
+    for status in ("in_review", "done", "blocked", ""):
         plan = wp.plan_wave([_ticket("DAS-1", status=status)], _ORG, [])
         assert plan.ticket_ids == ()
         refusal = plan.refusal_for("DAS-1")
@@ -60,7 +60,7 @@ def test_dependency_guard_refuses_a_ticket_with_an_open_dependency() -> None:
         _ticket("DAS-2", depends_on=("DAS-1",), zone="b"),
     ]
     plan = wp.plan_wave(tickets, _ORG, [])
-    assert plan.ticket_ids == ()
+    assert "DAS-2" not in plan.ticket_ids
     refusal = plan.refusal_for("DAS-2")
     assert refusal is not None
     assert refusal.reason is wp.RefusalReason.UNMET_DEPENDENCY
@@ -276,3 +276,112 @@ def test_load_org_model_refuses_an_empty_allocation(tmp_path: Path) -> None:
 def test_load_org_model_refuses_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         wp.load_org_model(tmp_path / "absent.yaml")
+
+
+ORG_PATH = Path(__file__).resolve().parent.parent / "config" / "org.yaml"
+
+
+def _gated_board(tmp_path: Path, stage: str = "GATE-3") -> Path:
+    board = tmp_path / "tickets"
+    board.mkdir()
+    (board / "DAS-7001-x-s3.md").write_text(
+        "---\nid: DAS-7001\nstatus: todo\nassignee: backend-eng-1\ndept: engineering\n"
+        f"zone: z1\nstage: {stage}\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    return board
+
+
+class TestTheGateComesFromTheStageField:
+    def test_a_compiled_ticket_declares_its_gate_via_stage(self):
+        assert wp.gate_of({"stage": "GATE-4"}) == "GATE-4"
+        assert wp.gate_of({"stage": "Stage 4 — GATE-4"}) == "GATE-4"
+
+    def test_a_legacy_gate_field_still_works(self):
+        assert wp.gate_of({"gate": "GATE-2"}) == "GATE-2"
+
+    def test_stage_wins_over_a_stale_gate_field(self):
+        assert wp.gate_of({"stage": "GATE-5", "gate": "GATE-1"}) == "GATE-5"
+
+    def test_no_gate_anywhere_is_empty_not_a_guess(self):
+        assert wp.gate_of({}) == ""
+        assert wp.gate_of({"stage": "Deployment"}) == ""
+
+    def test_the_gate_order_is_known_even_when_the_org_file_omits_gates(self):
+        org = wp.load_org_model(ORG_PATH)
+        assert org.gate_order[:3] == ("GATE-1", "GATE-2", "GATE-3")
+        assert org.predecessor_gates("GATE-3") == ("GATE-1", "GATE-2")
+
+
+class TestOpenPredecessorGatesActuallyRefuses:
+    def test_a_stage_3_ticket_is_refused_while_its_predecessors_are_open(self, tmp_path):
+        board = _gated_board(tmp_path)
+        org = wp.load_org_model(ORG_PATH)
+        plan = wp.plan_wave(
+            wp.load_board_tickets(board), org, goal="t", occupied_zones=(), closed_gates=()
+        )
+        assert not plan.dispatch
+        assert [r.reason for r in plan.refused] == [wp.RefusalReason.OPEN_PREDECESSOR_GATE]
+        assert "GATE-1, GATE-2" in plan.refused[0].detail
+
+    def test_closing_every_predecessor_releases_the_ticket(self, tmp_path):
+        board = _gated_board(tmp_path)
+        org = wp.load_org_model(ORG_PATH)
+        plan = wp.plan_wave(
+            wp.load_board_tickets(board), org, goal="t",
+            occupied_zones=(), closed_gates=("GATE-1", "GATE-2"),
+        )
+        assert [p.ticket_id for p in plan.dispatch] == ["DAS-7001"]
+
+    def test_one_gate_still_open_still_refuses_and_names_only_that_gate(self, tmp_path):
+        board = _gated_board(tmp_path)
+        org = wp.load_org_model(ORG_PATH)
+        plan = wp.plan_wave(
+            wp.load_board_tickets(board), org, goal="t",
+            occupied_zones=(), closed_gates=("GATE-1",),
+        )
+        assert not plan.dispatch
+        assert plan.refused[0].detail.endswith("GATE-2")
+
+
+def _t(tid, status="in_progress", parent="", zone="z", stage=""):
+    return wp.Ticket(
+        ticket_id=tid, role="backend-eng-1", status=status, zone=zone,
+        dept="engineering", parent=parent, gate=stage,
+    )
+
+
+class TestWorkReturnedByReviewCanBePickedUpAgain:
+    def test_in_progress_is_actionable(self):
+        assert wp.is_actionable_status("in_progress") is True
+        assert wp.is_actionable_status("todo") is True
+        assert wp.is_actionable_status("blocked") is False
+        assert wp.is_actionable_status("in_review") is False
+
+    def test_a_reviewed_ticket_returned_to_its_author_is_dispatchable(self):
+        org = wp.load_org_model(ORG_PATH)
+        plan = wp.plan_wave([_t("DAS-2", parent="DAS-1")], org, goal="g", occupied_zones=())
+        assert [p.ticket_id for p in plan.dispatch] == ["DAS-2"]
+
+
+class TestContainersAreNotWork:
+    def test_a_ticket_other_tickets_call_parent_is_refused(self):
+        org = wp.load_org_model(ORG_PATH)
+        tickets = [_t("DAS-1", zone="a"), _t("DAS-2", parent="DAS-1", zone="b")]
+        plan = wp.plan_wave(tickets, org, goal="g", occupied_zones=())
+
+        assert [p.ticket_id for p in plan.dispatch] == ["DAS-2"]
+        refusal = plan.refusal_for("DAS-1")
+        assert refusal.reason is wp.RefusalReason.NOT_ACTIONABLE
+        assert "container ticket" in refusal.detail
+
+    def test_a_leaf_that_merely_has_a_parent_is_still_work(self):
+        assert wp.parent_ticket_ids([_t("DAS-2", parent="DAS-1")]) == frozenset()
+
+    def test_a_parent_pointing_off_board_makes_nothing_a_container(self):
+        tickets = [_t("DAS-2", parent="DAS-999"), _t("DAS-3", parent="DAS-999")]
+        assert wp.parent_ticket_ids(tickets) == frozenset()
+
+    def test_every_epic_on_a_compiled_board_is_recognised(self):
+        tickets = [_t("DAS-1"), *[_t(f"DAS-{n}", parent="DAS-1") for n in range(2, 8)]]
+        assert wp.parent_ticket_ids(tickets) == frozenset({"DAS-1"})

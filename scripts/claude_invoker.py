@@ -9,12 +9,14 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import run_workspace as _rw
 import wave_planner as _wp
 from _paths import ROOT
 
@@ -29,6 +31,15 @@ DEFAULT_CLAUDE_BIN = "claude"
 DEFAULT_PERMISSION_MODE = "acceptEdits"
 DEFAULT_TIMEOUT_SECONDS = 1800.0
 TRUE_VALUES = {"1", "true", "yes", "on"}
+
+DEFAULT_ALLOWED_TOOLS: tuple[str, ...] = (
+    "Bash(git:*)",
+    "Bash(npm:*)",
+    "Bash(npx:*)",
+    "Bash(node:*)",
+    "Bash(python3:*)",
+    "Bash(pytest:*)",
+)
 
 
 class InvokerError(RuntimeError):
@@ -58,6 +69,15 @@ def _env_flag(env: Mapping[str, str], key: str) -> bool:
     return env.get(key, "").strip().lower() in TRUE_VALUES
 
 
+def _env_tools(env: Mapping[str, str], key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    if key not in env:
+        return default
+    raw = env.get(key, "").strip()
+    if not raw:
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(frozen=True)
 class InvokerConfig:
     board_dir: Path = DEFAULT_BOARD_DIR
@@ -67,6 +87,9 @@ class InvokerConfig:
     permission_mode: str = DEFAULT_PERMISSION_MODE
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     dry_run: bool = False
+    allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
+    worktree_isolation: bool = True
+    verify_command: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InvokerConfig:
@@ -79,6 +102,10 @@ class InvokerConfig:
             permission_mode=_env_text(env, "DASLAB_PERMISSION_MODE", DEFAULT_PERMISSION_MODE),
             timeout_seconds=_env_float(env, "DASLAB_AGENT_TIMEOUT", DEFAULT_TIMEOUT_SECONDS),
             dry_run=_env_flag(env, "DASLAB_INVOKER_DRY_RUN"),
+            allowed_tools=_env_tools(env, "DASLAB_ALLOWED_TOOLS", DEFAULT_ALLOWED_TOOLS),
+            worktree_isolation=env.get("DASLAB_WORKTREE_ISOLATION", "1").strip().lower()
+            in TRUE_VALUES,
+            verify_command=_env_text(env, "DASLAB_VERIFY_CMD", ""),
         )
 
 
@@ -132,15 +159,40 @@ def resolve_role_and_model(ticket_path: Path, role: str, model: str, org_path: P
     return resolved_role, resolved_model
 
 
-def build_prompt(request, ticket_path: Path, project_dir: Path | None) -> str:
+def build_prompt(
+    request,
+    ticket_path: Path,
+    project_dir: Path | None,
+    allowed_tools: tuple[str, ...] = (),
+    isolated: bool = False,
+) -> str:
     lines = [
         f"You are {request.role}. Work strictly inside your role charter.",
         f"Execute exactly one ticket: {ticket_path}",
         f"Wave goal: {request.goal or '(none stated)'}",
         f"Wave run id: {request.run_id}, attempt {request.attempt}.",
     ]
-    if project_dir is not None:
+    if project_dir is not None and isolated:
+        lines.append(
+            f"The product checkout for this run is your own git worktree: {project_dir}. "
+            "It is on this ticket's branch and no other role can see it. Commit there. "
+            "Never run checkout, reset or stash against the shared project tree — that is "
+            "how a concurrent role's uncommitted work gets destroyed."
+        )
+        lines.append(
+            "A fresh worktree carries no installed dependencies. Run the project's install "
+            "step there before you read any build or test result, and do not symlink the "
+            "shared one — a red first build is almost always the missing install, not a "
+            "code defect, and reporting it as a defect wastes the next role's wave."
+        )
+    elif project_dir is not None:
         lines.append(f"The product this ticket is about lives at: {project_dir}")
+    if allowed_tools:
+        lines.append(
+            "Shell commands granted for this run: "
+            + ", ".join(allowed_tools)
+            + ". Anything outside that list is denied — do not block on it, log it and route it."
+        )
     lines.extend(
         [
             "Read the ticket first, then do what it asks. Do not pick up any other ticket.",
@@ -170,6 +222,8 @@ def build_command(config: InvokerConfig, request, prompt: str, project_dir: Path
         argv.extend(["--model", request.model])
     if project_dir is not None:
         argv.extend(["--add-dir", str(project_dir)])
+    if config.allowed_tools:
+        argv.extend(["--allowedTools", ",".join(config.allowed_tools)])
     return argv
 
 
@@ -238,15 +292,187 @@ def board_dir_for(request, config: InvokerConfig) -> Path:
     return Path(declared).expanduser().resolve() if declared else config.board_dir
 
 
+def branch_for(ticket_path: Path, repo: Path | None = None, ticket_id: str = "") -> str:
+    if repo is not None and ticket_id:
+        existing = _rw.existing_ticket_branch(repo, ticket_id)
+        if existing:
+            return existing
+    return ticket_path.stem
+
+
+CI_UNVERIFIED = "unverified"
+CI_GREEN = "green"
+CI_RED = "red"
+
+
+def run_verify(command: str, cwd: Path, timeout: float) -> str:
+    if not command:
+        return CI_UNVERIFIED
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return CI_RED
+    return CI_GREEN if proc.returncode == 0 else CI_RED
+
+
+SECRETS_POLICY = "no_secrets"
+
+
+def emit_agent_invocation(
+    request,
+    config: InvokerConfig,
+    ticket_path: Path,
+    workspace: Path | None,
+    isolated: bool,
+) -> dict | None:
+    from dgox.created_at import CREATED_AT_FORMAT
+    from dgox.events import EventStore, build_agent_invocation
+
+    event = build_agent_invocation(
+        ticket_id=request.ticket_id,
+        run_id=request.run_id,
+        role_key=request.role,
+        model=request.model,
+        workspace_id=str(workspace) if isolated and workspace is not None else "",
+        context_contract={
+            "ticket": ticket_path.name,
+            "board_dir": str(board_dir_for(request, config)),
+            "isolated": isolated,
+        },
+        allowed_tools=list(config.allowed_tools),
+        secrets_policy=SECRETS_POLICY,
+        exit_contract={"permission_mode": config.permission_mode},
+        created_at=datetime.now(tz=UTC).strftime(CREATED_AT_FORMAT),
+    )
+    try:
+        EventStore(config.org_root / "board" / ".events.jsonl").append(event)
+    except (OSError, ValueError) as exc:
+        print(f"claude_invoker: agent_invocation not recorded: {exc}", file=sys.stderr)
+        return None
+    return event
+
+
+def ticket_status_now(ticket_path: Path) -> str:
+    try:
+        return ticket_fields(ticket_path).get("status", "").strip()
+    except OSError:
+        return ""
+
+
+def measured_outcome(result, repo: Path | None, branch: str, ci_status: str, final_status: str = ""):
+    merged = bool(repo is not None and _rw.branch_is_merged(repo, branch))
+    return replace(
+        result, merged_pr=merged, ci_status=ci_status, final_status=final_status
+    )
+
+
+KEPT_OUTCOMES = {
+    "kept-dirty": "it holds uncommitted work",
+    "kept-failed": "git refused to remove it",
+}
+
+
+def report_teardown(ticket_id: str, path: Path, outcome: str) -> str:
+    reason = KEPT_OUTCOMES.get(outcome)
+    if reason is not None:
+        print(
+            f"claude_invoker: worktree kept for {ticket_id} — {reason}: {path}",
+            file=sys.stderr,
+        )
+    return outcome
+
+
+def acquire_workspace(request, config: InvokerConfig, project_dir: Path | None, branch: str):
+    if project_dir is None or not config.worktree_isolation:
+        return project_dir, None
+    path = _rw.worktree_path(request.run_id, request.ticket_id, config.org_root)
+    try:
+        return _rw.create_git_worktree(project_dir, path, branch), path
+    except (_rw.WorktreeError, OSError, subprocess.SubprocessError) as exc:
+        raise InvokerError(isolation_failure(request, project_dir, branch, exc)) from exc
+
+
+def isolation_failure(request, project_dir: Path, branch: str, exc: Exception) -> str:
+    holder = _rw.worktree_holding(project_dir, branch)
+    if holder:
+        return (
+            f"cannot isolate {request.ticket_id}: branch {branch!r} is already checked out at "
+            f"{holder}. Free that worktree (git worktree remove) or wait for the run holding it "
+            "to finish. Turning isolation off does NOT help here — the branch, not the tree, is "
+            "the thing that is taken."
+        )
+    return (
+        f"cannot isolate {request.ticket_id}: {exc}. Set DASLAB_WORKTREE_ISOLATION=0 to "
+        "dispatch into the shared tree, accepting that a concurrent role's uncommitted "
+        "work can be destroyed by any checkout."
+    )
+
+
 def invoke_with_config(request, config: InvokerConfig):
     ticket_path = find_ticket(board_dir_for(request, config), request.ticket_id)
     require_agent(request.role)
     project_dir = project_dir_for(ticket_path, config.org_root)
-    prompt = build_prompt(request, ticket_path, project_dir)
-    argv = build_command(config, request, prompt, project_dir)
+    isolate = project_dir is not None and config.worktree_isolation
+
     if config.dry_run:
-        return agent_output_class()(output=json.dumps({"dry_run": True, "argv": argv}))
-    return output_from_payload(run_claude(argv, config))
+        planned = (
+            _rw.worktree_path(request.run_id, request.ticket_id, config.org_root)
+            if isolate
+            else project_dir
+        )
+        prompt = build_prompt(
+            request, ticket_path, planned, config.allowed_tools, isolated=isolate
+        )
+        return agent_output_class()(
+            output=json.dumps(
+                {
+                    "dry_run": True,
+                    "argv": build_command(config, request, prompt, planned),
+                    "worktree": str(planned) if isolate else "",
+                    "branch": branch_for(ticket_path, project_dir, request.ticket_id) if isolate else "",
+                }
+            )
+        )
+
+    workspace, created = acquire_workspace(
+        request, config, project_dir, branch_for(ticket_path, project_dir, request.ticket_id)
+    )
+    prompt = build_prompt(
+        request, ticket_path, workspace, config.allowed_tools, isolated=created is not None
+    )
+    argv = build_command(config, request, prompt, workspace)
+    emit_agent_invocation(request, config, ticket_path, workspace, created is not None)
+    try:
+        result = output_from_payload(run_claude(argv, config))
+        ci_status = (
+            run_verify(config.verify_command, workspace, config.timeout_seconds)
+            if workspace is not None
+            else CI_UNVERIFIED
+        )
+        return measured_outcome(
+            result,
+            project_dir,
+            branch_for(ticket_path, project_dir, request.ticket_id),
+            ci_status,
+            ticket_status_now(ticket_path),
+        )
+    finally:
+        if created is not None and project_dir is not None:
+            report_teardown(
+                request.ticket_id,
+                created,
+                _rw.remove_git_worktree(
+                    project_dir, created, _rw.worktree_root(config.org_root)
+                ),
+            )
 
 
 def invoke(request):
@@ -273,6 +499,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal", default="", help="wave goal handed to the agent")
     parser.add_argument("--run-id", default="manual", help="run id recorded in the prompt")
     parser.add_argument("--permission-mode", default="", help="claude --permission-mode value")
+    parser.add_argument(
+        "--allowed-tools",
+        default=None,
+        help="comma-separated claude --allowedTools grant; empty string grants no shell",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the command, run nothing")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
@@ -292,6 +523,11 @@ def main(argv: list[str] | None = None) -> int:
         config = replace(config, board_dir=args.board.expanduser().resolve())
     if args.permission_mode:
         config = replace(config, permission_mode=args.permission_mode)
+    if args.allowed_tools is not None:
+        config = replace(
+            config,
+            allowed_tools=tuple(t.strip() for t in args.allowed_tools.split(",") if t.strip()),
+        )
     if args.dry_run:
         config = replace(config, dry_run=True)
 

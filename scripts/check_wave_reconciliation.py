@@ -34,7 +34,9 @@ def load_ledger_entries(ledger_path: Path) -> list[dict]:
             continue
         if not isinstance(entry, dict):
             continue
-        if tuple(sorted(entry)) != tuple(sorted(wr.LEDGER_FIELDS)):
+        missing = set(wr.LEDGER_FIELDS) - set(entry)
+        unknown = set(entry) - set(wr.LEDGER_FIELDS) - set(wr.LEDGER_OPTIONAL_FIELDS)
+        if missing or unknown:
             continue
         entries.append(entry)
     return entries

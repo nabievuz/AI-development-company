@@ -64,7 +64,7 @@ DEFAULT_LIMITS = PayloadLimits()
 def _kind_of(node: Any) -> str:
     if isinstance(node, Mapping):
         return "object"
-    if isinstance(node, (str, bytes, bytearray)):
+    if isinstance(node, str | bytes | bytearray):
         return "string"
     if isinstance(node, Sequence):
         return "array"
@@ -110,7 +110,7 @@ def payload_limit_violations(
                     )
                 child = f"{path}.{key_text}" if path else key_text
                 pending.append((value, child, depth + 1))
-        elif isinstance(node, (str, bytes, bytearray)):
+        elif isinstance(node, str | bytes | bytearray):
             if len(node) > caps.max_string_chars:
                 violations.append(
                     f"value at {label} is {len(node)} characters, over the limit "

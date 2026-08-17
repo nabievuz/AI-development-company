@@ -80,7 +80,42 @@ def write_output_guardrail_feedback(
         f"Re-dispatching {role} with this feedback so it can self-correct.\n"
     )
     _fl.locked_append_text(ticket_path, entry)
+
+
+def write_halt_no_retry(
+    ticket_path: Path,
+    feedback: str,
+    *,
+    role: str,
+    status: str,
+    now: Callable[[], str] = _today,
+) -> str:
+    entry = (
+        f"\n### {now()} — Output guardrail ({role})\n"
+        f"origin: {OUTPUT_GUARDRAIL_ORIGIN}\n"
+        f"Output guardrail tripped: {feedback}\n"
+        f"NOT re-dispatching: {role} set this ticket to `{status}`, so the finding is a "
+        f"consequence of the halt, not something a retry can fix. Escalating instead.\n"
+    )
+    _fl.locked_append_text(ticket_path, entry)
     return entry
+
+
+def halted_status(ticket_path: Path) -> str:
+    try:
+        text = ticket_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    status = _frontmatter_field(text, "status")
+    return status if status in HALTED_STATUSES else ""
+
+
+HALTED_STATUSES = frozenset({"blocked"})
+
+
+def _frontmatter_field(text: str, key: str) -> str:
+    m = re.search(rf"^{re.escape(key)}:[ \t]*([^\n]*)$", text, re.MULTILINE)
+    return m.group(1).strip().lower() if m else ""
 
 
 def _set_frontmatter_field(text: str, key: str, value: str) -> str:
@@ -115,7 +150,8 @@ def escalate_in_ticket(
     def _transform(text: str) -> str:
         if target:
             text = _set_frontmatter_field(text, "assignee", target)
-            text = _set_frontmatter_field(text, "status", "in_review")
+            if _frontmatter_field(text, "status") not in HALTED_STATUSES:
+                text = _set_frontmatter_field(text, "status", "in_review")
             text = _set_frontmatter_field(text, "updated", now())
         return text + entry
 
@@ -173,11 +209,19 @@ def guardrail_dispatch(
                 feedback_log=feedback_log,
             )
         last_feedback = feedback
+        halted = halted_status(ticket_path)
+        if halted:
+            write_halt_no_retry(ticket_path, feedback, role=role, status=halted, now=now)
+            feedback_log.append(feedback)
+            attempts_used = attempt + 1
+            break
         write_output_guardrail_feedback(
             ticket_path, feedback, role=role, attempt=attempt,
             max_retries=max_retries, now=now,
         )
         feedback_log.append(feedback)
+    else:
+        attempts_used = max_retries + 1
 
 
     target = escalation_target(role, author, role_table)
@@ -190,8 +234,8 @@ def guardrail_dispatch(
         role=role,
         accepted=True,
         outcome="escalated",
-        attempts=max_retries + 1,
-        retries_used=max_retries,
+        attempts=attempts_used,
+        retries_used=attempts_used - 1,
         feedback=last_feedback,
         escalated_to=target,
         feedback_log=feedback_log,
