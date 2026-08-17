@@ -352,3 +352,60 @@ def test_an_agent_claim_alone_never_moves_the_quality_fields(tmp_path: Path) -> 
     assert out.ci_status == ci.CI_UNVERIFIED
     assert out.t7_pass is False
     assert out.t7_score == 0.0
+
+
+def _invocation_env(tmp_path: Path):
+    board = _board(tmp_path)
+    (tmp_path / "projects" / "sale-rentmarket-uz").mkdir(parents=True)
+    return board, ci.InvokerConfig(board_dir=board, org_root=tmp_path)
+
+
+def _emit(config, workspace, isolated):
+    return ci.emit_agent_invocation(
+        _request(), config, config.board_dir / "DAS-1001-analyse-platform-g1.md",
+        workspace, isolated,
+    )
+
+
+def test_an_agent_invocation_is_recorded_for_the_permissions_gate(tmp_path: Path) -> None:
+    from dgox.events import validate_agent_invocation
+
+    _board_dir, config = _invocation_env(tmp_path)
+    event = _emit(config, tmp_path / "wt", True)
+
+    assert validate_agent_invocation(event) == []
+    assert event["allowed_tools"] == list(ci.DEFAULT_ALLOWED_TOOLS)
+    assert event["workspace_id"] == str(tmp_path / "wt")
+    assert event["secrets_policy"] == ci.SECRETS_POLICY
+    assert (tmp_path / "board" / ".events.jsonl").is_file()
+
+
+def test_the_recorded_grant_is_the_one_actually_handed_to_the_agent(tmp_path: Path) -> None:
+    import dataclasses
+
+    _board_dir, config = _invocation_env(tmp_path)
+    config = dataclasses.replace(config, allowed_tools=("Bash(git status)",))
+
+    assert _emit(config, tmp_path / "wt", True)["allowed_tools"] == ["Bash(git status)"]
+
+
+def test_a_shared_tree_run_records_no_workspace_id(tmp_path: Path) -> None:
+    _board_dir, config = _invocation_env(tmp_path)
+    assert _emit(config, None, False)["workspace_id"] == ""
+
+
+def test_the_permissions_gate_reads_what_the_invoker_writes(tmp_path: Path) -> None:
+    import check_permissions
+
+    _board_dir, config = _invocation_env(tmp_path)
+    _emit(config, tmp_path / "wt", True)
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "board" / ".events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    problems = check_permissions.violations(events)
+
+    assert any("wildcard/family" in p for p in problems)
+    assert not any("workspace_id" in p for p in problems)
+    assert not any("secrets_policy" in p for p in problems)

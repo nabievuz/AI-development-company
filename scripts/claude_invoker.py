@@ -9,6 +9,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -322,6 +323,43 @@ def run_verify(command: str, cwd: Path, timeout: float) -> str:
     return CI_GREEN if proc.returncode == 0 else CI_RED
 
 
+SECRETS_POLICY = "no_secrets"
+
+
+def emit_agent_invocation(
+    request,
+    config: InvokerConfig,
+    ticket_path: Path,
+    workspace: Path | None,
+    isolated: bool,
+) -> dict | None:
+    from dgox.created_at import CREATED_AT_FORMAT
+    from dgox.events import EventStore, build_agent_invocation
+
+    event = build_agent_invocation(
+        ticket_id=request.ticket_id,
+        run_id=request.run_id,
+        role_key=request.role,
+        model=request.model,
+        workspace_id=str(workspace) if isolated and workspace is not None else "",
+        context_contract={
+            "ticket": ticket_path.name,
+            "board_dir": str(board_dir_for(request, config)),
+            "isolated": isolated,
+        },
+        allowed_tools=list(config.allowed_tools),
+        secrets_policy=SECRETS_POLICY,
+        exit_contract={"permission_mode": config.permission_mode},
+        created_at=datetime.now(tz=UTC).strftime(CREATED_AT_FORMAT),
+    )
+    try:
+        EventStore(config.org_root / "board" / ".events.jsonl").append(event)
+    except (OSError, ValueError) as exc:
+        print(f"claude_invoker: agent_invocation not recorded: {exc}", file=sys.stderr)
+        return None
+    return event
+
+
 def ticket_status_now(ticket_path: Path) -> str:
     try:
         return ticket_fields(ticket_path).get("status", "").strip()
@@ -411,6 +449,7 @@ def invoke_with_config(request, config: InvokerConfig):
         request, ticket_path, workspace, config.allowed_tools, isolated=created is not None
     )
     argv = build_command(config, request, prompt, workspace)
+    emit_agent_invocation(request, config, ticket_path, workspace, created is not None)
     try:
         result = output_from_payload(run_claude(argv, config))
         ci_status = (
