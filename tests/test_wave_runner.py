@@ -226,7 +226,8 @@ def test_run_wave_co_produces_chain_linked_ledger_entry(tmp_path: Path) -> None:
     entry = entries[0]
 
 
-    assert set(entry) == _LEDGER_FIELDS
+    assert set(entry) >= _LEDGER_FIELDS
+    assert set(entry) - _LEDGER_FIELDS <= set(wr.LEDGER_OPTIONAL_FIELDS)
     assert entry["run_id"] == run_id
     assert entry["wave"] == att.payload["wave"] == 1
     assert entry["created_at"] == _WAVE_TS

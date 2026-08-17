@@ -154,6 +154,17 @@ def dependencies_satisfied(ticket: Ticket, statuses: Mapping[str, str]) -> bool:
     return not unmet_dependencies(ticket, statuses)
 
 
+_GATE_ID_RE = re.compile(r"GATE-[1-6]", re.IGNORECASE)
+
+
+def gate_of(fields: Mapping[str, str]) -> str:
+    for key in ("stage", "gate"):
+        match = _GATE_ID_RE.search(str(fields.get(key, "")))
+        if match:
+            return match.group(0).upper()
+    return ""
+
+
 def open_predecessor_gates(
     ticket: Ticket, org: OrgModel, closed_gates: Iterable[str]
 ) -> tuple[str, ...]:
@@ -363,7 +374,7 @@ def ticket_from_frontmatter(
         zone=fields.get("zone", "").strip(),
         dept=fields.get("dept", "").strip(),
         depends_on=parse_id_list(fields.get("depends_on", "")),
-        gate=fields.get("gate", "").strip(),
+        gate=gate_of(fields),
         priority=(fields.get("priority", "") or DEFAULT_PRIORITY).strip(),
         declared_model=fields.get("model", "").strip(),
         deferred=is_deferred(fields.get("defer", "")),
@@ -422,8 +433,21 @@ def org_model_from_mapping(data: Mapping[str, object]) -> OrgModel:
             if str(model).strip():
                 role_models[str(role)] = str(model).strip()
     gates = data.get("gates")
-    gate_order = tuple(str(g) for g in gates) if isinstance(gates, Sequence) and not isinstance(gates, str) else ()
+    gate_order = (
+        tuple(str(g) for g in gates)
+        if isinstance(gates, Sequence) and not isinstance(gates, str)
+        else schema_gate_order()
+    )
     return OrgModel(role_models=role_models, gate_order=gate_order)
+
+
+def schema_gate_order() -> tuple[str, ...]:
+    try:
+        import _org_generated
+    except ImportError:
+        return ()
+    gates = getattr(_org_generated, "GATES", ())
+    return tuple(str(g) for g in gates)
 
 
 def load_org_model(path: Path | str) -> OrgModel:

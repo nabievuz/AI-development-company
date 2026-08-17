@@ -63,6 +63,8 @@ LEDGER_FIELDS: tuple[str, ...] = (
     "created_at",
 )
 
+LEDGER_OPTIONAL_FIELDS: tuple[str, ...] = ("board",)
+
 
 _GENESIS_PREV_HASH: str = "sha256:" + "0" * 64
 
@@ -305,6 +307,7 @@ def append_wave_ledger_entry(
     attestation_out_path: Path,
     attestation_bytes: bytes,
     created_at: str,
+    board_dir: Path | None = None,
 ) -> dict[str, Any]:
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with _fl.exclusive_lock(ledger_path):
@@ -318,6 +321,8 @@ def append_wave_ledger_entry(
             "self_hash": "",
             "created_at": created_at,
         }
+        if board_dir is not None:
+            entry["board"] = _attestation_repo_path(Path(board_dir), ledger_path)
         entry["self_hash"] = _ledger_self_hash(entry)
         line = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
         _fl.append_text_durably(ledger_path, line)
@@ -345,9 +350,12 @@ def verify_wave_ledger(
         except json.JSONDecodeError as exc:
             problems.append(f"line {lineno}: malformed JSON ({exc})")
             continue
-        if set(entry) != set(LEDGER_FIELDS):
+        missing = set(LEDGER_FIELDS) - set(entry)
+        unknown = set(entry) - set(LEDGER_FIELDS) - set(LEDGER_OPTIONAL_FIELDS)
+        if missing or unknown:
             problems.append(
                 f"line {lineno}: fields {sorted(entry)} != required {sorted(LEDGER_FIELDS)}"
+                f" (+ optional {sorted(LEDGER_OPTIONAL_FIELDS)})"
             )
             continue
         entries.append(entry)
@@ -746,6 +754,7 @@ def run_wave(
         attestation_out_path=out_path,
         attestation_bytes=out_path.read_bytes(),
         created_at=created_at,
+        board_dir=Path(board_dir),
     )
 
     return WaveAttestation(run_id=plan.run_id, wave=plan.wave, payload=payload, path=out_path)

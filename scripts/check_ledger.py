@@ -29,6 +29,8 @@ DEFAULT_WAVE_LEDGER_PATH: Path = DEFAULT_RUNS_DIR.parent / "wave-ledger.jsonl"
 
 DEFAULT_TICKETS_DIR: Path = _pc.DEFAULT_TICKETS_DIR
 
+REPO_ROOT: Path = DEFAULT_TICKETS_DIR.parent.parent
+
 _LEDGER_FILENAME = "progress-ledger.json"
 
 
@@ -42,6 +44,16 @@ _ID_LINE_RE = re.compile(r"(?m)^id:[ \t]*(\S+)[ \t]*$")
 
 def is_fixture_run_id(run_id: str) -> bool:
     return str(run_id).startswith(FIXTURE_RUN_ID_PREFIX)
+
+
+def entry_board(entry: dict, fallback: Path) -> Path:
+    declared = str(entry.get("board", "")).strip()
+    if not declared:
+        return fallback
+    candidate = Path(declared)
+    if not candidate.is_absolute():
+        candidate = REPO_ROOT / candidate
+    return candidate if candidate.is_dir() else fallback
 
 
 def board_ticket_ids(tickets_dir: Path | str) -> set[str]:
@@ -100,12 +112,13 @@ def verify_wave_ledger_evidence(
     entries, parse_problems = read_wave_ledger(path)
     problems.extend(parse_problems)
 
-    known_tickets = board_ticket_ids(
-        tickets_dir if tickets_dir is not None else DEFAULT_TICKETS_DIR
-    )
-    board_label = str(tickets_dir if tickets_dir is not None else DEFAULT_TICKETS_DIR)
+    override = tickets_dir is not None
+    fallback_board = Path(tickets_dir) if override else DEFAULT_TICKETS_DIR
 
     for entry in entries:
+        board = fallback_board if override else entry_board(entry, fallback_board)
+        known_tickets = board_ticket_ids(board)
+        board_label = str(board)
         run_id = str(entry.get("run_id", ""))
         if is_fixture_run_id(run_id):
             problems.append(

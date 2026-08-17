@@ -274,3 +274,57 @@ class TestCli:
         runs = tmp_path / "runs"
         cl.write_progress_ledger(run_id=RUN_ID, runs_dir=runs, **_good_ledger())
         assert cl.main(["--run-id", RUN_ID, "--runs-dir", str(runs)]) == 0
+
+
+class TestALedgerEntryCarriesItsOwnBoard:
+    def _entry(self, tmp_path, board):
+        import wave_runner as wr
+
+        att = tmp_path / "att"
+        att.mkdir(exist_ok=True)
+        (att / "a.json").write_bytes(b"{}")
+        return wr.append_wave_ledger_entry(
+            ledger_path=tmp_path / "wave-ledger.jsonl",
+            run_id="R1",
+            wave=1,
+            ticket_ids=["DAS-9001"],
+            attestation_out_path=att / "a.json",
+            attestation_bytes=b"{}",
+            created_at="2026-08-17T00:00:00Z",
+            board_dir=board,
+        )
+
+    def test_the_board_is_recorded_and_covered_by_the_self_hash(self, tmp_path):
+        import wave_runner as wr
+
+        board = tmp_path / "projects" / "demo" / "board-tickets"
+        board.mkdir(parents=True)
+        entry = self._entry(tmp_path, board)
+
+        assert entry["board"].endswith("projects/demo/board-tickets")
+        assert entry["self_hash"] == wr._ledger_self_hash(entry)
+
+    def test_an_entry_without_a_board_still_verifies(self, tmp_path):
+        import wave_runner as wr
+
+        att = tmp_path / "att"
+        att.mkdir()
+        (att / "a.json").write_bytes(b"{}")
+        entry = wr.append_wave_ledger_entry(
+            ledger_path=tmp_path / "wave-ledger.jsonl",
+            run_id="R1", wave=1, ticket_ids=["DAS-9001"],
+            attestation_out_path=att / "a.json", attestation_bytes=b"{}",
+            created_at="2026-08-17T00:00:00Z",
+        )
+        assert "board" not in entry
+        assert entry["self_hash"] == wr._ledger_self_hash(entry)
+
+    def test_a_declared_board_resolves_relative_to_the_repo(self, tmp_path):
+        board = cl.REPO_ROOT / "scripts"
+        resolved = cl.entry_board({"board": "scripts"}, tmp_path)
+        assert resolved.resolve() == board.resolve()
+
+    def test_a_board_that_is_not_on_disk_falls_back(self, tmp_path):
+        fallback = tmp_path / "fallback"
+        assert cl.entry_board({"board": "no/such/board"}, fallback) == fallback
+        assert cl.entry_board({}, fallback) == fallback
