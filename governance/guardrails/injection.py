@@ -222,8 +222,8 @@ def _flatten(payload: Any, path: str = "") -> list[tuple[str, str]]:
             parts.append((child, str(key)))
             parts.extend(_flatten(value, child))
         return parts
-    if isinstance(payload, (str, bytes, bytearray)):
-        as_text = payload.decode("utf-8", "replace") if isinstance(payload, (bytes, bytearray)) else payload
+    if isinstance(payload, str | bytes | bytearray):
+        as_text = payload.decode("utf-8", "replace") if isinstance(payload, bytes | bytearray) else payload
         return [(path, as_text)]
     if isinstance(payload, Sequence):
         parts = []
@@ -244,7 +244,7 @@ def _control_fields(payload: Any, path: str = "") -> list[str]:
             if normalized in CONTROL_FIELD_NAMES:
                 found.append(child)
             found.extend(_control_fields(value, child))
-    elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
+    elif isinstance(payload, Sequence) and not isinstance(payload, str | bytes | bytearray):
         for index, value in enumerate(payload):
             found.extend(_control_fields(value, f"{path}[{index}]"))
     return found

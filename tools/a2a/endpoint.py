@@ -194,7 +194,7 @@ def _forbidden_fields_present(payload: Any) -> list[str]:
                 if key_text.strip().lower() in FORBIDDEN_FIELDS:
                     found.add(child)
                 pending.append((value, child))
-        elif isinstance(node, (str, bytes, bytearray)):
+        elif isinstance(node, str | bytes | bytearray):
             continue
         elif isinstance(node, Sequence):
             for index, value in enumerate(node):
@@ -216,7 +216,7 @@ def _validate_proposal_shape(payload: Any) -> list[str]:
 def _redact_node(node: Any, scrub: Callable[[Any], str]) -> Any:
     if isinstance(node, Mapping):
         return {str(key): _redact_node(value, scrub) for key, value in node.items()}
-    if isinstance(node, (str, bytes, bytearray)):
+    if isinstance(node, str | bytes | bytearray):
         return scrub(node)
     if isinstance(node, Sequence):
         return [_redact_node(value, scrub) for value in node]

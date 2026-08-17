@@ -26,7 +26,7 @@ def verify(submission: dict, fixtures: Path) -> float:
     criteria = submission.get("acceptance_criteria")
     if not isinstance(criteria, list) or not criteria:
         return 0.0
-    strings = [str(c) for c in criteria if isinstance(c, (str, int, float))]
+    strings = [str(c) for c in criteria if isinstance(c, str | int | float)]
     if not strings:
         return 0.0
 

@@ -11,14 +11,14 @@ def verify(submission: dict, fixtures: Path) -> float:
     credit = 0.0
     got_budget = submission.get("error_budget_pct")
     if (
-        isinstance(got_budget, (int, float))
+        isinstance(got_budget, int | float)
         and not isinstance(got_budget, bool)
         and abs(float(got_budget) - budget_pct) <= 1e-6
     ):
         credit += 0.5
     got_dt = submission.get("downtime_minutes")
     if (
-        isinstance(got_dt, (int, float))
+        isinstance(got_dt, int | float)
         and not isinstance(got_dt, bool)
         and abs(float(got_dt) - downtime) <= 1e-3
     ):

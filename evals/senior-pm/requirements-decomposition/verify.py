@@ -20,7 +20,7 @@ def verify(submission: dict, fixtures: Path) -> float:
     reqs = submission.get("requirements")
     if not isinstance(reqs, list) or not reqs:
         return 0.0
-    strings = [str(r) for r in reqs if isinstance(r, (str, int, float))]
+    strings = [str(r) for r in reqs if isinstance(r, str | int | float)]
     if not strings:
         return 0.0
 

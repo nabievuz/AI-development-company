@@ -25,7 +25,7 @@ def _expected(fixtures: Path) -> tuple[float, float]:
 
 
 def _field_credit(value: object, expected: float) -> float:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
+    if not isinstance(value, int | float) or isinstance(value, bool):
         return 0.0
     if expected == 0:
         return 1.0 if abs(value) < 1e-9 else 0.0
